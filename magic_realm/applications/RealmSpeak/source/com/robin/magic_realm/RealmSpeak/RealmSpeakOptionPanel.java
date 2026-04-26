@@ -86,6 +86,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 	protected JSlider adjustVolumeItem;
 
 	protected JCheckBox reconnectOnDisconnectOption;
+	protected JCheckBox stepServerUpdatesOption;
 	
 	private RealmSpeakFrame mainFrame;
 	private RealmSpeakOptions options;
@@ -243,6 +244,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 		autoPositioningAttackersOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.AUTO_POSITIONING_ATTACKERS,false));
 		characterlistSortingByPlayOrder.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.CHARACTERLIST_SORTING_BY_PLAY_ORDER,true));
 		reconnectOnDisconnectOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.RECONNECT_ON_DISCONNECT,false));
+		stepServerUpdatesOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.STEP_SERVER_UPDATES,false));
 		
 		boolean sound = options.getOptions().getBoolean(RealmSpeakOptions.ENABLE_SOUND,true);
 		enableSoundItem.setSelected(sound);
@@ -290,6 +292,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 		options.getOptions().set(RealmSpeakOptions.CHARACTERLIST_SORTING_BY_PLAY_ORDER,characterlistSortingByPlayOrder.isSelected());
 		options.getOptions().set(RealmSpeakOptions.ENABLE_SOUND,enableSoundItem.isSelected());
 		options.getOptions().set(RealmSpeakOptions.RECONNECT_ON_DISCONNECT,reconnectOnDisconnectOption.isSelected());
+		options.getOptions().set(RealmSpeakOptions.STEP_SERVER_UPDATES,stepServerUpdatesOption.isSelected());
 		mainFrame.saveFramePreferences();
 	}
 	private boolean isResponsive() {
@@ -670,6 +673,8 @@ public class RealmSpeakOptionPanel extends JDialog {
 		panel.add(characterlistSortingByPlayOrder);
 		reconnectOnDisconnectOption = new JCheckBox("Show reconnect dialog on disconnect");
 		panel.add(reconnectOnDisconnectOption);
+		stepServerUpdatesOption = new JCheckBox("Step through server updates one at a time");
+		panel.add(stepServerUpdatesOption);
 		return panel;
 	}
 	private JPanel getDailyCombatOptionPanel() {

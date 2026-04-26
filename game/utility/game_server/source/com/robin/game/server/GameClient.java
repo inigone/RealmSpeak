@@ -3,6 +3,7 @@ package com.robin.game.server;
 import java.net.*;
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -28,6 +29,9 @@ public abstract class GameClient extends GameNet {
 	// remove the guard in onDisconnected(), and remove RECONNECT_ON_DISCONNECT from RealmSpeakOptions,
 	// RealmSpeakOptionPanel, and RealmGameHandler when reconnect is stable enough to always be on.
 	private boolean reconnectEnabled = false;
+
+	private boolean stepModeEnabled = false;
+	private final ArrayList<ArrayList<GameObjectChange>> pendingBatches = new ArrayList<>();
 
 	private static Logger logger = Logger.getLogger(GameClient.class.getName());
 	
@@ -161,6 +165,50 @@ public abstract class GameClient extends GameNet {
 		return reconnectEnabled;
 	}
 
+	public void setStepModeEnabled(boolean enabled) {
+		stepModeEnabled = enabled;
+	}
+
+	public boolean isStepModeEnabled() {
+		return stepModeEnabled;
+	}
+
+	public boolean hasPendingBatches() {
+		synchronized(pendingBatches) {
+			return !pendingBatches.isEmpty();
+		}
+	}
+
+	public int getPendingBatchCount() {
+		synchronized(pendingBatches) {
+			return pendingBatches.size();
+		}
+	}
+
+	public ArrayList<GameObjectChange> stepNextBatch() {
+		synchronized(pendingBatches) {
+			if (pendingBatches.isEmpty()) return null;
+			ArrayList<GameObjectChange> batch = pendingBatches.remove(0);
+			for (GameObjectChange action : batch) {
+				action.applyChange(gameData);
+			}
+			gameData.rebuildChanges();
+			return batch;
+		}
+	}
+
+	public void flushAllBatches() {
+		synchronized(pendingBatches) {
+			while (!pendingBatches.isEmpty()) {
+				ArrayList<GameObjectChange> batch = pendingBatches.remove(0);
+				for (GameObjectChange action : batch) {
+					action.applyChange(gameData);
+				}
+			}
+			gameData.rebuildChanges();
+		}
+	}
+
 	public void addChangeListener(ChangeListener listener) {
 		if (changeListeners==null) {
 			changeListeners = new ArrayList();
@@ -247,13 +295,19 @@ public abstract class GameClient extends GameNet {
 							// Instead of loading all the objects, just load changes
 							list = readCollection();
 							logger.fine("Client received update: "+list.size()+" changes.");
-							for (GameObjectChange action : list) {
-								logger.finer("   "+action);
-								action.applyChange(gameData);
+							if (stepModeEnabled && dataLoaded) {
+								synchronized(pendingBatches) {
+									pendingBatches.add(list);
+								}
+							} else {
+								for (GameObjectChange action : list) {
+									logger.finer("   "+action);
+									action.applyChange(gameData);
+								}
+								gameData.rebuildChanges(); // in case it still has some uncommitted changes!
+								logger.fine("Client received update: DONE");
+								dataLoaded = true;
 							}
-							gameData.rebuildChanges(); // in case it still has some uncommitted changes!
-							logger.fine("Client received update: DONE");
-							dataLoaded = true;
 							fireStateChanged();
 							break;
 						case GameServer.RESPOND_RECEIVE_DIRECT_INFO:
@@ -457,8 +511,9 @@ public abstract class GameClient extends GameNet {
 
 	protected DisconnectAction handleDisconnect() {
 		final DisconnectAction[] result = {DisconnectAction.EXIT};
-		try {
-			SwingUtilities.invokeAndWait(() -> {
+		final CountDownLatch latch = new CountDownLatch(1);
+		SwingUtilities.invokeLater(() -> {
+			try {
 				Object[] options = {"Reconnect","Restart","Exit"};
 				int choice = JOptionPane.showOptionDialog(
 					null,
@@ -471,10 +526,16 @@ public abstract class GameClient extends GameNet {
 					options[0]);
 				if (choice == 0) result[0] = DisconnectAction.RECONNECT;
 				else if (choice == 1) result[0] = DisconnectAction.RESTART;
-			});
+			}
+			finally {
+				latch.countDown();
+			}
+		});
+		try {
+			latch.await();
 		}
-		catch(Exception ex) {
-			ex.printStackTrace();
+		catch(InterruptedException ex) {
+			Thread.currentThread().interrupt();
 		}
 		return result[0];
 	}

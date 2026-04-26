@@ -1162,6 +1162,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		};
 		// PROMOTE-TO-DEFAULT: remove this line when reconnect is stable enough to always be on.
 		client.setReconnectEnabled(parent.getRealmSpeakOptions().getOptions().getBoolean(RealmSpeakOptions.RECONNECT_ON_DISCONNECT, false));
+		client.setStepModeEnabled(parent.getRealmSpeakOptions().getOptions().getBoolean(RealmSpeakOptions.STEP_SERVER_UPDATES, false));
 		client.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent ev) {
 				SwingUtilities.invokeLater(new Runnable() {
@@ -1333,6 +1334,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 				logger.fine("RealmGameHandler notes a change in the client!  Redraw map.");
 				inspector.redrawMap();
+
+				if (client.isStepModeEnabled() && client.hasPendingBatches()) {
+					ServerUpdateStepDialog.show(getMainFrame(), client, new Runnable() {
+						public void run() {
+							inspector.redrawMap();
+							updateCharacterList();
+						}
+					});
+				}
 			}
 
 			// Update character table

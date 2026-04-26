@@ -57,6 +57,7 @@ public class RealmSpeakOptions {
 	public static final String CHARACTERLIST_SORTING_BY_PLAY_ORDER = "characterlistSortingByPlayOrder";
 	public static final String ENABLE_SOUND = "enableSound";
 	public static final String RECONNECT_ON_DISCONNECT = "reconnectOnDisconnect";
+	public static final String STEP_SERVER_UPDATES = "stepServerUpdates";
 	
 	PreferenceManager options;
 	
