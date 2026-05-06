@@ -1066,8 +1066,7 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		
 		newOptionPane.setTabHtmlDescription(REACTIONS_TAB,"<html><body><font face=\"Helvetica, Arial, sans-serif\">Reactions</font></body></html>");
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_BLOCKING_PHASES,"CHECK BLOCKING EACH PHASE (Magic Realm Basic) - Characters with Blocking ON can choose to block visible characters after every phase.",false));
-		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_PHASE_BEGIN_PLAYING_COLOR_CHIT,"COLOR CHIT AT PHASE BEGIN (Magic Realm Basic) - Characters can play a color chit at the beginning of the phase of any character in the same clearing.",false));
-		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_NO_COLOR_CHIT_FOR_BLOCKED_CHARACTERS,"NO COLOR CHIT PLAY FOR BLOCKED CHARACTERS - Blocked characters cannot play color chits.",false));
+newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_NO_COLOR_CHIT_FOR_BLOCKED_CHARACTERS,"NO COLOR CHIT PLAY FOR BLOCKED CHARACTERS - Blocked characters cannot play color chits.",false));
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_NO_COLOR_CHIT_FOR_SLEEPING_CHARACTERS,"NO COLOR CHIT PLAY FOR SLEEPING CHARACTERS - Sleeping characters cannot play color chits.",false));
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS,"NO COLOR CHIT PLAY CANNOT AIM AT HIDDEN TARGETS - When burning a color chit you cannot energize a spell which targets a hidden characters.",false));
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_DISABLE_ACTIONS_WHEN_AWAITING_REACTIONS,"DISABLE ACTIONS WHEN AWAITING REACTIONS - Cannot play color chits, activate, deactivate items etc. when waiting for another character to block or playing a color chit.",false));
@@ -1317,8 +1316,6 @@ public class HostGameSetupDialog extends AggressiveDialog {
 			optionPane.setOption(key,false);
 		}
 		optionPane.setOption(Constants.OPT_BLOCKING_PHASES,true);
-		optionPane.setOption(Constants.OPT_PHASE_BEGIN_PLAYING_COLOR_CHIT,true);
-		
 		updateWarnings();
 		loadingPrefs = false;
 	}

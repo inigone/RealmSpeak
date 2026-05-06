@@ -110,6 +110,9 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String NEEDS_COLOR_CHIT_INTERRUPT_PHASE_END_DECISION = "_ccipedc_";
 	public static final String COLOR_CHIT_INTERRUPTION_ACTION_COUNT_PHASE_BEGINNING = "_cciacpa_";
 	public static final String COLOR_CHIT_INTERRUPTION_ACTION_COUNT_PHASE_END = "_cciacpe_";
+	public static final String NEEDS_PRE_PHASE_ACTIVITY_DECISION = "_ppdc_";
+	public static final String PRE_PHASE_ACTIVITY_ACTION_COUNT = "_ppac_";
+	public static final String PRE_PHASE_NON_PHASING_ACTION_COUNT = "_ppnpac_";
 	
 	public static final String CURRENT_GUILD = "_ccg_";
 	public static final String CURRENT_GUILD_LEVEL = "_ccgl_";
@@ -632,7 +635,14 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public boolean getNeedsPlayColorChitInterruptPhaseEndDecision() {
 		return getBoolean(NEEDS_COLOR_CHIT_INTERRUPT_PHASE_END_DECISION);
 	}
-	
+	public boolean getNeedsPrePhaseActivityDecision() {
+		return getBoolean(NEEDS_PRE_PHASE_ACTIVITY_DECISION);
+	}
+	public int getPrePhaseActivityActionCount() {
+		if (getBoolean(PRE_PHASE_ACTIVITY_ACTION_COUNT) == false) return -1;
+		return getInt(PRE_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+
 	// Other getters
 	public int getNextCacheNumber() {
 		int n = getInt(CACHE_NUMBER);
@@ -717,7 +727,7 @@ public class CharacterWrapper extends GameObjectWrapper {
  		if (isBlocking() && (getNeedsPlayColorChitInterruptPhaseBeginningDecision() || getNeedsPlayColorChitInterruptPhaseEndDecision())) {
  			result = result + " (REACTING?!)";
  		}
- 		
+
  		if (isBlocking() && (getNeedsBlockDecision() || getNeedsInterruptPhaseDecision())) {
  			result = result + " (BLOCKING?!)";
  		}
@@ -2071,6 +2081,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		getGameObject().removeThisAttribute(Constants.STEAL_ATTEMPTS);
 		removeColorChitInterruptionActionCountPhaseBeginning();
 		removeColorChitInterruptionActionCountPhaseEnd();
+		removePrePhaseActivityActionCount();
 		
 		if (getPonyGameObject()!=null) {
 			ArrayList<RealmComponent> fhList = getFollowingHirelings();
@@ -4045,7 +4056,16 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void removeColorChitInterruptionActionCountPhaseEnd() {
 		removeAttribute(COLOR_CHIT_INTERRUPTION_ACTION_COUNT_PHASE_END);
 	}
-	
+	public void setNeedsPrePhaseActivityDecision(boolean val) {
+		setBoolean(NEEDS_PRE_PHASE_ACTIVITY_DECISION, val);
+	}
+	public void setPrePhaseActivityActionCount(int val) {
+		setInt(PRE_PHASE_ACTIVITY_ACTION_COUNT, val);
+	}
+	public void removePrePhaseActivityActionCount() {
+		removeAttribute(PRE_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+
 	// Adders
 	public void addGold(double val) {
 		addGold(val,false);
