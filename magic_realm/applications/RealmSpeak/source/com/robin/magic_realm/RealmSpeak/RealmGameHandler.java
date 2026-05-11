@@ -2385,11 +2385,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	 * Used to highlight the character row in red in the character list.
 	 * <p>
 	 * During birdsong: the character has not yet submitted their planned actions.
-	 * During daylight: it is this character's turn to execute an action, or they have
-	 * a pending block decision.
+	 * During daylight: the character has a pending block decision (blocker deciding whether
+	 * to fight), needs to evaluate a block (blocked character responding), or it is their
+	 * turn and they are not currently blocked (waiting for a block to resolve).
 	 * During evening/combat: the character has an active combat state that requires
 	 * player input (status is non-zero, below the COMBAT_WAIT threshold, and not DONE),
 	 * or they need to evaluate a block.
+	 * During day-end: the character's trading dialog is open (not yet clicked Done Trading).
 	 */
 	private boolean needsInput(CharacterWrapper character) {
 		if (game == null) return false;
@@ -2397,8 +2399,12 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			return character.isDoRecord();
 		}
 		if (game.isDaylight()) {
-			return character.getPlayOrder() == 1
-				|| character.getNeedsBlockDecision();
+			// Blocker needs to decide whether to fight or release
+			if (character.getNeedsBlockDecision()) return true;
+			// Blocked character needs to respond to the block
+			if (character.getNeedsBlockEvaluation()) return true;
+			// Active turn, but not while waiting for a block to resolve
+			return character.getPlayOrder() == 1 && !character.isBlocked();
 		}
 		if (game.inCombat()) {
 			int status = character.getCombatStatus();
@@ -2406,6 +2412,9 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				&& status < Constants.COMBAT_WAIT
 				&& status != Constants.COMBAT_DONE;
 			return activeStatus || character.getNeedsBlockEvaluation();
+		}
+		if (game.isDayEnd()) {
+			return character.isDayEndTradingActive();
 		}
 		return false;
 	}
@@ -2424,14 +2433,12 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			else {
 				setIcon(null);
 			}
-			if (!isSel) {
-				CharacterWrapper character = characterTableModel.getCharacter(row);
-				if (character != null && needsInput(character)) {
-					setForeground(Color.RED);
-				}
-				else {
-					setForeground(UIManager.getColor("Table.foreground"));
-				}
+			CharacterWrapper character = characterTableModel.getCharacter(row);
+			if (character != null && needsInput(character)) {
+				setForeground(Color.RED);
+			}
+			else {
+				setForeground(isSel ? UIManager.getColor("Table.selectionForeground") : UIManager.getColor("Table.foreground"));
 			}
 			return this;
 		}
