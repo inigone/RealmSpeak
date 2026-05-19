@@ -1947,13 +1947,27 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	public void submitChanges() {
 		logger.finer("submitChanges()");
-		GameClient.submitAndWait(client);
+		try {
+			GameClient.submitAndWait(client);
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChanges failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
-	
+
 	public void submitChangesWithTimeout() {
-		logger.finer("submitChanges()");
-		client.submitWithTimeout();
+		logger.finer("submitChangesWithTimeout()");
+		try {
+			client.submitWithTimeout();
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChangesWithTimeout failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
 
@@ -2250,7 +2264,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	private ActionListener clientSubmitter = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
-			GameClient.submitAndWait(client);
+			try {
+				GameClient.submitAndWait(client);
+			}
+			catch(RuntimeException ex) {
+				logger.warning("clientSubmitter failed - client disconnected: " + ex.getMessage());
+				parent.killHandler();
+			}
 		}
 	};
 
