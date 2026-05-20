@@ -470,8 +470,10 @@ public class ActionRow {
 				result = SLEEPING;
 				return;
 			}
-			if (handlePrePhase(hostPrefs)) return;
-			if (isPostPhasePending()) return;
+			if (blankReason == null && !invalid) {
+				if (handlePrePhase(hostPrefs)) return;
+				if (isPostPhasePending()) return;
+			}
 		}
 
 		// MULTI-PHASE SPLIT: a comma in the action string (e.g. "M-B14,M-B14" for a mountain move,
@@ -723,7 +725,7 @@ public class ActionRow {
 				gameHandler.updateCharacterFramesWithoutMap();
 			}
 
-			if (!isFollowing) {
+			if (!isFollowing && blankReason == null && !invalid) {
 				triggerPostPhase();
 				releaseLastPhaseFollowers();
 			}
