@@ -14,6 +14,7 @@ import com.robin.general.util.OrderedHashtable;
 public class GameObject extends ModifyableObject implements Serializable {
 
 	public static final int NO_ID_ASSIGNED = -1;
+	public static boolean showVul = false;
 	public static boolean showNumbers = false;
 
 	protected static XMLOutputter outputter = new XMLOutputter(Format.getPrettyFormat());
@@ -102,7 +103,7 @@ public class GameObject extends ModifyableObject implements Serializable {
 		//
 		// Fix: build the snapshot entirely via a local variable and publish it to the field only
 		// once, at the very end. Concurrent stopUncommitted() calls that null this.uncommitted
-		// during the loop are harmless — we are not reading the field, only writing it once done.
+		// during the loop are harmless - we are not reading the field, only writing it once done.
 		GameObject local = new GameObject();
 		local.id = this.id;
 		local.setName(name); // so that keyval searches with name actually work!!
@@ -629,10 +630,14 @@ public class GameObject extends ModifyableObject implements Serializable {
 	}
 
 	public String getNameWithNumber() {
-		if (showNumbers && this.hasThisAttribute("number")) {
-			return name + " (" + this.getThisAttribute("number") + ")";
+		StringBuffer text = new StringBuffer(name);
+		if (showVul && this.hasThisAttribute("vulnerability")) {
+			text.append(" (" + this.getThisAttribute("vulnerability") + ")");
 		}
-		return name;
+		if (showNumbers && this.hasThisAttribute("number")) {
+			text.append(" (" + this.getThisAttribute("number") + ")");
+		}
+		return text.toString();
 	}
 	
 	public String getName() {

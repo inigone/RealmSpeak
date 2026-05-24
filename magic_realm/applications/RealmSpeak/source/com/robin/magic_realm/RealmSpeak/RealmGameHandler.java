@@ -1752,6 +1752,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 						for (GameObject existing : livingCharacters) {
 							if (!existing.equals(character.getGameObject())) {
 								CharacterWrapper existingWrapper = new CharacterWrapper(existing);
+								if (existingWrapper.isMinion()) continue;
 								character.setEnemyCharacter(existing, true);
 								existingWrapper.setEnemyCharacter(character.getGameObject(), true);
 							}
