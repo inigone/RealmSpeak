@@ -200,7 +200,9 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 					CharacterFrame frame = characterFrames.get(id);
 					if (frame != null) {
 						frame.toFront();
-						frame.centerOnToken();
+						if (isOption(RealmSpeakOptions.MAP_CENTER_ON_CHARACTER)) {
+							frame.centerOnToken();
+						}
 						characterFrameOrder.remove(id);
 						characterFrameOrder.add(0, id);
 					}
@@ -2384,7 +2386,9 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				}
 				frame.showActionPanel();
 				frame.toFront();
-				frame.centerOnToken();
+				if (isOption(RealmSpeakOptions.MAP_CENTER_ON_CHARACTER)) {
+					frame.centerOnToken();
+				}
 				String id = character.getGameObject().getStringId();
 				characterFrameOrder.remove(id);
 				characterFrameOrder.add(0, id);
