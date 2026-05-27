@@ -1,3 +1,5 @@
+Version 1.2.5.9
+
 Version 1.2.5.8
 NEW FEATURES:
 # Option: Reconnect - enable client reconnect when connection to server has been lost
@@ -5,7 +7,7 @@ NEW FEATURES:
 # Option: Suspicious characters
 # Option: Show vulnerabilities of denizens
 BUGS/ISSUES:
-# Fix quest information dialog for Nimbus design
+# Fix quest information dialog for nimbus design
 # Fix vulnerability of Magic Shield
 # Fix dagger
 # Fix random assignment for mistlike denizens
