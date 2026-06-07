@@ -2521,6 +2521,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 						}
 						return name;
 					case 5:
+						if (game == null) return null;
 						boolean waiting = !game.getPlaceGoldSpecials() && !game.getGameStarted();
 						return character.getGameStatus(waiting);
 				}
