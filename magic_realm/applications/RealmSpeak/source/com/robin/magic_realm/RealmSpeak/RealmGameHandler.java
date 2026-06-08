@@ -937,8 +937,8 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			for (int i = 0; i < allChars.size(); i++) {
 				CharacterWrapper cw1 = new CharacterWrapper(allChars.get(i));
 				if (cw1.isMinion()) continue;
-				cw1.setBlocking(true);
-				cw1.setKeepBlocking(true);
+				cw1.setReacting(true);
+				cw1.setKeepReacting(true);
 				cw1.setWantsCombat(true);
 				cw1.setWantsDayEndTrades(true);
 				for (int j = i + 1; j < allChars.size(); j++) {
@@ -1937,8 +1937,8 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 					// Done
 					if (hostPrefs.hasPref(Constants.OPT_SUSPICIOUS_CHARACTERS) && !character.isMinion()) {
-						character.setBlocking(true);
-						character.setKeepBlocking(true);
+						character.setReacting(true);
+						character.setKeepReacting(true);
 						character.setWantsCombat(true);
 						character.setWantsDayEndTrades(true);
 						ArrayList<GameObject> livingCharacters = RealmUtility.getLivingCharacters(client.getGameData());
@@ -2141,13 +2141,27 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	public void submitChanges() {
 		logger.finer("submitChanges()");
-		GameClient.submitAndWait(client);
+		try {
+			GameClient.submitAndWait(client);
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChanges failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
-	
+
 	public void submitChangesWithTimeout() {
-		logger.finer("submitChanges()");
-		client.submitWithTimeout();
+		logger.finer("submitChangesWithTimeout()");
+		try {
+			client.submitWithTimeout();
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChangesWithTimeout failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
 
@@ -2450,7 +2464,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	private ActionListener clientSubmitter = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
-			GameClient.submitAndWait(client);
+			try {
+				GameClient.submitAndWait(client);
+			}
+			catch(RuntimeException ex) {
+				logger.warning("clientSubmitter failed - client disconnected: " + ex.getMessage());
+				parent.killHandler();
+			}
 		}
 	};
 
@@ -2619,6 +2639,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 						}
 						return name;
 					case 5:
+						if (game == null) return null;
 						boolean waiting = !game.getPlaceGoldSpecials() && !game.getGameStarted();
 						return character.getGameStatus(waiting);
 				}
