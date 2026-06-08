@@ -141,12 +141,13 @@ public class GameServer extends GameNet {
 					getOutputStream().writeInt(RESPOND_ACCEPTED);
 					getOutputStream().writeBoolean(hosting);
 					flush();
+					host.fireHostModified(new GameHostEvent(host, this, GameHostEvent.NOTICE_PLAYER_LOGIN));
 				}
 				else {
 					getOutputStream().writeInt(RESPOND_REFUSED);
 					flush();
+					host.fireHostModified();
 				}
-				host.fireHostModified(); // force an update
 				broadcast("host","New player joins: "+clientName);
 				break;
 			case GameClient.REQUEST_IDLE:

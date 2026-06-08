@@ -171,6 +171,16 @@ public class RealmHostPanel extends JPanel {
 					holder.setString(RandomNumber.getRandomNumberGenerator().toString());
 					ev.getServer().addInfoDirect(new InfoObject(ev.getServer().getClientName(),holder.getInfo()));
 				}
+				else if (ev.getNotice() == GameHostEvent.NOTICE_PLAYER_LOGIN) {
+					String clientName = ev.getServer().getClientName();
+					String layoutData = host.retrieveClientLayout(clientName);
+					if (layoutData != null) {
+						RealmDirectInfoHolder lholder = new RealmDirectInfoHolder(host.getGameData(), clientName);
+						lholder.setCommand(RealmDirectInfoHolder.CLIENT_LAYOUT);
+						lholder.setString(layoutData);
+						ev.getServer().addInfoDirect(new InfoObject(clientName, lholder.getInfo()));
+					}
+				}
 			}
 			
 			public void handleHostOnlyInfo(InfoObject io) {
@@ -219,7 +229,10 @@ public class RealmHostPanel extends JPanel {
 	
 	private void handleHostOnly(InfoObject io) {
 		RealmDirectInfoHolder holder = new RealmDirectInfoHolder(host.getGameData(),io.getInfo());
-		if (RealmDirectInfoHolder.CLIENT_RESPOND_EMAIL.equals(holder.getCommand())) {
+		if (RealmDirectInfoHolder.CLIENT_LAYOUT.equals(holder.getCommand())) {
+			host.storeClientLayout(holder.getPlayerName(), holder.getString());
+		}
+		else if (RealmDirectInfoHolder.CLIENT_RESPOND_EMAIL.equals(holder.getCommand())) {
 			String player = holder.getPlayerName();
 			String email = SendMail.normalizeEmail(holder.getString());
 			playerEmails.put(player,email);
