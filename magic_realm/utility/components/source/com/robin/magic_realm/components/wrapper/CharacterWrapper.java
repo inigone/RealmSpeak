@@ -116,9 +116,13 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String CURRENT_GUILD = "_ccg_";
 	public static final String CURRENT_GUILD_LEVEL = "_ccgl_";
 
-	public static final String BLOCKING = "bkkng_"; // indicates the character is blocking everything in the clearing
-	public static final String BLOCK_DECISION = "bkkng_dec"; // the blocking character has decided what to do
-	public static final String KEEP_BLOCKING = "keep_bkkng_";
+	public static final String REACTING = "bkkng_"; // indicates the character has inter-phase reactions enabled (blocking, color-chit play, etc.)
+	public static final String REACT_DECISION = "bkkng_dec"; // the reacting character has decided what to do
+	public static final String KEEP_REACTING = "keep_bkkng_";
+	public static final String SKIP_PRE_PHASE_FATIGUE_CHIT_ONLY = "skip_pp_fat_chit_only_";
+	public static final String SKIP_MONSTER_BLOCKING_WHEN_HIDDEN = "skip_mon_blk_hid_";
+	public static final String SKIP_CHARACTER_BLOCKING_WHEN_HIDDEN = "skip_char_blk_hid_";
+	public static final String SKIP_STOP_FOLLOWING_BEFORE_MOVE = "skip_stop_follow_";
 	public static final String COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION = "_ccipbdc_dec";
 	public static final String COLOR_CHIT_INTERRUPT_PHASE_END_DECISION = "_ccipec_dec";
 	
@@ -3819,6 +3823,24 @@ public class CharacterWrapper extends GameObjectWrapper {
 	}
 	public void setKeepBlocking(boolean val) {
 		setBoolean(KEEP_BLOCKING,val);
+	}
+	public boolean skipsMonsterBlockingWhenHidden() {
+		return getBoolean(SKIP_MONSTER_BLOCKING_WHEN_HIDDEN);
+	}
+	public void setSkipMonsterBlockingWhenHidden(boolean val) {
+		setBoolean(SKIP_MONSTER_BLOCKING_WHEN_HIDDEN, val);
+	}
+	public boolean skipsCharacterBlockingWhenHidden() {
+		return getBoolean(SKIP_CHARACTER_BLOCKING_WHEN_HIDDEN);
+	}
+	public void setSkipCharacterBlockingWhenHidden(boolean val) {
+		setBoolean(SKIP_CHARACTER_BLOCKING_WHEN_HIDDEN, val);
+	}
+	public boolean skipsStopFollowingBeforeMove() {
+		return getBoolean(SKIP_STOP_FOLLOWING_BEFORE_MOVE);
+	}
+	public void setSkipStopFollowingBeforeMove(boolean val) {
+		setBoolean(SKIP_STOP_FOLLOWING_BEFORE_MOVE, val);
 	}
 	public void addColorChitInterruptPhaseBeginningDecision(GameObject go) {
 		addListItem(COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION,go.getStringId());
