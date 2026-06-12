@@ -210,6 +210,7 @@ public class Constants {
 	public static final String MONSTER_CONTROL_VALIDATE_CONTROL = "monster_control_validate_control";
 	public static final String MONSTER_CONTROL_LIMIT = "monster_control_limit";
 	public static final String MONSTER_FEAR = "monster_fear";
+	public static final String MONSTER_FRIENDLINESS = "monster_friendliness";
 	public static final String TREASURE_LOCATION_FEAR = "treasure_location_fear";
 	public static final String BONUS_CHIT = "bonus_chit";
 	public static final String SPECIAL_ACTION = "special_action";
@@ -250,6 +251,7 @@ public class Constants {
 	public static final String FORESIGHT_USED = "foresight_used";
 	public static final String STEAL_ATTEMPTS = "stealing_attempts";
 	public static final String DRINKS_BOUGHT = "drinks_bought";
+	public static final String COMBAT_PREBATTLE_DONE = "_prebattle_done_";
 	public static final String FORESIGHT_SAVED_STATS = "foresight_saved_stats";
 	public static final String FORESIGHT_SAVED_STATS_WISHED_STRENGTH = "wished_strength_";
 	public static final String SEAFARING = "seafaring";

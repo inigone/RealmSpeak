@@ -1377,6 +1377,7 @@ newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_NO_COLOR_CHIT
 		optionPane.setOption(Constants.SR_EVENTS,true);
 		optionPane.setOption(Constants.EXP_ASSASSIN_THIEF,true);
 		optionPane.setOption(Constants.EXP_STEALING,true);
+		optionPane.setOption(Constants.EXP_OFFROAD_TRAVEL,true);
 		
 		updateWarnings();
 	}
