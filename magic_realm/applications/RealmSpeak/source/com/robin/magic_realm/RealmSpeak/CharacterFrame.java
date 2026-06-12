@@ -38,6 +38,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	protected CharacterWrapper character;
 	protected HostPrefWrapper hostPrefs;
 	protected JButton showCharCardButton;
+	private JFrame charCardFrame;
 	protected Badge familiarBadge;
 	
 	protected CharacterChatPanel chatPanel;
@@ -93,6 +94,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	
 	protected JButton viewChitsButton;
 	protected JToggleButton reactButton;
+	protected JButton reactionsConfigButton;
+	private JDialog reactionsFilterDialog;
 	protected JButton shoutButton;
 	protected JButton unhideButton;
 	protected JButton tradeButton;
@@ -102,7 +105,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	protected JCheckBox dailyCombatCheckbox;
 	protected JCheckBox dayEndRearrangmentCheckbox;
 	protected JCheckBox keepReactingCheckbox;
+	protected JCheckBox skipReactionDialogsCheckbox;
 	protected JCheckBox skipPrePhaseFatigueChitOnlyCheckbox;
+	protected JCheckBox skipMonsterBlockingWhenHiddenCheckbox;
+	protected JCheckBox skipCharacterBlockingWhenHidden;
+	protected JCheckBox skipStopFollowingBeforeMoveCheckbox;
 	protected JLabel characterVulnerability;
 
 	protected JPanel characterDetailPanel;
@@ -338,19 +345,26 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			}
 			// Non-phasing character: show the non-modal dialog and return. Resolution
 			// happens when the player clicks SUBMIT in the dialog.
-			// If the player opted to skip when only color-chit fatiguing is available,
-			// and there is no stop-following option, and no chit has a targetable spell,
-			// auto-submit with no selections.
-			if (getCharacter().skipsPrePhaseWhenFatigueChitOnly() && !isFollowerOfPhasingChar()) {
+			// Skip filters are ONLY used here to decide whether to auto-submit (skip the dialog
+			// entirely). If the dialog is shown, ALL applicable sections are displayed regardless
+			// of skip filters — so a character who would see stop-following also sees color chits,
+			// and vice versa.
+			boolean naturalColorChits = !getCharacter().getColorMagicChits().isEmpty()
+				&& !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
+			boolean naturalStopFollowing = isFollowerOfPhasingChar();
+			boolean skipColorChits = false;
+			if (naturalColorChits && getCharacter().skipsPrePhaseWhenFatigueChitOnly()) {
 				System.err.println("[IPD]   FatigueChitOnly guard: checking " + getCharacter().getColorMagicChits().size() + " color chits");
 				boolean hasTargetableSpell = getCharacter().getColorMagicChits().stream()
 					.anyMatch(chit -> !getCompatibleInertSpells(chit, hostPrefs.hasPref(Constants.OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS)).isEmpty());
 				System.err.println("[IPD]   hasTargetableSpell=" + hasTargetableSpell);
-				if (!hasTargetableSpell) {
-					System.err.println("[IPD]   skipping pre-phase dialog (FatigueChitOnly pref, no stop-following, no targetable spells)");
-					submitPrePhaseActivities();
-					return;
-				}
+				skipColorChits = !hasTargetableSpell;
+			}
+			boolean skipStopFollowing = naturalStopFollowing && getCharacter().skipsStopFollowingBeforeMove();
+			if ((!naturalColorChits || skipColorChits) && (!naturalStopFollowing || skipStopFollowing)) {
+				System.err.println("[IPD]   skipping pre-phase dialog (all applicable sections suppressed by skip filters)");
+				submitPrePhaseActivities();
+				return;
 			}
 			System.err.println("[IPD]   showing pre-phase ONLY dialog");
 			showPrePhaseActivityDialog();
@@ -548,6 +562,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		// added to this dialog (or a dedicated follower-only pre-phase dialog).
 		boolean showColorChits = !getCharacter().getColorMagicChits().isEmpty()
 			&& !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
+		// Skip filters only gate whether the dialog is shown at all (in doPrePhaseActivities).
+		// Once the dialog is shown, display all applicable sections unfiltered.
 		boolean showStopFollowing = isFollowerOfPhasingChar();
 
 		if (showColorChits) {
@@ -1011,6 +1027,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	 * actionFollowers list whose immediate guide is {@code stopped} (or is itself already
 	 * stopping). Handles arbitrarily deep chains because RealmHostPanel flattens all
 	 * cascade followers into the primary guide's actionFollowers list.
+	 *
+	 * TBD(interphase-dialogs): when a middle-chain character (follower of the guide AND guide
+	 * of their own sub-followers) chooses to stop following during pre-phase, their sub-followers
+	 * should either also stop following OR be offered their own stop-following decision.
+	 * Currently cascadeStopFollowing() forces sub-followers to stop, but this happens silently
+	 * on the guide's client machine only — the sub-followers' CharacterFrame instances on their
+	 * own clients don't get a pre-phase dialog to decide for themselves. The correct behaviour is
+	 * TBD from a rules/design standpoint: auto-cascade (current), or give sub-followers their own
+	 * choice (requires them to receive NeedsPrePhaseActivityDecision after their guide resolves).
 	 */
 	private void cascadeStopFollowing(CharacterWrapper stopped, CharacterWrapper phasingChar) {
 		for (CharacterWrapper follower : phasingChar.getActionFollowers()) {
@@ -1044,6 +1069,12 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			postPhaseDialogShowing = false;
 			combinedDialogShowing = true;
 			showCombinedPhaseActivityDialog();
+			return;
+		}
+		// Auto-submit if skip filters reduce block candidates to none — no dialog needed.
+		if (getPostPhaseBlockCandidates().isEmpty()) {
+			System.err.println("[IPD]   skipping post-phase dialog (all block candidates suppressed by skip filters)");
+			submitPostPhaseActivities();
 			return;
 		}
 		showPostPhaseActivityDialog();
@@ -1164,14 +1195,23 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		if (blocker.isPlayingTurn()) {
 			// Phasing character: can block all detectable chars, denizens, and monsters
 			// except own current followers (subject to per-target guards).
+			// TBD(interphase-dialogs): guides also cannot block their own followers at post-phase
+			// (the follower's window fires at phase-end, not the guide's). Currently own followers
+			// are excluded here — that is correct. But followers of the phasing guide should also
+			// be excluded from seeing the phasing guide as a block candidate in their own
+			// post-phase dialog: the blocking opportunity has passed by the time the guide's turn ends.
+			// See the non-phasing branch: isFollowerOfPhasingChar() check at line ~1210.
 			Set<GameObject> ownFollowers = new HashSet<>();
 			for (CharacterWrapper f : blocker.getActionFollowers()) {
 				ownFollowers.add(f.getGameObject());
 			}
+			boolean skipMonsters = blocker.isHidden() && blocker.skipsMonsterBlockingWhenHidden();
+			boolean skipChars   = blocker.isHidden() && blocker.skipsCharacterBlockingWhenHidden();
 			for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 				if (rc.getGameObject().equals(blocker.getGameObject())) continue;
 				if (ownFollowers.contains(rc.getGameObject())) continue;
 				if (rc.isPlayerControlledLeader()) {
+					if (skipChars) continue;
 					if (!isValidBlockTarget(rc, blockerIgnoresMist)) continue;
 					CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 					if (!cw.isHidden() || blocker.foundHiddenEnemy(rc.getGameObject())) {
@@ -1179,6 +1219,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 					}
 				} else if ((rc.isDenizen() || rc.isMonster()) && !rc.isMonsterPart()
 						&& (rc.getOwner() == null || rc.isDenizen())) {
+					if (skipMonsters) continue;
 					if (!isValidBlockTarget(rc, blockerIgnoresMist)) continue;
 					candidates.add(rc);
 				}
@@ -1188,6 +1229,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			// and the phasing char passes all blockee guards.
 			// Followers of the phasing char cannot block anyone — return empty.
 			if (isFollowerOfPhasingChar()) return candidates;
+			if (blocker.isHidden() && blocker.skipsCharacterBlockingWhenHidden()) return candidates;
 			for (GameObject go : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
 				CharacterWrapper cw = new CharacterWrapper(go);
 				if (cw.isPlayingTurn()) {
@@ -1427,6 +1469,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		boolean showColorChits = !getCharacter().getColorMagicChits().isEmpty()
 			&& !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
+		// Skip filters only gate whether the dialog is shown at all (in doPrePhaseActivities).
+		// Once the dialog is shown, display all applicable sections unfiltered.
 		boolean showStopFollowing = isFollowerOfPhasingChar();
 		if (showColorChits) {
 			preSection.add(new JSeparator(JSeparator.HORIZONTAL));
@@ -1762,6 +1806,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		dayEndRearrangmentCheckbox.setSelected(!character.isMinion() && character.getWantsDayEndTrades());
 		keepReactingCheckbox.setSelected(!character.isMinion() && character.keepsReacting());
 		skipPrePhaseFatigueChitOnlyCheckbox.setSelected(!character.isMinion() && character.skipsPrePhaseWhenFatigueChitOnly());
+		skipMonsterBlockingWhenHiddenCheckbox.setSelected(!character.isMinion() && character.skipsMonsterBlockingWhenHidden());
+		skipCharacterBlockingWhenHidden.setSelected(!character.isMinion() && character.skipsCharacterBlockingWhenHidden());
+		skipStopFollowingBeforeMoveCheckbox.setSelected(!character.isMinion() && character.skipsStopFollowingBeforeMove());
 
 		// Update mountain move icon (might change with seasons/weather)
 		mountainMoveIcon.setCost(getCharacter().getMountainMoveCost()+(character.addsOneToMoveExceptCaves()?1:0));
@@ -2591,8 +2638,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 					tokenClicked();
 				}
 			});
-			tokenPanel.add(charLabel, "West");
-			JPanel sideControls = new JPanel(new GridLayout(5, 1));
 			showCharCardButton = new JButton("Show Card");
 			showCharCardButton.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
@@ -2600,9 +2645,13 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				}
 			});
 			showCharCardButton.setEnabled(character.isCharacter());
-			sideControls.add(showCharCardButton);
+			tokenPanel.add(charLabel, "West");
+			JPanel sideControls = new JPanel(new GridLayout(3, 1));
 			Font baseFont = showCharCardButton.getFont();
 			float baseSize = baseFont.getSize2D();
+			JPanel showCardRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+			showCardRow.add(showCharCardButton);
+			sideControls.add(showCardRow);
 			dailyCombatCheckbox = new JCheckBox("Daily Combat",!character.isMinion() && character.getWantsCombat());
 			dailyCombatCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize - 3));
 			dailyCombatCheckbox.addActionListener(new ActionListener() {
@@ -2634,26 +2683,65 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			sideControls.add(dayEndRearrangmentCheckbox);
 			dayEndRearrangmentCheckbox.setEnabled(!character.isMinion() && !hostPrefs.hasPref(Constants.FE_NO_END_OF_DAY_TRADING));
 
-			keepReactingCheckbox = new JCheckBox("DayStart: Reaction Button ON");
-			keepReactingCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize - 3));
+			ImageIcon reactOnIcon = IconFactory.findIcon("images/interface/blockon.gif");
+			String reactImg = "<img src='" + reactOnIcon.getDescription() + "' width='14' height='17'>";
+			keepReactingCheckbox = new JCheckBox("<html><table border=0 cellpadding=0 cellspacing=0><tr><td>"
+					+ "Set Reaction Button " + reactImg + " at start of every day (to avoid forgetting to turn it back on)"
+					+ "</td></tr></table></html>");
+			keepReactingCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
 			keepReactingCheckbox.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
 					character.setKeepReacting(keepReactingCheckbox.isSelected());
+					gameHandler.submitChanges();
 				}
 			});
-			sideControls.add(keepReactingCheckbox);
 			keepReactingCheckbox.setEnabled(!character.isMinion());
 
-			skipPrePhaseFatigueChitOnlyCheckbox = new JCheckBox("Reactions: Skip Fatigue Chits Only");
-			skipPrePhaseFatigueChitOnlyCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize - 3));
-			skipPrePhaseFatigueChitOnlyCheckbox.setToolTipText("Skip rarely utilized Pre-Phase* Dialogs where the only options are to burn color-chits without any target spell.  * Post-Phase for 1st ed.");
+			ImageIcon goldChitIcon = IconFactory.findIcon("images/colormagic/goldchit.gif");
+			String goldImg = "<img src='" + goldChitIcon.getDescription() + "' width='14' height='14'>";
+			skipReactionDialogsCheckbox = new JCheckBox("Skip Reaction Dialogs which contain only:");
+			skipReactionDialogsCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
+			skipReactionDialogsCheckbox.setEnabled(!character.isMinion());
+			skipPrePhaseFatigueChitOnlyCheckbox = new JCheckBox("<html><table border=0 cellpadding=0 cellspacing=0><tr><td>"
+					+ goldImg + " fatigue with no target spell</td></tr></table></html>");
+			skipPrePhaseFatigueChitOnlyCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
 			skipPrePhaseFatigueChitOnlyCheckbox.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
 					character.setSkipPrePhaseWhenFatigueChitOnly(skipPrePhaseFatigueChitOnlyCheckbox.isSelected());
+					gameHandler.submitChanges();
 				}
 			});
-			sideControls.add(skipPrePhaseFatigueChitOnlyCheckbox);
 			skipPrePhaseFatigueChitOnlyCheckbox.setEnabled(!character.isMinion());
+
+			skipMonsterBlockingWhenHiddenCheckbox = new JCheckBox("Blocking of detected denizens while character is hidden");
+			skipMonsterBlockingWhenHiddenCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
+			skipMonsterBlockingWhenHiddenCheckbox.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					character.setSkipMonsterBlockingWhenHidden(skipMonsterBlockingWhenHiddenCheckbox.isSelected());
+					gameHandler.submitChanges();
+				}
+			});
+			skipMonsterBlockingWhenHiddenCheckbox.setEnabled(!character.isMinion());
+
+			skipCharacterBlockingWhenHidden = new JCheckBox("Blocking of other detected individuals while character is hidden");
+			skipCharacterBlockingWhenHidden.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
+			skipCharacterBlockingWhenHidden.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					character.setSkipCharacterBlockingWhenHidden(skipCharacterBlockingWhenHidden.isSelected());
+					gameHandler.submitChanges();
+				}
+			});
+			skipCharacterBlockingWhenHidden.setEnabled(!character.isMinion());
+
+			skipStopFollowingBeforeMoveCheckbox = new JCheckBox("Whether to stop following a guide when character is following");
+			skipStopFollowingBeforeMoveCheckbox.setFont(baseFont.deriveFont(Font.PLAIN, baseSize + 1));
+			skipStopFollowingBeforeMoveCheckbox.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					character.setSkipStopFollowingBeforeMove(skipStopFollowingBeforeMoveCheckbox.isSelected());
+					gameHandler.submitChanges();
+				}
+			});
+			skipStopFollowingBeforeMoveCheckbox.setEnabled(!character.isMinion());
 
 			tokenPanel.add(sideControls, "East");
 		}
@@ -3038,6 +3126,12 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		showPrePhaseDialogButton = new SingleButton("Show Phase-Start Dialog", false) {
 			public boolean needsShow() {
 				boolean isLocal = gameHandler.getClient().getClientName().equals(getCharacter().getPlayerName());
+				// TBD(interphase-dialogs): button appears prematurely when a non-phasing char defers via
+				// the combined dialog — their NeedsPrePhaseActivityDecision stays set while the phasing
+				// char's Done:Pre-Phase button is also set.  The auto-show path already guards this with
+				// !phasingCharPendingPrePhase(); this needsShow() should add the same guard:
+				//   && !phasingCharPendingPrePhase()
+				// Needs regression testing across solo, follower-defer, and multi-char combined-dialog paths.
 				return !getCharacter().isPlayingTurn() && getCharacter().getNeedsPrePhaseActivityDecision()
 					&& !getCharacter().getNeedsPostPhaseActivityDecision() && isLocal;
 			}
@@ -3226,9 +3320,148 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				gameHandler.updateCharacterList();
 			}
 		});
+		ImageIcon reactOnIconSmall = IconFactory.findIcon("images/interface/blockon.gif");
+		reactionsConfigButton = new JButton("<html>Filter <img src='" + reactOnIconSmall.getDescription() + "' width='12' height='15' align='absmiddle'> Ops</html>");
+		reactionsConfigButton.setFocusable(false);
+		reactionsConfigButton.setVerticalAlignment(SwingConstants.CENTER);
+		reactionsConfigButton.setMargin(new Insets(2, 4, 2, 4));
+		Dimension rcbPref = reactionsConfigButton.getPreferredSize();
+		ComponentTools.lockComponentSize(reactionsConfigButton, rcbPref.width, 39);
+		// Build the Reactions Filter dialog once; button clicks reshow it.
+		Window rcbOwner = SwingUtilities.getWindowAncestor(reactionsConfigButton);
+		reactionsFilterDialog = new JDialog(rcbOwner, "Reactions Filter", Dialog.ModalityType.MODELESS);
+
+		// About dialog — shown by the About button on the filter dialog.
+		JDialog rcbAboutDialog = new JDialog(reactionsFilterDialog, "About Reactions Filter", Dialog.ModalityType.MODELESS);
+		String rcbAboutText =
+			"\"Reactions\" is actually not Magic Realm terminology.  But it encompasses several important\n"
+			+ "capabilities which characters can use when interacting with other characters.  Reactions\n"
+			+ "generally encompass the interactions which inactive (or non-phasing) characters have with\n"
+			+ "an active (phasing) character while they step through the action phases of their turn.\n"
+			+ "\n"
+			+ "One such obvious reaction is blocking.  An inactive character can block an active\n"
+			+ "character after they enter a clearing where the inactive character is located.  But there are\n"
+			+ "other such reactions as well, such as playing color-chits and deciding to stop\n"
+			+ "following a guide.\n"
+			+ "\n"
+			+ "But these reaction mechanisms may become cumbersome back and forth in RealmSpeak, and some\n"
+			+ "players may want to mitigate the back and forth.\n"
+			+ "\n"
+			+ "A player can turn off ALL such reactions (effectively answering \"No\" for their part of\n"
+			+ "all such reactions) by unclicking the Reactions Button, but that may be too permissive\n"
+			+ "for the player, who wants some controls in place still.\n"
+			+ "\n"
+			+ "For this reason, there are a set of filters in the dialog in which players may select to ignore\n"
+			+ "interactions which they feel are generally too trivial or obvious to require interaction\n"
+			+ "responses.\n"
+			+ "\n"
+			+ "For instance, most spell casters are rarely (but maybe not never) going to want to\n"
+			+ "fatigue color chits to no effect except to bring them back as magic chits instead.  So\n"
+			+ "there is a filter which tells RealmSpeak that such reactions should not, on their\n"
+			+ "own, present a reactions dialog to the player merely to allow them to fatigue color-chits.\n"
+			+ "\n"
+			+ "This then is what this Reactions Filter Dialog is about.";
+		JTextArea rcbAboutArea = new JTextArea(rcbAboutText, 20, 55);
+		rcbAboutArea.setEditable(false);
+		rcbAboutArea.setOpaque(false);
+		rcbAboutArea.setWrapStyleWord(true);
+		rcbAboutArea.setLineWrap(true);
+		rcbAboutArea.setFont(keepReactingCheckbox.getFont());
+		rcbAboutArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 6, 8));
+		JButton rcbAboutCloseButton = new JButton("Close");
+		rcbAboutCloseButton.addActionListener(e -> rcbAboutDialog.setVisible(false));
+		JPanel rcbAboutButtonRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		rcbAboutButtonRow.add(rcbAboutCloseButton);
+		JPanel rcbAboutContent = new JPanel(new BorderLayout());
+		rcbAboutContent.add(rcbAboutArea, BorderLayout.CENTER);
+		rcbAboutContent.add(rcbAboutButtonRow, BorderLayout.SOUTH);
+		rcbAboutDialog.setContentPane(rcbAboutContent);
+		rcbAboutDialog.pack();
+		rcbAboutDialog.setLocationRelativeTo(reactionsFilterDialog);
+
+		JPanel rcbCheckboxes = new JPanel();
+		rcbCheckboxes.setLayout(new BoxLayout(rcbCheckboxes, BoxLayout.Y_AXIS));
+		rcbCheckboxes.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
+		keepReactingCheckbox.setAlignmentX(Component.LEFT_ALIGNMENT);
+		rcbCheckboxes.add(keepReactingCheckbox);
+		rcbCheckboxes.add(Box.createVerticalStrut(6));
+		skipReactionDialogsCheckbox.setAlignmentX(Component.LEFT_ALIGNMENT);
+		rcbCheckboxes.add(skipReactionDialogsCheckbox);
+		JCheckBox[] subs = {
+				skipPrePhaseFatigueChitOnlyCheckbox,
+				skipMonsterBlockingWhenHiddenCheckbox,
+				skipCharacterBlockingWhenHidden,
+				skipStopFollowingBeforeMoveCheckbox};
+		for (JCheckBox sub : subs) {
+			JPanel indentPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+			indentPanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
+			indentPanel.add(sub);
+			indentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+			rcbCheckboxes.add(indentPanel);
+		}
+		boolean[] updating = {false};
+		for (JCheckBox sub : subs) {
+			sub.addItemListener(e -> {
+				if (updating[0]) return;
+				boolean any = false;
+				for (JCheckBox s : subs) if (s.isSelected()) { any = true; break; }
+				updating[0] = true;
+				skipReactionDialogsCheckbox.setSelected(any);
+				updating[0] = false;
+			});
+		}
+		boolean anyChecked = false;
+		for (JCheckBox s : subs) if (s.isSelected()) { anyChecked = true; break; }
+		skipReactionDialogsCheckbox.setSelected(anyChecked);
+		skipReactionDialogsCheckbox.addActionListener(e -> {
+			boolean select = skipReactionDialogsCheckbox.isSelected();
+			updating[0] = true;
+			for (JCheckBox s : subs) s.setSelected(select);
+			updating[0] = false;
+			// setSelected() does not fire ActionListener, so save all sub states explicitly
+			character.setSkipPrePhaseWhenFatigueChitOnly(select);
+			character.setSkipMonsterBlockingWhenHidden(select);
+			character.setSkipCharacterBlockingWhenHidden(select);
+			character.setSkipStopFollowingBeforeMove(select);
+			gameHandler.submitChanges();
+		});
+		JButton rcbAboutButton = new JButton("About");
+		rcbAboutButton.addActionListener(e -> {
+			rcbAboutDialog.setLocationRelativeTo(reactionsFilterDialog);
+			rcbAboutDialog.setVisible(true);
+			rcbAboutDialog.toFront();
+		});
+		JButton rcbCloseButton = new JButton("Close");
+		rcbCloseButton.addActionListener(e -> reactionsFilterDialog.setVisible(false));
+		JPanel rcbButtonRow = new JPanel(new BorderLayout());
+		rcbButtonRow.setBorder(BorderFactory.createEmptyBorder(0, 8, 4, 8));
+		rcbButtonRow.add(rcbAboutButton, BorderLayout.WEST);
+		rcbButtonRow.add(rcbCloseButton, BorderLayout.EAST);
+		JPanel rcbContent = new JPanel(new BorderLayout());
+		rcbContent.add(rcbCheckboxes, BorderLayout.CENTER);
+		rcbContent.add(rcbButtonRow, BorderLayout.SOUTH);
+		reactionsFilterDialog.setContentPane(rcbContent);
+		reactionsFilterDialog.pack();
+		FontMetrics rcbFm = keepReactingCheckbox.getFontMetrics(keepReactingCheckbox.getFont());
+		int rcbMinW = rcbFm.stringWidth("Set Reaction Button  at start of every day (to avoid forgeting to turn it back on)") + 120;
+		reactionsFilterDialog.setSize(Math.max(reactionsFilterDialog.getWidth(), rcbMinW), reactionsFilterDialog.getHeight());
+		reactionsFilterDialog.setLocationRelativeTo(reactionsConfigButton);
+		reactionsConfigButton.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent ev) {
+				if (reactionsFilterDialog.isVisible()) {
+					reactionsFilterDialog.setVisible(false);
+				} else {
+					reactionsFilterDialog.setVisible(true);
+					reactionsFilterDialog.toFront();
+				}
+			}
+		});
+		box.add(reactionsConfigButton);
+
 		box.add(reactButton);
 		if (character.isMinion()) {
 			reactButton.setEnabled(false);
+			reactionsConfigButton.setEnabled(false);
 		}
 		
 		unhideButton = new JButton(IconFactory.findIcon("images/interface/unhide.gif"));
@@ -3824,8 +4057,23 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void showCharCard() {
+		if (charCardFrame != null && charCardFrame.isVisible()) {
+			charCardFrame.setVisible(false);
+			return;
+		}
 		CharacterSpyPanel panel = new CharacterSpyPanel(gameHandler, character);
-		FrameManager.showDefaultManagedFrame(gameHandler.getMainFrame(), panel, character.getGameObject().getName() + " Spy", null, false);
+		String title = character.getGameObject().getName() + " Spy";
+		if (charCardFrame == null || !charCardFrame.isDisplayable()) {
+			charCardFrame = new JFrame(title);
+			charCardFrame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+		}
+		charCardFrame.setTitle(title);
+		charCardFrame.getContentPane().removeAll();
+		charCardFrame.getContentPane().add(panel);
+		charCardFrame.pack();
+		charCardFrame.setLocationRelativeTo(gameHandler.getMainFrame());
+		charCardFrame.setVisible(true);
+		charCardFrame.toFront();
 	}
 
 	public CharacterActionPanel getActionPanel() {
