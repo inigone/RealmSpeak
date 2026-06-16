@@ -78,7 +78,8 @@ public class RealmSpeakOptionPanel extends JDialog {
 	protected JCheckBox showTurnEndResultsOption;
 	protected JCheckBox showCombatNextWarningOption;
 	protected JCheckBox autoPositioningAttackersOption;
-	
+	protected JCheckBox characterlistSortingByPlayOrder;
+
 	protected JRadioButton dailyCombatOffOption;
 	protected JRadioButton dailyCombatOnOption;
 	protected JRadioButton dailyCombatOnSpellcastersOption;
@@ -291,6 +292,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 		options.getOptions().set(RealmSpeakOptions.TURN_END_RESULTS,showTurnEndResultsOption.isSelected());
 		options.getOptions().set(RealmSpeakOptions.COMBAT_NEXT_PHASE_WARNING,showCombatNextWarningOption.isSelected());
 		options.getOptions().set(RealmSpeakOptions.AUTO_POSITIONING_ATTACKERS,autoPositioningAttackersOption.isSelected());
+		options.getOptions().set(RealmSpeakOptions.CHARACTERLIST_SORTING_BY_PLAY_ORDER,characterlistSortingByPlayOrder.isSelected());
 		options.getOptions().set(RealmSpeakOptions.SHOW_CONNECTION_INFO,showConnectionInfoOption.isSelected());
 		options.getOptions().set(RealmSpeakOptions.ENABLE_SOUND,enableSoundItem.isSelected());
 		options.getOptions().set(RealmSpeakOptions.RECONNECT_ON_DISCONNECT,reconnectOnDisconnectOption.isSelected());
