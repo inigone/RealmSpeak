@@ -1323,6 +1323,8 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				handleBroadcast(key, message);
 			}
 		};
+		// PROMOTE-TO-DEFAULT: remove this line when reconnect is stable enough to always be on.
+		client.setReconnectEnabled(parent.getRealmSpeakOptions().getOptions().getBoolean(RealmSpeakOptions.RECONNECT_ON_DISCONNECT, false));
 		// Capture the current client instance so the listener below can detect staleness.
 		// On reconnect a new GameClient is created and the 'client' field is reassigned,
 		// but any invokeLater runnables queued by the OLD client's listener are still in

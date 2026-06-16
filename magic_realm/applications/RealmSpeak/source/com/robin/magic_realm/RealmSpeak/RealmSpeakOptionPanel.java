@@ -86,6 +86,8 @@ public class RealmSpeakOptionPanel extends JDialog {
 	
 	protected JCheckBox enableSoundItem;
 	protected JSlider adjustVolumeItem;
+
+	protected JCheckBox reconnectOnDisconnectOption;
 	
 	private RealmSpeakFrame mainFrame;
 	private RealmSpeakOptions options;
@@ -244,6 +246,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 		showCombatNextWarningOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.COMBAT_NEXT_PHASE_WARNING,true));
 		autoPositioningAttackersOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.AUTO_POSITIONING_ATTACKERS,false));
 		characterlistSortingByPlayOrder.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.CHARACTERLIST_SORTING_BY_PLAY_ORDER,true));
+		reconnectOnDisconnectOption.setSelected(options.getOptions().getBoolean(RealmSpeakOptions.RECONNECT_ON_DISCONNECT,false));
 
 		boolean sound = options.getOptions().getBoolean(RealmSpeakOptions.ENABLE_SOUND,true);
 		enableSoundItem.setSelected(sound);
@@ -292,6 +295,7 @@ public class RealmSpeakOptionPanel extends JDialog {
 		options.getOptions().set(RealmSpeakOptions.CHARACTERLIST_SORTING_BY_PLAY_ORDER,characterlistSortingByPlayOrder.isSelected());
 		options.getOptions().set(RealmSpeakOptions.SHOW_CONNECTION_INFO,showConnectionInfoOption.isSelected());
 		options.getOptions().set(RealmSpeakOptions.ENABLE_SOUND,enableSoundItem.isSelected());
+		options.getOptions().set(RealmSpeakOptions.RECONNECT_ON_DISCONNECT,reconnectOnDisconnectOption.isSelected());
 		mainFrame.saveFramePreferences();
 	}
 	private boolean isResponsive() {
@@ -674,6 +678,8 @@ public class RealmSpeakOptionPanel extends JDialog {
 		panel.add(autoPositioningAttackersOption);
 		characterlistSortingByPlayOrder = new JCheckBox("Sort character list by play order");
 		panel.add(characterlistSortingByPlayOrder);
+		reconnectOnDisconnectOption = new JCheckBox("Show reconnect dialog on disconnect");
+		panel.add(reconnectOnDisconnectOption);
 		return panel;
 	}
 	private JPanel getDailyCombatOptionPanel() {
