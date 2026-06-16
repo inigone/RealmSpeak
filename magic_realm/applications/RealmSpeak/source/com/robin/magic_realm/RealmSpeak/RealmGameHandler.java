@@ -1126,6 +1126,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			resetCombatFrame();
 		}
 		else if (RealmDirectInfoHolder.SPELL_AFFECT_TARGETS_EXPIRE_IMMEDIATE.equals(command)) {
+			boolean teleported = false;
 			for (GameObject spellObject : info.getGameObjects()) {
 				SpellWrapper spell = new SpellWrapper(spellObject);
 				TileLocation before = spell.getCurrentLocation();
@@ -1134,10 +1135,18 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				if (before != null && !before.equals(after)) {
 					// The spell transported its target, so update combat
 					RealmBattle.testCombatInClearing(before, client.getGameData());
+					teleported = true;
 				}
 			}
 			// If a spell is being applied through direct info, then make sure the combat frame reflects the change!!
 			resetCombatFrame();
+			if (teleported) {
+				// The character left the combat clearing. The server is waiting for this client to submit
+				// its positioning/action choices, but the frame is now blank with no way to re-drive
+				// doDisplayInteractive(). Submit on the EDT to unblock the server-side combat state machine.
+				// (Cannot call submitChangesWithTimeout() directly — handleDirectInfo runs on the GameClient thread.)
+				SwingUtilities.invokeLater(this::submitChangesWithTimeout);
+			}
 		}
 		// else if
 		// (RealmDirectInfoHolder.SPELL_WISH_FORCE_TRANSPORT.equals(command)) {
@@ -2252,11 +2261,20 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 		GamePool pool = new GamePool(RealmObjectMaster.getRealmObjectMaster(client.getGameData()).getPlayerCharacterObjects());
 		ArrayList<GameObject> characterGameObjects = pool.extract(CharacterWrapper.getKeyVals());
-		Collections.sort(characterGameObjects,new Comparator<GameObject>() {
-			public int compare(GameObject g1,GameObject g2) {
-				return new CharacterWrapper(g1).getPlayerOrdering()-new CharacterWrapper(g2).getPlayerOrdering();
-			}
-		});
+		if (hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE_CHARACTERLIST_SORTING_BY_PLAY_ORDER)) { 
+			Collections.sort(characterGameObjects,new Comparator<GameObject>() {
+				public int compare(GameObject g1,GameObject g2) {
+					return new CharacterWrapper(g1).getPlayerOrdering()-new CharacterWrapper(g2).getPlayerOrdering();
+				}
+			});
+		}
+		else {
+			Collections.sort(characterGameObjects,new Comparator<GameObject>() {
+				public int compare(GameObject g1,GameObject g2) {
+					return g1.getName().compareTo(g2.getName());
+				}
+			});
+		}
 		ArrayList<GameObject> charactersAndMinions = new ArrayList<>();
 		for (GameObject go : characterGameObjects) {
 			CharacterWrapper character = new CharacterWrapper(go);
@@ -2560,7 +2578,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 					}
 				}
 			}
-			if (RealmUtility.getRealmSpeakPrefs().getBoolean("characterlistSortingByPlayOrder",true)) {
+			if (hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE_CHARACTERLIST_SORTING_BY_PLAY_ORDER)) {
 				sort();
 			}
 			else {

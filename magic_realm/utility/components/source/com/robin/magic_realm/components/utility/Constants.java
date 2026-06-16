@@ -210,7 +210,7 @@ public class Constants {
 	public static final String MONSTER_CONTROL_VALIDATE_CONTROL = "monster_control_validate_control";
 	public static final String MONSTER_CONTROL_LIMIT = "monster_control_limit";
 	public static final String MONSTER_FEAR = "monster_fear";
-	public static final String MONSTER_FRIENDLINESS = "monster_friendliness";
+	public static final String MONSTER_FRIENDLINESS = "pacifymonster";
 	public static final String TREASURE_LOCATION_FEAR = "treasure_location_fear";
 	public static final String BONUS_CHIT = "bonus_chit";
 	public static final String SPECIAL_ACTION = "special_action";
@@ -389,7 +389,7 @@ public class Constants {
 	public static final String ADVENTURE_GUIDE = "adventure_guide";
 	public static final String BARDS_LUTE = "bards_lute";
 	public static final String PACIFY_MONSTERS = "pacify_monsters";
-	public static final String PACIFY_MONSTER = "pacifymonster";
+	public static final String PACIFY_MONSTER = MONSTER_FRIENDLINESS;
 	public static final String PACIFY_TYPE = "pacifytype";
 	public static final String REENERGIZE = "reenergize";
 	public static final String CHITS_PRISM_COLOR = "chits_prism_color";
@@ -951,6 +951,7 @@ public static final String OPT_NO_COLOR_CHIT_FOR_BLOCKED_CHARACTERS = "OptNoColo
 	public static final String HOUSE3_QUEST_CARD_HAND_SIZE_PLUS_ONE = "QuestCardHandSizePlusOne";
 	public static final String HOUSE3_SMALL_MONSTERS = "SmallMonsters";
 	public static final String HOUSE3_HORSE_WEAPON_SAME_BOX = "HorseWeaponSameBox";
+	public static final String HOUSE_CHARACTERLIST_SORTING_BY_PLAY_ORDER = "CharacterlistSortingByPlayOrder";
 	
 	// Super Realm
 	public static final String SR_DEDUCT_VPS = "DeductVps";

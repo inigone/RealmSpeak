@@ -6,24 +6,29 @@
 You can NEVER travel offroad in the Volcano tile.
 CHASM - Offroad travel does not allow you to traverse the Chasm, without crossing the bridge between clearings 5 and 6. If you do choose to travel offroad, be sure to remain on the same side of the chasm regardless of the roll results.
 
-Optional Rule for Guild benefits
+Optional Rule for Guild benefits by level
+	Acquiring the third and final benefit is dependant on the presence of the unique guild chit. If the chit is already in use by another Character, then the benefit is not granted until the owning Character is either killed or change guild affiliation.
 Optional Rule for removing Guild services
 Optional Rule for removing the option to pay fame for advancement (and last reward if buying advancement)
 Optional Rule for join requirement: be at guild: ask for joining: fulfill requirement: go go guild and join (ask if you want to remove leave old guild if you have already one)
-Optional Rule for removing benetifs if leaving a guild
+Optional Rule for removing benefits if leaving a guild
 Optional Rule: Guild chits need to be discovered first
 Optional Rule: Guild services and inventory (for buying and selling) are exclusively available for guild members
 Optional Rule: To advance in guild level, character draws 1 quest card (from their respected guild quest card pile)
 Optional Rule: Should always be safe at guilds, if you are a member (from monsters and natives)
 
-Support for friendliness with specific monsters: pacify at the start of the combat
-
 Version 1.2.5.9
 NEW FEATURES:
 # Expansion 1: Offroad Travel
 # Show guilds on friendliness chart
+# Ability: Monster Friendliness
+# Make character list sorting option a host (not client) option
+QUEST UPDATE:
+# Add option to QuestRewardGuild
+# QuestRequirement: GuildLocation
 BUGS/ISSUES:
 # Fix Magic Shield cannot be damaged
+# Expansion 1 Maze: can move through the clearing with the Maze
 
 Version 1.2.5.8
 NEW FEATURES:
