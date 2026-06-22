@@ -1150,6 +1150,58 @@ public class ActionRow {
 		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		if (character.getPostPhaseActivityActionCount() == actionPhasesPerformedNow) return;
 
+		ArrayList<CharacterWrapper> postPhaseParticipants = getPostPhaseParticipants(loc);
+
+		System.err.println("[IPD] triggerPostPhase: phasingChar=" + character.getGameObject().getName()
+			+ " actionPhasesPerformedNow=" + actionPhasesPerformedNow
+			+ " postPhaseParticipants=" + postPhaseParticipants.size());
+		if (!postPhaseParticipants.isEmpty()) {
+			character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
+
+			HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
+			boolean colorChitPostPhase = hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
+			ArrayList<CharacterWrapper> phasingFollowers = character.getActionFollowers();
+
+			// Eagerly check if a pre-phase will immediately follow. If the phasing character has
+			// more actions queued and a non-phasing post-phase participant also qualifies for
+			// pre-phase (follower OR holds color chits in 3rd-edition mode), set both flags at
+			// once so CharacterFrame shows a single combined dialog instead of two sequential ones.
+			boolean nextActionExists = (newAction != null) || turnPanel.hasPendingActionsAfterCurrent();
+			System.err.println("[IPD]   nextActionExists=" + nextActionExists);
+			for (CharacterWrapper cw : postPhaseParticipants) {
+				System.err.println("[IPD]   participant=" + cw.getGameObject().getName()
+					+ " isPhasing=" + cw.getGameObject().equals(character.getGameObject()));
+				cw.setNeedsPostPhaseActivityDecision(true);
+				if (nextActionExists && !cw.getGameObject().equals(character.getGameObject())) {
+					boolean isFollower = phasingFollowers.stream()
+						.anyMatch(f -> f.getGameObject().equals(cw.getGameObject()));
+					boolean canPlayColorChits = !cw.getColorMagicChits().isEmpty() && !colorChitPostPhase;
+					if (cw.isReacting() && (isFollower || canPlayColorChits)) {
+						cw.setNeedsPrePhaseActivityDecision(true);
+						// Stamp so doPrePhaseActivities() knows this char's pre-phase for this action
+						// is already handled via the combined dialog and must not be re-triggered.
+						cw.setPrePhaseActivityActionCount(actionPhasesPerformedNow);
+						System.err.println("[IPD]   eagerly set PRE flag on " + cw.getGameObject().getName()
+							+ " with stamp=" + actionPhasesPerformedNow + " isFollower=" + isFollower + " canColorChits=" + canPlayColorChits);
+					}
+				}
+			}
+			gameHandler.updateCharacterFramesWithoutMap();
+		}
+	}
+
+	/**
+	 * Computes who would currently qualify for a post-phase decision in {@code loc} — a pure
+	 * query, identical to the eligibility rules {@link #triggerPostPhase()} uses to decide who to
+	 * notify, but without setting any flags. Callers must first confirm {@code loc.isInClearing()}.
+	 * <p>
+	 * Besides {@link #triggerPostPhase()} itself, this is used by {@link #doRestAction()} to decide
+	 * whether a stacked Rest (count {@literal >} 1, built up in
+	 * {@code RealmTurnPanel.initActionRow()}) must be resolved one phase at a time — pausing after
+	 * each individual rest so a qualifying reactor gets their post-phase decision before the next
+	 * rest proceeds — instead of resolving the whole stack in one {@code ChitRestManager} dialog.
+	 */
+	private ArrayList<CharacterWrapper> getPostPhaseParticipants(TileLocation loc) {
 		// Build the follower exclusion set.
 		//
 		// In 3rd-edition case (FE_PHASE_END_PLAYING_COLOR_CHIT OFF), followers of ANY guide are
@@ -1262,39 +1314,7 @@ public class ActionRow {
 				}
 			}
 		}
-
-		System.err.println("[IPD] triggerPostPhase: phasingChar=" + character.getGameObject().getName()
-			+ " actionPhasesPerformedNow=" + actionPhasesPerformedNow
-			+ " postPhaseParticipants=" + postPhaseParticipants.size());
-		if (!postPhaseParticipants.isEmpty()) {
-			character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
-
-			// Eagerly check if a pre-phase will immediately follow. If the phasing character has
-			// more actions queued and a non-phasing post-phase participant also qualifies for
-			// pre-phase (follower OR holds color chits in 3rd-edition mode), set both flags at
-			// once so CharacterFrame shows a single combined dialog instead of two sequential ones.
-			boolean nextActionExists = (newAction != null) || turnPanel.hasPendingActionsAfterCurrent();
-			System.err.println("[IPD]   nextActionExists=" + nextActionExists);
-			for (CharacterWrapper cw : postPhaseParticipants) {
-				System.err.println("[IPD]   participant=" + cw.getGameObject().getName()
-					+ " isPhasing=" + cw.getGameObject().equals(character.getGameObject()));
-				cw.setNeedsPostPhaseActivityDecision(true);
-				if (nextActionExists && !cw.getGameObject().equals(character.getGameObject())) {
-					boolean isFollower = phasingFollowers.stream()
-						.anyMatch(f -> f.getGameObject().equals(cw.getGameObject()));
-					boolean canPlayColorChits = !cw.getColorMagicChits().isEmpty() && !colorChitPostPhase;
-					if (cw.isReacting() && (isFollower || canPlayColorChits)) {
-						cw.setNeedsPrePhaseActivityDecision(true);
-						// Stamp so doPrePhaseActivities() knows this char's pre-phase for this action
-						// is already handled via the combined dialog and must not be re-triggered.
-						cw.setPrePhaseActivityActionCount(actionPhasesPerformedNow);
-						System.err.println("[IPD]   eagerly set PRE flag on " + cw.getGameObject().getName()
-							+ " with stamp=" + actionPhasesPerformedNow + " isFollower=" + isFollower + " canColorChits=" + canPlayColorChits);
-					}
-				}
-			}
-			gameHandler.updateCharacterFramesWithoutMap();
-		}
+		return postPhaseParticipants;
 	}
 
 	/**
@@ -2847,26 +2867,29 @@ public class ActionRow {
 		else {
 			ArrayList<CharacterActionChitComponent> restChoices = character.getRestableChits();
 			if (!restChoices.isEmpty()) { // has to be chits to rest!
+				// The legacy PvP-react check (checkForBlockingState + the old Block Now button flow)
+				// was removed here, mirroring the equivalent doMoveAction() fix — but unlike a
+				// multi-phase move, a stacked Rest (count > 1, built in RealmTurnPanel.initActionRow())
+				// is NOT split into separate ActionRows up front, so ActionRow.process()'s pre-phase
+				// gate only runs once for the whole stack, and triggerPostPhase() likewise only fires
+				// once, AFTER doRestAction() resolves every rest in the stack. Without a check here, a
+				// qualifying reactor (e.g. another reacting character in the clearing) would never get
+				// a post-phase decision until all of the stacked rests had already completed. So: if
+				// anyone currently qualifies for a post-phase decision, do just one rest now and queue
+				// the remainder as a new ActionRow — its own process() call re-evaluates this fresh,
+				// so the stack still resolves in one dialog whenever no one actually needs to react.
 				boolean blockRestAction = false;
 				if (RealmUtility.willBeBlocked(character,isFollowing,false)) {
 					blockRestAction = true;
 				}
 				else if (count > 1) {
 					TileLocation current = character.getCurrentLocation();
-					HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
-					boolean blockingPhases = hostPrefs.hasPref(Constants.OPT_BLOCKING_PHASES);
-					for (GameObject livingCharacter : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
-						if (blockingPhases) {
-							new CharacterWrapper(livingCharacter).removeAllReactDecisions();
-						}
-						new CharacterWrapper(livingCharacter).checkForBlockingState(true,current);
-					}
-					gameHandler.updateCharacterFramesWithoutMap();
-					if (turnPanel.isAwaitingReactDecision(true,current)) {
+					if (!character.isMinion() && current != null && current.isInClearing()
+							&& !getPostPhaseParticipants(current).isEmpty()) {
 						blockRestAction = true;
 					}
 				}
-				
+
 				// Block after the first phase!
 				if (blockRestAction) {	
 					// Make this one 1 phase, and then split any remaining count into a new action row
