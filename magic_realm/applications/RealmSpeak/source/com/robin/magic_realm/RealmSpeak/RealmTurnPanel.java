@@ -494,7 +494,13 @@ public class RealmTurnPanel extends CharacterFramePanel {
 
 		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue);
 		playNextButton.setFlashing(playNextButton.isEnabled());
-		playAllButton.setEnabled(false);
+		// Play All re-enabled: it runs the same playNext(true) loop as before, but the loop's
+		// isAwaitingInterruptionDecision() check (re-evaluated before every iteration) now also
+		// covers interphase-dialogs pre/post-phase decisions, so the loop naturally halts at the
+		// first unresolved ID interrupt — same as if the player had clicked Play Next repeatedly
+		// and stopped there. Disabled here (like Play Next) whenever an interrupt is already pending,
+		// so a click can't silently no-op.
+		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
 		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
 		
