@@ -324,24 +324,12 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void doPrePhaseActivities() {
-		System.err.println("[IPD] doPrePhaseActivities ENTER: char=" + getCharacter().getGameObject().getName()
-			+ " isPlayingTurn=" + getCharacter().isPlayingTurn()
-			+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
-			+ " postFlag=" + getCharacter().getNeedsPostPhaseActivityDecision()
-			+ " hasBothFlags=" + hasBothPhaseFlags()
-			+ " preShowing=" + prePhaseDialogShowing
-			+ " combinedShowing=" + combinedDialogShowing
-			+ " phasingPending=" + phasingCharPendingPrePhase());
 		if (!getCharacter().isPlayingTurn()) {
 			if (hasBothPhaseFlags()) {
-				System.err.println("[IPD]   both flags set -> reset preShowing");
 				prePhaseDialogShowing = false;
 				if (!combinedDialogShowing) {
-					System.err.println("[IPD]   combined not showing -> show combined dialog");
 					combinedDialogShowing = true;
 					showCombinedPhaseActivityDialog();
-				} else {
-					System.err.println("[IPD]   combined ALREADY showing -> DISCARD stale invokeLater");
 				}
 				return;
 			}
@@ -356,25 +344,20 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			boolean naturalStopFollowing = isFollowerOfPhasingChar();
 			boolean skipColorChits = false;
 			if (naturalColorChits && getCharacter().skipsPrePhaseWhenFatigueChitOnly()) {
-				System.err.println("[IPD]   FatigueChitOnly guard: checking " + getCharacter().getColorMagicChits().size() + " color chits");
 				boolean hasTargetableSpell = getCharacter().getColorMagicChits().stream()
 					.anyMatch(chit -> !getCompatibleInertSpells(chit, hostPrefs.hasPref(Constants.OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS)).isEmpty());
-				System.err.println("[IPD]   hasTargetableSpell=" + hasTargetableSpell);
 				skipColorChits = !hasTargetableSpell;
 			}
 			boolean skipStopFollowing = naturalStopFollowing && getCharacter().skipsStopFollowingBeforeMove();
 			if ((!naturalColorChits || skipColorChits) && (!naturalStopFollowing || skipStopFollowing)) {
-				System.err.println("[IPD]   skipping pre-phase dialog (all applicable sections suppressed by skip filters)");
 				submitPrePhaseActivities();
 				return;
 			}
-			System.err.println("[IPD]   showing pre-phase ONLY dialog");
 			showPrePhaseActivityDialog();
 			return;
 		}
 		// Phasing character: clear own flag, then notify each qualifying non-phasing
 		// character so their dialog auto-shows on their machine.
-		System.err.println("[IPD]   phasing char Done:Pre-Phase -> clearing own flag");
 		getCharacter().setNeedsPrePhaseActivityDecision(false);
 		TileLocation loc = getCharacter().getCurrentLocation();
 		if (loc != null && loc.isInClearing()) {
@@ -388,19 +371,12 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 					&& !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
 				if (cw.isReacting() && (isFollower || prePhaseColorChits)) {
 					int phasingCount = getCharacter().getNumberOfPerformedActionPhasesToday();
-					System.err.println("[IPD]     notifying char=" + cw.getGameObject().getName()
-						+ " cwStamp=" + cw.getPrePhaseActivityActionCount()
-						+ " phasingCount=" + phasingCount
-						+ " cwPreFlag=" + cw.getNeedsPrePhaseActivityDecision());
 					if (cw.getPrePhaseActivityActionCount() != phasingCount) {
 						// Stamp doesn't match: not yet handled for this action via combined dialog.
-						System.err.println("[IPD]     stamp mismatch -> SET pre flag on " + cw.getGameObject().getName());
 						cw.setNeedsPrePhaseActivityDecision(true);
-					} else {
-						// else: triggerPostPhase() stamped this char for the current action (combined case);
-						// their pre-phase is already handled or pending via their own flag — skip.
-						System.err.println("[IPD]     stamp matches -> skip (combined case, flag already set)");
 					}
+					// else: triggerPostPhase() stamped this char for the current action (combined case);
+					// their pre-phase is already handled or pending via their own flag — skip.
 				}
 			}
 		}
@@ -891,35 +867,25 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			}
 		}
 		final Set<GameObject> allowedTargets = phasingGroup;
-		System.err.println("[IPD] getCompatibleInertSpells: char=" + getCharacter().getGameObject().getName()
-			+ " chit=" + chit.getColorMagic().getColorName()
-			+ " filterHidden=" + filterHidden
-			+ " allowedTargets=" + (allowedTargets == null ? "null(phasing)" : allowedTargets.stream().map(g -> g.getName()).collect(java.util.stream.Collectors.joining(",","[","]"))));
 
 		SpellMasterWrapper sm = SpellMasterWrapper.getSpellMaster(gameHandler.getClient().getGameData());
 		ArrayList<SpellWrapper> inClearing = sm.getAllSpellsInClearing(loc, false);
-		System.err.println("[IPD]   spells in clearing: " + inClearing.size());
 		for (SpellWrapper spell : inClearing) {
 			if (!spell.isInert()) {
-				System.err.println("[IPD]   SKIP (not inert): " + spell.getName());
 				continue;
 			}
 			ColorMagic spellColor = spell.getRequiredColorMagic();
 			if (spellColor != null && !spellColor.sameColorAs(chitColor)) {
-				System.err.println("[IPD]   SKIP (color mismatch): " + spell.getName() + " needs=" + spellColor.getColorName() + " chit=" + chitColor.getColorName());
 				continue;
 			}
 			ArrayList<RealmComponent> targets = spell.getTargets();
-			System.err.println("[IPD]   spell=" + spell.getName() + " targets=" + targets.stream().map(t -> t.getGameObject().getName()).collect(java.util.stream.Collectors.joining(",","[","]")));
 			if (targets.isEmpty() && allowedTargets != null) {
-				System.err.println("[IPD]   SKIP (no targets, allowedTargets restriction)");
 				continue;
 			}
 			if (filterHidden) {
 				boolean canTarget = targets.stream()
 					.anyMatch(t -> !t.isHidden() || getCharacter().foundHiddenEnemy(t.getGameObject()));
 				if (!canTarget) {
-					System.err.println("[IPD]   SKIP (filterHidden): all targets hidden/unfound");
 					continue;
 				}
 			}
@@ -927,14 +893,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				boolean targetsAllowed = targets.stream()
 					.anyMatch(t -> allowedTargets.contains(t.getGameObject()));
 				if (!targetsAllowed) {
-					System.err.println("[IPD]   SKIP (allowedTargets): " + spell.getName() + " targets not in phasingGroup");
 					continue;
 				}
 			}
-			System.err.println("[IPD]   INCLUDE: " + spell.getName());
 			result.add(spell);
 		}
-		System.err.println("[IPD]   result size=" + result.size());
 		return result;
 	}
 
@@ -957,9 +920,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void submitPrePhaseActivities() {
-		System.err.println("[IPD] submitPrePhaseActivities ENTER: char=" + getCharacter().getGameObject().getName()
-			+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
-			+ " preShowing=" + prePhaseDialogShowing);
 		if (prePhaseActivityDialog != null) prePhaseActivityDialog.setVisible(false);
 		// Clear state immediately so the dialog cannot reappear even if later processing throws.
 		getCharacter().setNeedsPrePhaseActivityDecision(false);
@@ -1075,7 +1035,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		}
 		// Auto-submit if skip filters reduce block candidates to none — no dialog needed.
 		if (getPostPhaseBlockCandidates().isEmpty()) {
-			System.err.println("[IPD]   skipping post-phase dialog (all block candidates suppressed by skip filters)");
 			submitPostPhaseActivities();
 			return;
 		}
@@ -1581,9 +1540,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 
 	private void submitCombinedPhaseActivities() {
-		System.err.println("[IPD] submitCombinedPhaseActivities ENTER: char=" + getCharacter().getGameObject().getName()
-			+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
-			+ " postFlag=" + getCharacter().getNeedsPostPhaseActivityDecision());
 		if (combinedPhaseActivityDialog != null) combinedPhaseActivityDialog.setVisible(false);
 		combinedDialogShowing = false;
 
@@ -1619,7 +1575,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			}
 		}
 		boolean deferred = deferPrePhaseCheckbox != null && deferPrePhaseCheckbox.isSelected();
-		System.err.println("[IPD]   deferred=" + deferred + " anyBlocking=" + anyBlocking);
 		if (!deferred && !anyBlocking) {
 			GameWrapper game = gameHandler.getGame();
 			for (ChitSelection sel : currentChitSelections) {
@@ -1660,25 +1615,19 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				}
 				if (phasingChar != null) cascadeStopFollowing(getCharacter(), phasingChar);
 			}
-			System.err.println("[IPD]   DONE branch: clearing pre-phase flag on " + getCharacter().getGameObject().getName());
 			getCharacter().setNeedsPrePhaseActivityDecision(false);
 		} else if (anyBlocking) {
 			// Blocked (or another character still has a pending post-phase decision) →
 			// discard this character's pre-phase flag. Reset the stamp so handlePrePhase()
 			// re-evaluates this character for the next action — without the reset the stamp
 			// would match actionsTaken and the character would be permanently skipped.
-			System.err.println("[IPD]   BLOCKED branch: clearing pre-phase flag+stamp on " + getCharacter().getGameObject().getName());
 			getCharacter().setNeedsPrePhaseActivityDecision(false);
 			getCharacter().removePrePhaseActivityActionCount();
 		} else {
 			// Deferred and not blocked: pre-phase flag stays set; ensure phasing char shows Done: Pre-Phase button.
-			System.err.println("[IPD]   DEFERRED branch: keeping pre-phase flag on " + getCharacter().getGameObject().getName()
-				+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
-				+ " cwStamp=" + getCharacter().getPrePhaseActivityActionCount());
 			for (GameObject go : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
 				CharacterWrapper cw = new CharacterWrapper(go);
 				if (cw.isPlayingTurn()) {
-					System.err.println("[IPD]   setting Done:Pre-Phase on phasing char " + cw.getGameObject().getName());
 					cw.setNeedsPrePhaseActivityDecision(true);
 					break;
 				}
@@ -1894,18 +1843,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		// Combined check: when both pre-phase AND post-phase flags are set on a non-phasing character,
 		// show one dialog covering both instead of two sequential dialogs. The combined flag supersedes
 		// any open individual dialogs (closed here before the combined dialog opens).
-		System.err.println("[IPD] updateCharacter auto-show check: char=" + getCharacter().getGameObject().getName()
-			+ " isLocal=" + isLocalCharacter
-			+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
-			+ " postFlag=" + getCharacter().getNeedsPostPhaseActivityDecision()
-			+ " hasBothFlags=" + hasBothPhaseFlags()
-			+ " preShowing=" + prePhaseDialogShowing
-			+ " combinedShowing=" + combinedDialogShowing
-			+ " postShowing=" + postPhaseDialogShowing
-			+ " phasingPending=" + phasingCharPendingPrePhase()
-			+ " isPlayingTurn=" + getCharacter().isPlayingTurn());
 		if (hasBothPhaseFlags() && isLocalCharacter && !combinedDialogShowing) {
-			System.err.println("[IPD]   -> QUEUING showCombinedPhaseActivityDialog for " + getCharacter().getGameObject().getName());
 			if (postPhaseActivityDialog != null) postPhaseActivityDialog.setVisible(false);
 			if (prePhaseActivityDialog != null) prePhaseActivityDialog.setVisible(false);
 			postPhaseDialogShowing = false;
@@ -1913,11 +1851,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			combinedDialogShowing = true;
 			SwingUtilities.invokeLater(() -> showCombinedPhaseActivityDialog());
 		} else if (!hasBothPhaseFlags() && getCharacter().getNeedsPrePhaseActivityDecision() && !getCharacter().isPlayingTurn() && isLocalCharacter && !prePhaseDialogShowing && !phasingCharPendingPrePhase()) {
-			System.err.println("[IPD]   -> QUEUING doPrePhaseActivities for " + getCharacter().getGameObject().getName());
 			prePhaseDialogShowing = true;
 			SwingUtilities.invokeLater(() -> doPrePhaseActivities());
 		} else if (!hasBothPhaseFlags() && getCharacter().getNeedsPostPhaseActivityDecision() && isLocalCharacter && !postPhaseDialogShowing) {
-			System.err.println("[IPD]   -> QUEUING doPostPhaseActivities for " + getCharacter().getGameObject().getName());
 			postPhaseDialogShowing = true;
 			SwingUtilities.invokeLater(() -> doPostPhaseActivities());
 		}

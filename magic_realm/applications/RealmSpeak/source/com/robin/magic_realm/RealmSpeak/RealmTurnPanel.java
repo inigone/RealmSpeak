@@ -469,16 +469,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// already have their actions skipped in ActionRow.process() — the turn-end step just needs
 		// to follow automatically rather than waiting for user input.
 		boolean nowAwaitingPrePhase = isAwaitingPrePhaseDecision();
-		System.err.println("[IPD] RTP.updateControls: wasAwaiting=" + wasAwaitingPrePhase
-			+ " nowAwaiting=" + nowAwaitingPrePhase
-			+ " isPlayingTurn=" + getCharacter().isPlayingTurn()
-			+ " actionsLeft=" + actionsLeft
-			+ " waitingForSingleButton=" + waitingForSingleButton
-			+ " char=" + getCharacter().getGameObject().getName());
 		if (wasAwaitingPrePhase && !nowAwaitingPrePhase && getCharacter().isPlayingTurn()
 				&& actionsLeft && !waitingForSingleButton && activatePlayNextTimer == null
 				/*&& !isAwaitingReactDecision()*/) {
-			System.err.println("[IPD] RTP.updateControls -> AUTO-ADVANCE firing playNext!");
 			wasAwaitingPrePhase = false;
 			SwingUtilities.invokeLater(() -> playNext(false));
 		} else {
