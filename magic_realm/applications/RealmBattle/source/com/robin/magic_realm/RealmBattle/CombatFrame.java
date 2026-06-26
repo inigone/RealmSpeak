@@ -10,6 +10,7 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.event.*;
 import javax.swing.filechooser.FileFilter;
+import javax.swing.plaf.basic.BasicToolBarUI;
 
 import com.robin.game.objects.GameData;
 import com.robin.game.objects.GameObject;
@@ -40,6 +41,12 @@ public class CombatFrame extends JFrame {
 	private static final Font COMBAT_ROUND_FONT = new Font("Dialog",Font.BOLD|Font.ITALIC,20);
 	private static final Font INSTRUCTION_FONT = new Font("Dialog",Font.BOLD,16);
 	private static final Font INVENTORY_AWKENED_SPELLS_FONT = new Font("Dialog",Font.BOLD,14);
+
+	// Matches the green/blue look of the active-state icon (eg. combat/buttons/deploy1.gif) shown
+	// in the state light strip, so the battle step name shown in the action controls reads as the
+	// same thing in two places.
+	private static final Color STEP_NAME_BACKGROUND = new Color(0,255,26);
+	private static final Color STEP_NAME_FOREGROUND = Color.blue;
 	
 	private static final Border LOCK_OFF_BORDER = BorderFactory.createLineBorder(UIManager.getColor("Panel.background"),3);
 	private static final Border LOCK_ON_BORDER = BorderFactory.createLineBorder(Color.red,3);
@@ -63,6 +70,9 @@ public class CombatFrame extends JFrame {
 	
 	private JPanel sidePanel;
 	private Box controlPanel;
+
+	private JToolBar gameControlsToolbar;
+	private JPanel gameControlsDock;
 	
 	private BattleModel currentBattleModel;
 	
@@ -79,14 +89,27 @@ public class CombatFrame extends JFrame {
 	
 	private JPanel gameControls;
 	private JPanel showPanel;
-	private JButton showChitsButton;
-	private JButton showInventoryButton;
+	private JToggleButton showChitsButton;
+	private JToggleButton showInventoryButton;
+	private ChitStateViewer chitStateViewer;
+	private RealmTradeDialog inventoryViewer;
 	private RealmObjectPanel inventoryObjectPanel;
 	private JButton exportButton;
 	private JButton combatSummaryButton;
 	private JToggleButton lockNextButton;
 	private JButton undoButton;
 	private JToggleButton textButton;
+	private long logStolenFromAt = 0;
+	private Window logFocusStealTrackedWindow = null;
+	private final WindowFocusListener logFocusStealTracker = new WindowFocusListener() {
+		public void windowGainedFocus(WindowEvent ev) {
+			if (ev.getOppositeWindow()==RealmLogWindow.getSingleton()) {
+				logStolenFromAt = System.currentTimeMillis();
+			}
+		}
+		public void windowLostFocus(WindowEvent ev) {
+		}
+	};
 	private FlashingButton endButton; // if combat is not necessary (ie., all characters are hidden)
 	private FlashingButton nextButton;
 	
@@ -309,7 +332,28 @@ public class CombatFrame extends JFrame {
 		setSize(lastKnownLocation.width,lastKnownLocation.height);
 		setLocation(lastKnownLocation.x,lastKnownLocation.y);
 		setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-		
+
+		// Clicking the Details button on this (currently unfocused) frame causes this frame to be
+		// activated as a side effect of the click, BEFORE the button's actionPerformed fires - so by
+		// then RealmLogWindow.isActive() already (and wrongly) reads false even if the log was the
+		// frontmost window the instant before the click. Track that focus steal here so the Details
+		// toggle can tell "log was at front" apart from "log was already buried". Also attached to
+		// the toolbar's floating window when undocked (see initComponents()) - the same race happens
+		// there too, since clicking Details inside the floating window activates THAT window, not
+		// this frame.
+		addWindowFocusListener(logFocusStealTracker);
+
+		// Same problem AggressiveDialog solves for its owned dialogs: when this frame loses then
+		// regains activation (eg. focus bounced to an unrelated window, such as another client's
+		// combat window, while this one was in the background), the OS window stacking doesn't
+		// reliably keep an undocked JToolBar's floating window above its owner. Force it back to
+		// front whenever this frame is reactivated.
+		addWindowListener(new WindowAdapter() {
+			public void windowActivated(WindowEvent ev) {
+				keepFloatingToolbarOnTop();
+			}
+		});
+
 		exportFileManager = new FileManager(this,"Export Destination",null);
 	}
 	public BattleModel getBattleModel() {
@@ -454,7 +498,10 @@ public class CombatFrame extends JFrame {
 		clearRunaway();
 		ambushRoll = null;
 		ambusher = null;
-		gameControls.setVisible(interactiveFrame);
+		// Shown for both interactive players and observers - Details works the same for both;
+		// Reset/End/Next are disabled for observers via updateControls() (interactiveFrame guards).
+		gameControlsDock.setVisible(true);
+		keepFloatingToolbarOnTop();
 		reset();
 		gameData = data;
 		theGame = GameWrapper.findGame(gameData);
@@ -641,6 +688,12 @@ public class CombatFrame extends JFrame {
 	public void setVisible(boolean val) {
 		super.setVisible(val);
 		if (val) {
+			// Catches every caller that re-shows/raises this frame (eg. the "ALWAYS show the combat
+			// frame" SwingUtilities.invokeLater(() -> singleton.setVisible(true)) path, FrameManager
+			// sweeps, etc.) - not just the ones updateFrame() already knows about. Without this, the
+			// floating toolbar can flicker back to front (from updateFrame()'s own call) and then get
+			// re-buried by one of these other, later setVisible(true)/toFront() calls on this frame.
+			keepFloatingToolbarOnTop();
 			boolean battleRolls = false;
 			if (actionState==Constants.COMBAT_RESOLVING) {
 				if (allParticipants!=null) {
@@ -660,6 +713,10 @@ public class CombatFrame extends JFrame {
 				sideBarCenterPanel.setDividerLocation(1.0);
 			}
 		}
+	}
+	public void toFront() {
+		super.toFront();
+		keepFloatingToolbarOnTop();
 	}
 	public boolean hasRandomAssignment() {
 		ArrayList<String> list = activeCharacter.getGameObject().getThisAttributeList(Constants.RANDOM_ASSIGNMENT_WINNER);
@@ -1004,9 +1061,9 @@ public class CombatFrame extends JFrame {
 		}
 		return showPanel;
 	}
-	private JButton getShowChitsButton() {
+	private JToggleButton getShowChitsButton() {
 		if (showChitsButton==null) {
-			showChitsButton = new JButton(ImageCache.getIcon("tab/chits"));
+			showChitsButton = new JToggleButton(ImageCache.getIcon("tab/chits"));
 			showChitsButton.setToolTipText("Show Chits");
 			showChitsButton.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
@@ -1016,9 +1073,9 @@ public class CombatFrame extends JFrame {
 		}
 		return showChitsButton;
 	}
-	private JButton getShowInventoryButton() {
+	private JToggleButton getShowInventoryButton() {
 		if (showInventoryButton==null) {
-			showInventoryButton = new JButton(ImageCache.getIcon("tab/inventory"));
+			showInventoryButton = new JToggleButton(ImageCache.getIcon("tab/inventory"));
 			showInventoryButton.setToolTipText("Show Inventory");
 			showInventoryButton.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
@@ -1078,15 +1135,17 @@ public class CombatFrame extends JFrame {
 		}
 		
 		list.add(getRefreshDisplayButton());
-		list.add(gameControls);
-		
+		list.add(gameControlsDock);
+
 		if (interactiveFrame) {
+			list.add(getShowPanel());
+
 			// Special "Change Tactics" button for transmorphed players
 			
 			switch(actionState) {
 				case Constants.COMBAT_LURE:
 					instructionLabel = new JLabel("Lure Denizens",IconFactory.findIcon("icons/arrow4.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					if (hostPrefs.hasPref(Constants.TE_EXTENDED_TREACHERY)) {
 						list.add(getTreacheryButton());
@@ -1094,7 +1153,7 @@ public class CombatFrame extends JFrame {
 					break;
 				case Constants.COMBAT_DEPLOY:
 					instructionLabel = new JLabel("Deploy/Charge",IconFactory.findIcon("icons/arrow2.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					if (hostPrefs.hasPref(Constants.TE_EXTENDED_TREACHERY)) {
 						list.add(getTreacheryButton());
@@ -1103,7 +1162,7 @@ public class CombatFrame extends JFrame {
 					break;
 				case Constants.COMBAT_ACTIONS:
 					instructionLabel = new JLabel("Actions",IconFactory.findIcon("icons/arrow2.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					if (activeCharacterIsHere && activeCharacter.canChangeTactics()) {
 						list.add(getChangeTacticsButton());
@@ -1141,7 +1200,7 @@ public class CombatFrame extends JFrame {
 					break;
 				case Constants.COMBAT_ASSIGN:
 					instructionLabel = new JLabel("Assign Targets",IconFactory.findIcon("icons/arrow4.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					list.add(getTreacheryButton());
 					if (activeCharacterIsHere && activeCharacter.canChangeTactics()) {
@@ -1150,7 +1209,7 @@ public class CombatFrame extends JFrame {
 					CombatWrapper combat = new CombatWrapper(activeCharacter.getGameObject());
 					if (denizenPanel.getComponentCount()>0 && (!activeCharacterIsHere || combat.getCastSpell()==null)) {
 						instructionLabel = new JLabel("Unassigned Targets",IconFactory.findIcon("icons/arrow2.gif"),SwingConstants.LEADING);
-						instructionLabel.setFont(INSTRUCTION_FONT);
+						styleStepNameLabel(instructionLabel);
 						list.add(instructionLabel);
 						list.add(getSelectTargetFromUnassignedButton());
 					}
@@ -1161,7 +1220,7 @@ public class CombatFrame extends JFrame {
 					break;
 				case Constants.COMBAT_POSITIONING:
 					instructionLabel = new JLabel("Attack/Maneuver",IconFactory.findIcon("icons/arrow4.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					if (activeCharacterIsHere && activeCharacter.canChangeTactics()) {
 						list.add(getChangeTacticsButton());
@@ -1170,12 +1229,12 @@ public class CombatFrame extends JFrame {
 				case Constants.COMBAT_TACTICS:
 					// This stage can ONLY happen if the character has a special item (ie., Battle Bracelets)
 					instructionLabel = new JLabel("Change Tactics",IconFactory.findIcon("icons/arrow4.gif"),SwingConstants.LEADING);
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					break;
 				case Constants.COMBAT_RESOLVING:
 					instructionLabel = new JLabel("Results");
-					instructionLabel.setFont(INSTRUCTION_FONT);
+					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					break;
 				case Constants.COMBAT_FATIGUE:
@@ -1185,22 +1244,48 @@ public class CombatFrame extends JFrame {
 			if (actionState!=Constants.COMBAT_RESOLVING) {
 				list.add(getSuggestButton());
 			}
-			list.add(getShowPanel());
 		}
 		else {
 			instructionLabel = new JLabel("Observing");
-			instructionLabel.setFont(INSTRUCTION_FONT);
+			styleStepNameLabel(instructionLabel);
 			list.add(instructionLabel);
 		}
 		return list;
 	}
+	/**
+	 * Styles the given label as the current battle step name, matching the look of the
+	 * corresponding active-state icon in the state light strip (green background, blue bold text).
+	 */
+	private void styleStepNameLabel(JLabel label) {
+		label.setFont(INSTRUCTION_FONT);
+		label.setOpaque(true);
+		label.setBackground(STEP_NAME_BACKGROUND);
+		label.setForeground(STEP_NAME_FOREGROUND);
+	}
 	private void showChits() {
-		ChitStateViewer viewer = new ChitStateViewer(this,activeCharacter);
-		viewer.setVisible(true);
+		if (chitStateViewer!=null) {
+			chitStateViewer.setVisible(false);
+			chitStateViewer.dispose();
+			return;
+		}
+		chitStateViewer = new ChitStateViewer(this,activeCharacter,false);
+		chitStateViewer.addWindowListener(new WindowAdapter() {
+			public void windowClosed(WindowEvent ev) {
+				chitStateViewer = null;
+				showChitsButton.setSelected(false);
+			}
+		});
+		chitStateViewer.setVisible(true);
 	}
 	private void showInventory() {
+		if (inventoryViewer!=null) {
+			inventoryViewer.setVisible(false);
+			inventoryViewer.dispose();
+			return;
+		}
 		// Use the trade dialog to show detail
-		RealmTradeDialog viewer = new RealmTradeDialog(this,"Inventory for the "+activeCharacter.getCharacterName(),false,false,false);
+		final RealmTradeDialog viewer = new RealmTradeDialog(this,"Inventory for the "+activeCharacter.getCharacterName(),false,false,false);
+		viewer.setModal(false);
 		viewer.setTradeObjects(activeCharacter.getInventory());
 		
 		viewer.tradeTable.addMouseListener(new MouseAdapter() {
@@ -1212,6 +1297,13 @@ public class CombatFrame extends JFrame {
 						showAwakenedSpells(go);
 					}
 				}
+			}
+		});
+		inventoryViewer = viewer;
+		viewer.addWindowListener(new WindowAdapter() {
+			public void windowClosed(WindowEvent ev) {
+				inventoryViewer = null;
+				showInventoryButton.setSelected(false);
 			}
 		});
 		viewer.setVisible(true);
@@ -1248,7 +1340,7 @@ public class CombatFrame extends JFrame {
 	}
 	private void initComponents() {
 		getContentPane().setLayout(new BorderLayout());
-		
+
 		// State Lights
 		Box stateLightPanel = Box.createVerticalBox();
 		stateLight = new JLabel[STATELIGHT_NAME.length];
@@ -1258,7 +1350,7 @@ public class CombatFrame extends JFrame {
 		}
 		stateLightPanel.add(Box.createVerticalGlue());
 		getContentPane().add(stateLightPanel,"West");
-		
+
 		JPanel superPanel = new JPanel(new BorderLayout());
 		
 		// Uncontrolled Denizen Area
@@ -1315,14 +1407,25 @@ public class CombatFrame extends JFrame {
 		textButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent ev) {
 				RealmLogWindow log = RealmLogWindow.getSingleton();
-				if (textButton.isSelected()) {
-					log.setVisible(true);
-					log.toFront();
-					log.scrollToEnd();
-				}
-				else {
+				// log.isActive() alone is unreliable here: clicking this button on a currently
+				// unfocused CombatFrame activates CombatFrame as a side effect of the click, which
+				// already happened by the time this listener runs. logStolenFromAt (set by the
+				// WindowFocusListener in the constructor) recovers the "was log at front just
+				// before this click" state for that specific race; anything older is genuinely stale.
+				boolean recentlyStolenFromLog = (System.currentTimeMillis()-logStolenFromAt)<500;
+				if (log.isVisible() && (log.isActive() || recentlyStolenFromLog)) {
+					// Already showing and at front - toggle closes it.
 					log.setVisible(false);
 				}
+				else {
+					// Hidden, or showing but buried behind another window - bring it forward.
+					log.setVisible(true);
+					log.toFront();
+					log.requestFocus();
+					log.scrollToEnd();
+				}
+				logStolenFromAt = 0;
+				textButton.setSelected(log.isVisible());
 			}
 		});
 		RealmLogWindow.getSingleton().addComponentListener(new ComponentAdapter() {
@@ -1354,18 +1457,78 @@ public class CombatFrame extends JFrame {
 		});
 		nextButton.setFont(INSTRUCTION_FONT);
 		gameControls.add(nextButton);
-		ComponentTools.lockComponentSize(gameControls,180,80);
+		// Only the height is locked - width is left free (min 180, no max) so the toolbar can
+		// stretch the button grid to fill the full row width, like the other control rows.
+		gameControls.setPreferredSize(new Dimension(180,80));
+		gameControls.setMinimumSize(new Dimension(180,80));
+		gameControls.setMaximumSize(new Dimension(Integer.MAX_VALUE,80));
 		gameControls.setBorder(BorderFactory.createLineBorder(Color.yellow,6));
 		sidePanel.add(bottomPanel,"South");
-		
+
 		controlPanel = Box.createVerticalBox();
 		sidePanel.add(controlPanel,"North");
-		
+
 		getContentPane().add(superPanel,"Center");
-		
+
 		getContentPane().add(sidePanel,"East");
-		
+
+		// A real JToolBar, same pattern as CharacterActionPanel's action button row: draggable out
+		// into its own floating window and back again using Swing's native toolbar docking, rather
+		// than a hand-rolled drag implementation. gameControlsDock is its single docking slot, added
+		// as a row in controlPanel (see createControls()).
+		gameControlsToolbar = new JToolBar("Combat Controls");
+		gameControlsToolbar.add(gameControls);
+		gameControlsDock = new JPanel(new BorderLayout());
+		gameControlsDock.add(gameControlsToolbar,"North");
+		// Fix the dock's height now, while the toolbar is still docked and its preferred size
+		// reflects the actual button grid. Without this, undocking the toolbar (whether by an
+		// explicit drag or transiently during any controlPanel rebuild) leaves this row's preferred
+		// height at ~0, which shifts everything below it up and then back down once it redocks -
+		// constantly "bouncing". A fixed height means the empty dock slot always reserves the same
+		// space, docked or not, with no recalculation needed.
+		int dockHeight = gameControlsToolbar.getPreferredSize().height;
+		gameControlsDock.setPreferredSize(new Dimension(180,dockHeight));
+		gameControlsDock.setMinimumSize(new Dimension(180,dockHeight));
+		gameControlsDock.setMaximumSize(new Dimension(Integer.MAX_VALUE,dockHeight));
+
+		// The Details button's log-focus-steal race (see logFocusStealTracker) needs tracking on
+		// whichever window the toolbar is currently in - this frame while docked, or the toolbar's
+		// own floating window while undocked, since clicking Details there activates THAT window
+		// instead of this frame. The toolbar's ancestor changes every time it docks/undocks, so
+		// re-attach the tracker each time.
+		gameControlsToolbar.addHierarchyListener(new HierarchyListener() {
+			public void hierarchyChanged(HierarchyEvent ev) {
+				Window current = SwingUtilities.getWindowAncestor(gameControlsToolbar);
+				if (current!=logFocusStealTrackedWindow) {
+					if (logFocusStealTrackedWindow!=null && logFocusStealTrackedWindow!=CombatFrame.this) {
+						logFocusStealTrackedWindow.removeWindowFocusListener(logFocusStealTracker);
+					}
+					if (current!=null && current!=CombatFrame.this) {
+						current.addWindowFocusListener(logFocusStealTracker);
+					}
+					logFocusStealTrackedWindow = current;
+				}
+			}
+		});
+
 		pack();
+	}
+	/**
+	 * Re-asserts the floating toolbar's z-order above its owner. Needed not just when this frame
+	 * is reactivated by a click (see the windowActivated listener in the constructor), but also
+	 * when this frame's content is refreshed by an incoming network update while some OTHER
+	 * window (eg. a different client's combat window, in a different process) holds focus - in
+	 * that case this frame never receives a windowActivated event at all, yet its own main window
+	 * can still resurface above its owned floating toolbar as a side effect of being repainted.
+	 */
+	private void keepFloatingToolbarOnTop() {
+		if (gameControlsToolbar.getUI() instanceof BasicToolBarUI
+				&& ((BasicToolBarUI)gameControlsToolbar.getUI()).isFloating()) {
+			Window floating = SwingUtilities.getWindowAncestor(gameControlsToolbar);
+			if (floating!=null) {
+				floating.toFront();
+			}
+		}
 	}
 	private void makeDefault(JButton button) {
 		getRootPane().setDefaultButton(button);
@@ -1582,7 +1745,14 @@ public class CombatFrame extends JFrame {
 			if (actionState==Constants.COMBAT_ASSIGN || actionState==Constants.COMBAT_DEPLOY) {
 				handleWatchfulNatives();
 			}
-			gameControls.setVisible(false);
+			// Disable rather than hide - hiding collapses this row in controlPanel's layout, which
+			// visibly shifts the rest of the panel up and then back down once the next updateFrame()
+			// re-shows it after the submit round-trip completes. Disabling blocks re-clicks during
+			// that window without the layout jump; updateControls() recalculates real enabled state
+			// on the next refresh regardless.
+			undoButton.setEnabled(false);
+			endButton.setEnabled(false);
+			nextButton.setEnabled(false);
 			if (activeCombatSheet!=null) {
 				activeCombatSheet.removeMouseListener(mouseListener);
 				activeCombatSheet.removeMouseMotionListener(mouseListener);
