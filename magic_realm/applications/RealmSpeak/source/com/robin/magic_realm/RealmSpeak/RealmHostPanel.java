@@ -144,6 +144,27 @@ public class RealmHostPanel extends JPanel {
 			public void hostModified(GameHostEvent ev) {
 				logger.finer("hostModified");
 				rebuildConnectionList();
+				if (ev.getNotice()==GameHostEvent.NOTICE_PLAYER_LOGIN) {
+					// Clear MIA for the reconnecting player before broadcasting so all clients
+					// immediately see them as online rather than showing (Offline) until their submit arrives
+					String reconnectingPlayer = ev.getServer().getClientName();
+					GamePool pool = new GamePool(RealmObjectMaster.getRealmObjectMaster(host.getGameData()).getPlayerCharacterObjects());
+					ArrayList<String> keyVals = new ArrayList<>();
+					keyVals.add(CharacterWrapper.NAME_KEY + "=" + reconnectingPlayer);
+					ArrayList<GameObject> chars = pool.find(keyVals);
+					if (chars != null) {
+						for (GameObject aChar : chars) {
+							CharacterWrapper reconnectedChar = new CharacterWrapper(aChar);
+							reconnectedChar.setMissingInAction(false);
+							ArrayList<GameObject> minions = reconnectedChar.getMinions();
+							if (minions != null) {
+								for (GameObject minion : minions) {
+									new CharacterWrapper(minion).setMissingInAction(false);
+								}
+							}
+						}
+					}
+				}
 				updateGame(); // This should be the only call to this method.
 				if (ev.getNotice()==GameHostEvent.NOTICE_NEW_CONNECTION) {
 					RealmDirectInfoHolder holder;
@@ -170,6 +191,16 @@ public class RealmHostPanel extends JPanel {
 					holder.setCommand(RealmDirectInfoHolder.RANDOM_NUMBER_GENERATOR);
 					holder.setString(RandomNumber.getRandomNumberGenerator().toString());
 					ev.getServer().addInfoDirect(new InfoObject(ev.getServer().getClientName(),holder.getInfo()));
+				}
+				else if (ev.getNotice() == GameHostEvent.NOTICE_PLAYER_LOGIN) {
+					String clientName = ev.getServer().getClientName();
+					String layoutData = host.retrieveClientLayout(clientName);
+					if (layoutData != null) {
+						RealmDirectInfoHolder lholder = new RealmDirectInfoHolder(host.getGameData(), clientName);
+						lholder.setCommand(RealmDirectInfoHolder.CLIENT_LAYOUT);
+						lholder.setString(layoutData);
+						ev.getServer().addInfoDirect(new InfoObject(clientName, lholder.getInfo()));
+					}
 				}
 			}
 			
@@ -219,7 +250,10 @@ public class RealmHostPanel extends JPanel {
 	
 	private void handleHostOnly(InfoObject io) {
 		RealmDirectInfoHolder holder = new RealmDirectInfoHolder(host.getGameData(),io.getInfo());
-		if (RealmDirectInfoHolder.CLIENT_RESPOND_EMAIL.equals(holder.getCommand())) {
+		if (RealmDirectInfoHolder.CLIENT_LAYOUT.equals(holder.getCommand())) {
+			host.storeClientLayout(holder.getPlayerName(), holder.getString());
+		}
+		else if (RealmDirectInfoHolder.CLIENT_RESPOND_EMAIL.equals(holder.getCommand())) {
 			String player = holder.getPlayerName();
 			String email = SendMail.normalizeEmail(holder.getString());
 			playerEmails.put(player,email);
