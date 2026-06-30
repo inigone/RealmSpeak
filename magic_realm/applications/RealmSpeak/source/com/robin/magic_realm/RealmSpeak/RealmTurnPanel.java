@@ -75,6 +75,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	private HostPrefWrapper hostPrefs;
 	
 	private Timer activatePlayNextTimer = null;
+	private boolean wasAwaitingPrePhase = false;
 	private ActionListener activatePlayNextListener = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
 			activatePlayNextTimer = (Timer)ev.getSource();
@@ -154,7 +155,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		if (actionFollowers.size()>0) {
 			Box box = Box.createVerticalBox();
 			Box line = Box.createHorizontalBox();
-			JLabel label = new JLabel("The "+getCharacter().getGameObject().getName()+" is being followed by:");
+			JLabel label = new JLabel("The "+getCharacter().getGameObject().getName()+" seems to be being followed by:");
 			label.setFont(titleFont);
 			line.add(label);
 			line.add(Box.createHorizontalGlue());
@@ -277,10 +278,10 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		return false;
 	}
-	public boolean isAwaitingBlockDecision() {
-		return isAwaitingBlockDecision(false,null);
+	public boolean isAwaitingReactDecision() {
+		return isAwaitingReactDecision(false,null);
 	}
-	public boolean isAwaitingBlockDecision(boolean interruptMovement, TileLocation loc) {
+	public boolean isAwaitingReactDecision(boolean interruptMovement, TileLocation loc) {
 		if (getCharacter().getNeedsBlockEvaluation() || getCharacter().getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)) return false;
 		if (getRealmComponent().isPlayerControlledLeader() && !getCharacter().isMinion() && !getCharacter().isSleep() && !getCharacter().getGameObject().hasThisAttribute(Constants.BLINDING_LIGHT)) {
 			blockWarningLabel.setText("");
@@ -295,10 +296,20 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					for (RealmComponent rc:current.clearing.getClearingComponents()) {
 						if (!rc.getGameObject().equals(getCharacter().getGameObject()) && (rc.isPlayerControlledLeader())) {
 							CharacterWrapper target = new CharacterWrapper(rc.getGameObject());
-							if (target.isBlocking() && !target.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) && !target.isMistLike() && (!getCharacter().isMistLike() || target.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) && !target.isMinion() && !target.isSleep()
+							// TBD(5): The gate below should be rewritten using named booleans for each
+							// condition before the if-statement. Example:
+							//   boolean canReact = target.isReacting() && !target.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING);
+							//   boolean notMistImmune = !target.isMistLike() && (!getCharacter().isMistLike() || target.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE));
+							//   boolean notExcluded = !target.isMinion() && !target.isSleep();
+							//   boolean sizeAllows = (target.getTransmorph()==null && !target.getGameObject().hasThisAttribute(Constants.SMALL))
+							//       || (target.getTransmorph()!=null && !target.getTransmorph().hasThisAttribute(Constants.SMALL))
+							//       || !hostPrefs.hasPref(Constants.HOUSE3_SMALL_MONSTERS);
+							//   if (canReact && notMistImmune && notExcluded && sizeAllows) { ...
+							// Apply this pattern everywhere similar compound conditions appear in this file and ActionRow.
+							if (target.isReacting() && !target.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) && !target.isMistLike() && (!getCharacter().isMistLike() || target.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) && !target.isMinion() && !target.isSleep()
 									&& ((target.getTransmorph()==null && !target.getGameObject().hasThisAttribute(Constants.SMALL)) || ((target.getTransmorph()!=null && !target.getTransmorph().hasThisAttribute(Constants.SMALL))) || !hostPrefs.hasPref(Constants.HOUSE3_SMALL_MONSTERS))) {
 								if (!getCharacter().isHidden() || target.foundHiddenEnemy(getCharacter().getGameObject())) {
-									if (!target.hasBlockDecision(getCharacter().getGameObject())) {
+									if (!target.hasReactDecision(getCharacter().getGameObject())) {
 										blockWarningLabel.setText(target.getGameObject().getName()+" is blocking.  Awaiting decision...");
 										return true;
 									}
@@ -316,30 +327,83 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		return isAwaitingInterruptionDecision(true);
 	}
 	
-	public boolean isAwaitingInterruptionDecision(boolean evaluateBlockingReactions) {
+	// isAwaitingPrePhaseDecision() drives the wasAwaitingPrePhase falling-edge auto-advance: it returns true
+	// if any player-controlled leader in the phasing character's clearing still has an unresolved pre-phase
+	// flag. When updateControls() detects a true→false transition (all dialogs resolved), it fires playNext()
+	// via invokeLater so the action executes automatically without requiring the user to click Play Next again.
+	// Only meaningful for the phasing character; non-phasing chars return false immediately.
+	private boolean isAwaitingPrePhaseDecision() {
+		if (!getCharacter().isPlayingTurn()) return false;
+		TileLocation current = getCharacter().getCurrentLocation();
+		if (current == null || !current.isInClearing()) return false;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
+			if (!rc.isPlayerControlledLeader() && !cw.isMinion()) continue;
+			if (cw.getNeedsPrePhaseActivityDecision()) return true;
+		}
+		return false;
+	}
+
+	// isAwaitingPostPhaseDecision() drives the wasAwaitingPostPhase falling-edge auto-advance. Scans the
+	// phasing character's current clearing (which is the post-action clearing — the same location checked
+	// by the post-phase pending guard in ActionRow.process()) for any individual whose post-phase dialog
+	// is still unresolved. When all flags clear, the falling-edge fires playNext() for the next action.
+	private boolean isAwaitingPostPhaseDecision() {
+		if (!getCharacter().isPlayingTurn()) return false;
+		TileLocation current = getCharacter().getCurrentLocation();
+		if (current == null || !current.isInClearing()) return false;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean hasPendingActionsAfterCurrent() {
+		for (int i = currentActionRow + 1; i < actionRows.size(); i++) {
+			if (actionRows.get(i).isPending()) return true;
+		}
+		return false;
+	}
+
+	public boolean isAwaitingInterruptionDecision(boolean evaluateReactions) {
 		if (getRealmComponent().isPlayerControlledLeader() && getCharacter().isPlayingTurn()) {
 			blockWarningLabel.setText("");
 			TileLocation current = getCharacter().getCurrentLocation();
 			if (current!=null && current.isInClearing()) {
 				for (RealmComponent rc:current.clearing.getClearingComponents()) {
-					if (!rc.getGameObject().equals(getCharacter().getGameObject()) && (rc.isPlayerControlledLeader())) {
+					if (rc.isPlayerControlledLeader()) {
 						CharacterWrapper target = new CharacterWrapper(rc.getGameObject());
-						if (target.isBlocking() && !target.isMinion()
-								&& (target.getNeedsPlayColorChitInterruptPhaseBeginningDecision() && !target.hasColorChitInterruptPhaseBeginningDecision(getCharacter().getGameObject())
-								|| target.getNeedsPlayColorChitInterruptPhaseEndDecision() && !target.hasColorChitInterruptPhaseEndDecision(getCharacter().getGameObject()))) {
-							blockWarningLabel.setText(target.getGameObject().getName()+" is reacting.  Awaiting decision...");
+						// Pre-phase pending check: if any character in the clearing has an unresolved pre-phase
+						// flag, show a waiting message on the phasing character's frame and treat it as a
+						// locked interruption so Play All is disabled until all dialogs have been dismissed.
+						if (target.getNeedsPrePhaseActivityDecision()) {
+							blockWarningLabel.setText(target.getGameObject().getName()+" - Pre-Phase Activities pending...");
 							return true;
+						}
+						if (target.getNeedsPostPhaseActivityDecision()) {
+							blockWarningLabel.setText(target.getGameObject().getName()+" - Post-Phase Activities pending...");
+							return true;
+						}
+						if (!rc.getGameObject().equals(getCharacter().getGameObject())) {
+							if (target.isReacting() && !target.isMinion()
+									&& (target.getNeedsPlayColorChitInterruptPhaseBeginningDecision() && !target.hasColorChitInterruptPhaseBeginningDecision(getCharacter().getGameObject())
+									|| target.getNeedsPlayColorChitInterruptPhaseEndDecision() && !target.hasColorChitInterruptPhaseEndDecision(getCharacter().getGameObject()))) {
+								blockWarningLabel.setText(target.getGameObject().getName()+" is reacting.  Awaiting decision...");
+								return true;
+							}
 						}
 					}
 				}
 			}
 		}
-		if (evaluateBlockingReactions && getCharacter().getNeedsBlockEvaluation()) {
+		if (evaluateReactions && getCharacter().getNeedsBlockEvaluation()) {
 			ArrayList<GameObject> livingCharacters = RealmUtility.getLivingCharacters(getCharacter().getGameData());
 			getCharacter().setNeedsBlockEvaluation(false);
 			for (GameObject livingCharacter : livingCharacters) {
 				if (hostPrefs.hasPref(Constants.OPT_BLOCKING_PHASES)) {
-					new CharacterWrapper(livingCharacter).removeAllBlockDecisions();
+					new CharacterWrapper(livingCharacter).removeAllReactDecisions();
 				}
 				new CharacterWrapper(livingCharacter).setInterruptPhaseDecision(false);
 				getGameHandler().updateCharacterFramesWithoutMap();
@@ -349,14 +413,24 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	}
 	
 	public boolean isAwaitingReactions() {
-		return isAwaitingBlockDecision(true,null) || isAwaitingInterruptionDecision(false);
+		return /*isAwaitingReactDecision(true,null) ||*/ isAwaitingInterruptionDecision(false);
 	}
 	
 	public void updateControls() {
 		TileLocation current = getCharacter().getCurrentLocation();
 		
 		boolean waitingForSingleButton = getCharacterFrame().isWaitingForSingleButton();
-		boolean controlsLocked = isAwaitingBlockDecision() || waitingForSingleButton || isAwaitingInterruptionDecision();
+		// isAwaitingInterruptionDecision() is pre-evaluated (not short-circuited by ||) so that blockWarningLabel
+		// is always refreshed on every updateControls() call. If left inside the || expression, a true
+		// waitingForSingleButton would short-circuit the call entirely and the "pending..." label would never
+		// update while a mandatory SingleButton is also active (e.g. during the phasing char's Done button).
+		boolean awaitingInterruption = isAwaitingInterruptionDecision();
+		// REMOVED: isAwaitingReactDecision() gating — this call and its sister occurrences in isAwaitingReactions(),
+		// the wasAwaitingPrePhase auto-advance guard, the playNextButton listener, and the playAll() loop are all
+		// commented out inline (/*isAwaitingReactDecision()*/). The method detected pending block decisions set by
+		// the old Block Now button flow. Since blocking is being reimplemented as part of the post-phase dialog
+		// system, all gates on block decisions are disabled until that work is complete.
+		boolean controlsLocked = /*isAwaitingReactDecision() ||*/ waitingForSingleButton || awaitingInterruption;
 		
 		boolean playedAnAction = actionRows.size()>0 && !(actionRows.get(0)).isPending();
 		
@@ -399,22 +473,60 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		
 		boolean actionsLeft = isNextAction();
+
+		// TBD(8): When the character becomes blocked (getCharacter().isBlocked()), their turn
+		// should auto-complete without requiring the player to click through remaining action rows
+		// or click Done. In updateControls(), detect isBlocked() and call turnDone() automatically
+		// (guarded so it only fires once). All pending action rows should be marked cancelled/blocked
+		// and the Done button should not be shown. This mirrors how sleeping/blocked characters
+		// already have their actions skipped in ActionRow.process() — the turn-end step just needs
+		// to follow automatically rather than waiting for user input.
+		boolean nowAwaitingPrePhase = isAwaitingPrePhaseDecision();
+		System.err.println("[IPD] RTP.updateControls: wasAwaiting=" + wasAwaitingPrePhase
+			+ " nowAwaiting=" + nowAwaitingPrePhase
+			+ " isPlayingTurn=" + getCharacter().isPlayingTurn()
+			+ " actionsLeft=" + actionsLeft
+			+ " waitingForSingleButton=" + waitingForSingleButton
+			+ " char=" + getCharacter().getGameObject().getName());
+		if (wasAwaitingPrePhase && !nowAwaitingPrePhase && getCharacter().isPlayingTurn()
+				&& actionsLeft && !waitingForSingleButton && activatePlayNextTimer == null
+				/*&& !isAwaitingReactDecision()*/) {
+			System.err.println("[IPD] RTP.updateControls -> AUTO-ADVANCE firing playNext!");
+			wasAwaitingPrePhase = false;
+			SwingUtilities.invokeLater(() -> playNext(false));
+		} else {
+			wasAwaitingPrePhase = nowAwaitingPrePhase;
+		}
+
+		// POST-PHASE AUTO-ADVANCE REMOVED: Unlike pre-phase (which auto-advances to the next action once all
+		// pre-phase dialogs are resolved), post-phase does NOT auto-advance. After the phasing character's
+		// action executes and any post-phase dialogs are shown, the user must explicitly click Play Next.
+		// Auto-advancing here caused "Play Next acting like Play All" — every post-phase dialog resolve
+		// immediately triggered the next action without user intent. The pending check at the top of
+		// ActionRow.process() already blocks the next action until post-phase is cleared.
+
 		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue);
 		playNextButton.setFlashing(playNextButton.isEnabled());
-		playAllButton.setEnabled(!controlsLocked && actionsLeft && !beingFollowedByOtherPlayers);
+		playAllButton.setEnabled(false);
 		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
 		
 		if (playNextButton.isEnabled()) makeDefault(playNextButton);
 		if (finishedPlayButton.isEnabled()) makeDefault(finishedPlayButton);
 		
-		if (playNextButton.isEnabled() && beingFollowedByOtherPlayers) {
-			playNextButton.setText("Wait....");
-			playNextButton.setEnabled(false);
-			playNextButton.setFlashing(false);
-			activatePlayNextTimer = new Timer(5000,activatePlayNextListener);
-			activatePlayNextTimer.start();
-		}
+//		// REMOVED: Follower wait timer — when a character was being followed by another player, Play Next
+//		// was disabled and relabelled "Wait...." for 5 seconds to give the follower's Stop Following button
+//		// time to appear and be clicked before the leader's action executed. This artificial delay is
+//		// replaced by the pre-phase dialog system, which explicitly notifies followers and waits for their
+//		// dialog to be resolved before the action proceeds. The timer and activatePlayNextListener are kept
+//		// in the class but this activation block is commented out.
+//		if (playNextButton.isEnabled() && beingFollowedByOtherPlayers) {
+//			playNextButton.setText("Wait....");
+//			playNextButton.setEnabled(false);
+//			playNextButton.setFlashing(false);
+//			activatePlayNextTimer = new Timer(5000,activatePlayNextListener);
+//			activatePlayNextTimer.start();
+//		}
 			
 		boolean canPostpone = getCharacter().affectedByKey(Constants.CHOOSE_TURN)
 							&& !getCharacter().isLastPlayer()
@@ -437,7 +549,16 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		abandonInventoryButton.setEnabled(current!=null && !current.isBetweenClearings() && !getCharacter().isBlocked());
 		
-		ditchFollowersButton.setEnabled(areActionFollowersToLeaveBehind);
+		// Ditch Follower: only enabled during the pre-phase segment (phasing char has NeedsPrePhaseActivityDecision),
+		// and only when the upcoming action is a Move, the guide is hidden, and there are followers who haven't
+		// found hidden enemies. All three conditions must hold — ditching is meaningless for non-Move actions
+		// (followers don't move) and irrelevant once the guide is visible or all followers are aware.
+		String nextPendingAction = null;
+		for (ActionRow ar : actionRows) {
+			if (ar.isPending()) { nextPendingAction = ar.getAction(); break; }
+		}
+		boolean nextIsMove = nextPendingAction != null && nextPendingAction.startsWith("M");
+		ditchFollowersButton.setEnabled(getCharacter().getNeedsPrePhaseActivityDecision() && nextIsMove && areActionFollowersToLeaveBehind);
 		
 		if (acm!=null) {
 			acm.updateControls(phaseManager,!isFollowing,false);
@@ -472,7 +593,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		};
 		playNextButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent ev) {
-				if (!isAwaitingBlockDecision() && !isAwaitingInterruptionDecision()) {
+				if (/*!isAwaitingReactDecision() &&*/ !isAwaitingInterruptionDecision()) {
 					playNext(false);
 					getGameHandler().getInspector().redrawMap();
 					updateControls();
@@ -488,6 +609,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				updateControls();
 			}
 		});
+		playAllButton.setEnabled(false);
 		panel.add(playAllButton);
 		JPanel specialButtons = new JPanel(new GridLayout(1,2));
 		postponeTurnButton = new JButton("Postpone");
@@ -770,7 +892,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 						requiredObject = phaseManager.getNextRequiredObject(ar.getAction(),pony);
 						int count = ar.getCount(); // The only time this will be >0 is when its a REST phase
 						int allowed = phaseManager.getNumberOfActionsAllowed(ar.getAction(),pony);
-						if (allowed>0 && (ar.willHavePhaseEndUpdates() || calendar.isFatiguePhasesType(month))) {
+						if (allowed>0 && (ar.willHavePostPhaseUpdates() || calendar.isFatiguePhasesType(month))) {
 							allowed = 1;
 						}
 						if (allowed<count) {
@@ -864,6 +986,16 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		
 		updateNextPendingAction();
+		// updateNextPendingAction() scans actionRows for the next pending entry. If the action that
+		// just ran was a multi-phase split (splitMultiPhaseAction()), its continuation row hasn't been
+		// inserted into actionRows yet, so the scan falls through to the action AFTER the continuation
+		// (e.g. Hide) and sets a stale NEXT_PENDING_ACTION. Override it now with the continuation's
+		// action so that submitChanges() sends the correct value — the pre-phase dialog header on
+		// all clients reads this attribute to show the action icon for the coming phase.
+		ActionRow pendingContinuation = ar.getNewAction();
+		if (pendingContinuation != null && pendingContinuation.isContinuation()) {
+			getCharacter().setNextPendingAction(pendingContinuation.getAction());
+		}
 		getCharacterFrame().updateCharacter(); // added this 7/15/2005 - will this be too CPU intensive?
 		
 		
@@ -887,12 +1019,16 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				getCharacter().removeActionFollower(follower,monsterDieRoller,nativeDieRoller);
 			}
 		
-			// Collect any newActions that may have spawned (ie., Curse as the result of a search)
+			// Collect any newActions that may have spawned (ie., Curse as the result of a search).
+			// Continuation rows (split multi-phase actions) are NOT marked spawned and do NOT get an
+			// immediate logAction() — they process normally as independent phases on the next playNext().
 			ArrayList<ActionRow> newActions = new ArrayList<>();
 			ActionRow newAction = ar.getNewAction();
 			while(newAction!=null) {
-				newAction.setSpawned(true);
-				newAction.logAction(); // new actions wont have been processed directly, so need a log (I think)
+				if (!newAction.isContinuation()) {
+					newAction.setSpawned(true);
+					newAction.logAction(); // new actions wont have been processed directly, so need a log (I think)
+				}
 				newActions.add(newAction);
 				newAction = newAction.getNewAction();
 			}
@@ -1003,7 +1139,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	}
 	
 	private void playAll() {
-		while(nextAction()!=null && !isAwaitingBlockDecision() && !isAwaitingFollowersResting() && !isAwaitingFollowersAlerting() &!isAwaitingFollowersSpellActions() &!isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
+		while(nextAction()!=null && /*!isAwaitingReactDecision() &&*/ !isAwaitingFollowersResting() && !isAwaitingFollowersAlerting() &!isAwaitingFollowersSpellActions() &!isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
 			if (!playNext(true)) {
 				// player cancelled action, or awaiting input (like transport to caves result in TableLoot)
 				break;
@@ -1070,6 +1206,11 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		return list;
 	}
 	
+	// TBD(4): Followers' turns should auto-end once all their action rows are processed,
+	// without requiring the player to click Done. When isFollowing is true and all action
+	// rows are completed (no pending rows remain), turnDone() should be called automatically
+	// from updateControls() or playNext() rather than waiting for the button. The Done button
+	// should be hidden or disabled for followers during this period.
 	private void turnDone() {
 		// Assign combat order here
 		getCharacter().setCombatPlayOrder(game.getNextDayTurnCount());
@@ -1112,21 +1253,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				}
 				String action = ar.getAction();
 				if (action!=null) { // might be null if there was a re-roll on a table
-					String actionTypeCode = "*"; // actionTypeCode is the type of clearing from which the action was performed
-					try {
-						actionTypeCode = fi.next(); // NoSuchElementException!?!?
-					}
-					catch(NoSuchElementException ex) {
-						// Well this will tell me what's happening if it happens again
-						System.err.println("oldCodes: "+oldCodes);
-						System.err.println("action: "+action);
-						System.err.println("ActionRow: "+ar.toString());
-						System.err.println("blocked: "+blocked);
-						System.err.println("currentActions: "+getCharacter().getCurrentActions());
-						System.err.println("currentActionValids: "+getCharacter().getCurrentActionValids());
-						System.err.println("currentActionTypeCodes: "+getCharacter().getCurrentActionTypeCodes());
-						ex.printStackTrace();
-					}
+					// oldCodes may have fewer entries than actionRows when continuation rows from
+					// multi-phase splits are present — fall back to "*" if exhausted.
+					String actionTypeCode = fi.hasNext() ? fi.next() : "*";
 					for (int n=0;n<ar.getCount();n++) {
 						if (ar.isBlankPhase()) {
 							getCharacter().addCurrentAction("("+action+")");
@@ -1300,46 +1429,33 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			return null;
 		}
 	}
+	// verifyAbandonActionFollowers() is called by the Ditch Follower button. The old "Unwanted Followers?"
+	// confirm dialog has been removed — the guide's click on the button is already a deliberate action.
+	// When a hidden guide has unaware followers, the pre-phase activity system fires (via the
+	// hiddenGuideWithUnawareFollowers trigger in ActionRow) and the "Done: Pre-Phase" button appears.
+	// The guide uses the existing Ditch Follower button to invoke doAbandonActionFollowers() and drop
+	// whichever followers they choose, then clicks "Done: Pre-Phase" to proceed. No modal dialog needed.
 	public void verifyAbandonActionFollowers() {
-		ArrayList<CharacterWrapper> canLeaveBehind = new ArrayList<>();
-		for (CharacterWrapper follower:actionFollowers) {
-			if (!follower.foundHiddenEnemy(getCharacter().getGameObject())) {
-				canLeaveBehind.add(follower);
-			}
-		}
-		int totalCanLeaveBehind = canLeaveBehind.size();
-		if (totalCanLeaveBehind>0) {
-			// Opportunity to leave followers behind here!  Rule 27.6/1a
-			StringBuffer message = new StringBuffer();
-			message.append("There ");
-			message.append(totalCanLeaveBehind==1?"is ":"are ");
-			message.append(totalCanLeaveBehind);
-			message.append(" follower");
-			message.append(totalCanLeaveBehind==1?"":"s");
-			message.append(" following that haven't found hidden enemies.");
-			message.append("\nDo you want to leave ");
-			message.append(totalCanLeaveBehind==1?"that follower":"one or more of them");
-			message.append(" behind?");
-			
-			int ret = JOptionPane.showConfirmDialog(
-						getGameHandler().getMainFrame(),
-						message.toString(),
-						"Unwanted Followers?",
-						JOptionPane.YES_NO_OPTION);
-			if (ret==JOptionPane.YES_OPTION) {
-				doAbandonActionFollowers();
-				actionFollowers = getCharacter().getActionFollowers();
-			}
-		}
+		doAbandonActionFollowers();
+		updateControls();
 	}
 	public void doAbandonActionFollowers() {
+		TileLocation guideLoc = getCharacter().getCurrentLocation();
+		ArrayList<CharacterWrapper> inClearingFollowers = new ArrayList<>();
+		for (CharacterWrapper aFollower : actionFollowers) {
+			TileLocation followerLoc = aFollower.getCurrentLocation();
+			if (guideLoc != null && guideLoc.equals(followerLoc)) {
+				inClearingFollowers.add(aFollower);
+			}
+		}
+
 		ArrayList<CharacterWrapper> toRemove = new ArrayList<>();
-		if (actionFollowers.size()==1) {
-			toRemove.add(actionFollowers.get(0));
+		if (inClearingFollowers.size()==1) {
+			toRemove.add(inClearingFollowers.get(0));
 		}
 		else {
 			ArrayList<GameObject> list = new ArrayList<>();
-			for (CharacterWrapper aFollower:actionFollowers) {
+			for (CharacterWrapper aFollower : inClearingFollowers) {
 				list.add(aFollower.getGameObject());
 			}
 			RealmObjectChooser chooser = new RealmObjectChooser("Which follower(s) do you want to leave behind?",getCharacter().getGameObject().getGameData(),false);
@@ -1356,11 +1472,28 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		for (CharacterWrapper aFollower : toRemove) {
 			if (!aFollower.hasActiveInventoryThisKey(Constants.LINKS)) {
 				getCharacter().removeActionFollower(aFollower,monsterDieRoller,nativeDieRoller);
+				abandonFollowerChain(aFollower, monsterDieRoller, nativeDieRoller);
 			}
 		}
-		
+
 		// Reset the list
 		actionFollowers = getCharacter().getActionFollowers();
+	}
+
+	private void abandonFollowerChain(CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
+		// TBD(9): Sub-followers continue following the main guide even after their intermediate
+		// guide is ditched. This suggests sub-followers are also registered in the main guide's
+		// ACTION_FOLLOWER list (flattened chain), so removeActionFollower on the dropped guide
+		// alone does not remove them from the main guide's list. The fix: after recursively
+		// clearing dropped's own followers here, also remove each sub-follower from the main
+		// guide's ACTION_FOLLOWER list (getCharacter().removeActionFollower(subFollower, ...)).
+		for (CharacterWrapper subFollower : dropped.getActionFollowers()) {
+			dropped.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
+			subFollower.setStopFollowing(true);
+			RealmLogging.logMessage(subFollower.getGameObject().getName(),
+				"Stops following (guide " + dropped.getGameObject().getName() + " was left behind).");
+			abandonFollowerChain(subFollower, monsterDieRoller, nativeDieRoller);
+		}
 	}
 	public void updatePanel() {
 	}
