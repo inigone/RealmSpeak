@@ -1,7 +1,10 @@
 package com.robin.game.server;
 
+import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import com.robin.game.objects.GameData;
@@ -33,6 +36,8 @@ public class GameHost {
 	protected ArrayList<GameServer> servers;
 	
 	protected ArrayList<GameHostListener> gameHostListeners;
+
+	private Map<String, String> clientLayouts = new HashMap<>();
 
 	public GameHost(String dataPath,String gameTitle,String password) {
 		mostRecentHost = this;
@@ -88,6 +93,14 @@ public class GameHost {
 		}
 		return success;
 	}
+	public void storeClientLayout(String clientName, String data) {
+		clientLayouts.put(clientName, data);
+	}
+
+	public String retrieveClientLayout(String clientName) {
+		return clientLayouts.get(clientName);
+	}
+
 	public void fireHostOnly(InfoObject io) {
 		if (gameHostListeners!=null) {
 			for (GameHostListener listener : gameHostListeners) {
@@ -151,6 +164,7 @@ public class GameHost {
 	 * Assigns a server to the provided connection
 	 */
 	public void addConnection(Socket connection) {
+		try { connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); } catch(IOException ex) { /* ignore */ }
 		GameServer server = new GameServer(this,connection);
 		server.setClientHostName(hostName);
 		server.start();

@@ -76,6 +76,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	// host prefs
 	protected HostPrefWrapper hostPrefs;
+
+	// client window layout persistence
+	private static final String LAYOUT_WIN_CHARLIST = "cl";
+	private static final String LAYOUT_WIN_MAP = "map";
+	private static final String LAYOUT_CF_PREFIX = "cf_";
+	private String pendingLayoutData = null;
+	private boolean layoutRestoreAttempted = false;
+	private javax.swing.Timer layoutSaveTimer = null;
+
 	protected boolean hostPlayer; // if true, then this game handler is the
 									// hosts client
 	protected boolean localGame;
@@ -94,8 +103,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	protected String lastWeather = null;
 	private String clientPlayerPass;
 	private String clientEmail;
+	private String reconnectIp;
+	private int reconnectPort;
+	private String reconnectName;
+	private String reconnectPass;
 	private ArrayList<String> playerWarned = new ArrayList<>();
 	private boolean addCharacterButtonEnabled = true;
+	private boolean disconnectDialogShowing = false;
 
 	// Update listener
 	protected ChangeListener updateFrameListener = new ChangeListener() {
@@ -132,11 +146,124 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		setup(null, ip, port, name, pass, RealmLoader.DATA_PATH);
 	}
 
+	public void reconnect() {
+		getMainFrame().resetStatus();
+		layoutRestoreAttempted = false;
+		pendingLayoutData = null;
+		if (layoutSaveTimer != null) { layoutSaveTimer.stop(); layoutSaveTimer = null; }
+		removeAllCharacterFrames();
+		if (inspector != null) {
+			parent.removeFrameFromDesktop(inspector);
+			inspector = null;
+		}
+		game = null;
+		client = new GameClient(RealmLoader.DATA_PATH, reconnectIp, reconnectName, reconnectPass, reconnectPort) {
+			public void receiveInfoDirect(ArrayList inList) {
+				RealmDirectInfoHolder info = new RealmDirectInfoHolder(client.getGameData(), inList);
+				handleDirectInfo(info);
+			}
+			public void receiveBroadcast(String key, String message) {
+				handleBroadcast(key, message);
+			}
+		};
+		final GameClient reconnectClient = client;
+		client.addChangeListener(new ChangeListener() {
+			public void stateChanged(ChangeEvent ev) {
+				SwingUtilities.invokeLater(new Runnable() {
+					public void run() {
+						if (client != reconnectClient) return;
+						updateGameHandler();
+					}
+				});
+			}
+		});
+		client.start();
+	}
 	public void removeAllCharacterFrames() {
 		for (CharacterFrame frame : characterFrames.values()) {
 			parent.removeFrameFromDesktop(frame);
 		}
 		characterFrames.clear();
+	}
+
+	private void restoreClientLayout() {
+		installLayoutListeners();
+		// layout data arrives asynchronously via handleDirectInfo → applyPendingLayout
+	}
+
+	private void installLayoutListeners() {
+		layoutSaveTimer = new javax.swing.Timer(500, ev -> saveClientLayout());
+		layoutSaveTimer.setRepeats(false);
+		ComponentListener bl = new ComponentAdapter() {
+			@Override public void componentMoved(ComponentEvent e)   { scheduleLayoutSave(); }
+			@Override public void componentResized(ComponentEvent e) { scheduleLayoutSave(); }
+		};
+		addComponentListener(bl);
+		if (inspector != null) inspector.addComponentListener(bl);
+		for (CharacterFrame f : characterFrames.values()) f.addComponentListener(bl);
+	}
+
+	private void scheduleLayoutSave() {
+		if (layoutSaveTimer != null) layoutSaveTimer.restart();
+	}
+
+	private void applyPendingLayout() {
+		if (pendingLayoutData == null) return;
+		Map<String, Rectangle> bounds = decodeLayout(pendingLayoutData);
+		pendingLayoutData = null;
+		Rectangle r = bounds.get(LAYOUT_WIN_CHARLIST);
+		if (r != null) setBounds(r);
+		if (inspector != null) {
+			r = bounds.get(LAYOUT_WIN_MAP);
+			if (r != null) inspector.setBounds(r);
+		}
+		for (Map.Entry<String, CharacterFrame> e : characterFrames.entrySet()) {
+			r = bounds.get(LAYOUT_CF_PREFIX + e.getKey());
+			if (r != null) e.getValue().setBounds(r);
+		}
+	}
+
+	private String encodeLayout() {
+		StringBuilder sb = new StringBuilder();
+		appendBounds(sb, LAYOUT_WIN_CHARLIST, getBounds());
+		if (inspector != null) appendBounds(sb, LAYOUT_WIN_MAP, inspector.getBounds());
+		for (Map.Entry<String, CharacterFrame> e : characterFrames.entrySet())
+			appendBounds(sb, LAYOUT_CF_PREFIX + e.getKey(), e.getValue().getBounds());
+		return sb.toString();
+	}
+
+	private static void appendBounds(StringBuilder sb, String key, Rectangle r) {
+		if (sb.length() > 0) sb.append('|');
+		sb.append(key).append('=').append(r.x).append(',').append(r.y)
+		  .append(',').append(r.width).append(',').append(r.height);
+	}
+
+	private static Map<String, Rectangle> decodeLayout(String data) {
+		Map<String, Rectangle> map = new HashMap<>();
+		for (String entry : data.split("\\|")) {
+			String[] kv = entry.split("=", 2);
+			if (kv.length == 2) {
+				String[] c = kv[1].split(",");
+				if (c.length == 4) {
+					try {
+						map.put(kv[0], new Rectangle(
+							Integer.parseInt(c[0]), Integer.parseInt(c[1]),
+							Integer.parseInt(c[2]), Integer.parseInt(c[3])));
+					} catch (NumberFormatException ignored) {}
+				}
+			}
+		}
+		return map;
+	}
+
+	private void saveClientLayout() {
+		if (client == null || !client.isConnected() || game == null) return;
+		String encoded = encodeLayout();
+		if (encoded.isEmpty()) return;
+		RealmDirectInfoHolder holder = new RealmDirectInfoHolder(client.getGameData(), client.getClientName());
+		holder.setCommand(RealmDirectInfoHolder.CLIENT_LAYOUT);
+		holder.setString(encoded);
+		getClient().sendInfoDirect(null, holder.getInfo());
 	}
 
 	public void initComponents() {
@@ -923,7 +1050,12 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	private void handleDirectInfo(RealmDirectInfoHolder info) {
 		String command = info.getCommand();
-		if (RealmDirectInfoHolder.HOST_DETAIL_LOG.equals(command)) {
+		if (RealmDirectInfoHolder.CLIENT_LAYOUT.equals(command)) {
+			pendingLayoutData = info.getString();
+			SwingUtilities.invokeLater(this::applyPendingLayout);
+			return;
+		}
+		else if (RealmDirectInfoHolder.HOST_DETAIL_LOG.equals(command)) {
 			RealmLogWindow.getSingleton().clearLog();
 			ArrayList<String> list = info.getStrings();
 			while (list.size() >= 2) {
@@ -996,13 +1128,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		}
 		else if (RealmDirectInfoHolder.SPELL_AFFECT_TARGETS_EXPIRE_IMMEDIATE.equals(command)) {
 			// Run on the EDT so that any blocking dialog (e.g. TileLocationChooser for Teleport)
-			// does not stall the GameClient thread and cause the server to time out
+			// does not stall the GameClient thread and cause the server to time out.
 			SwingUtilities.invokeLater(() -> {
 				boolean teleported = false;
 				for (GameObject spellObject : info.getGameObjects()) {
 					SpellWrapper spell = new SpellWrapper(spellObject);
 					TileLocation before = spell.getCurrentLocation();
-					spell.affectTargets(CombatFrame.getSingleton(), game, true, null); // this is STILL happening in a thread...
+					spell.affectTargets(CombatFrame.getSingleton(), game, true, null);
 					TileLocation after = spell.getCurrentLocation();
 					if (before != null && !before.equals(after)) {
 						// The spell transported its target, so update combat
@@ -1193,6 +1325,10 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	}
 
 	public void setup(GameHost host, String ip, int port, String name, String pass, String dataPath) {
+		this.reconnectIp = ip;
+		this.reconnectPort = port;
+		this.reconnectName = name;
+		this.reconnectPass = pass;
 		client = new GameClient(dataPath, ip, name, pass, port) {
 			public void receiveInfoDirect(ArrayList inList) {
 				RealmDirectInfoHolder info = new RealmDirectInfoHolder(client.getGameData(), inList);
@@ -1203,10 +1339,20 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				handleBroadcast(key, message);
 			}
 		};
+		// PROMOTE-TO-DEFAULT: remove this line when reconnect is stable enough to always be on.
+		client.setReconnectEnabled(parent.getRealmSpeakOptions().getOptions().getBoolean(RealmSpeakOptions.RECONNECT_ON_DISCONNECT, false));
+		// Capture the current client instance so the listener below can detect staleness.
+		// On reconnect a new GameClient is created and the 'client' field is reassigned,
+		// but any invokeLater runnables queued by the OLD client's listener are still in
+		// the EDT queue. When they fire, 'client != setupClient' (field points to the new
+		// client, captured local still points to the old one), so they return immediately
+		// rather than calling updateGameHandler() on a session that has already moved on.
+		final GameClient setupClient = client;
 		client.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent ev) {
 				SwingUtilities.invokeLater(new Runnable() {
 					public void run() {
+						if (client != setupClient) return; // stale runnable from a replaced client — discard
 						updateGameHandler();
 					}
 				});
@@ -1238,7 +1384,47 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		// // empty
 		// }
 
+		if (disconnectDialogShowing) return;
 		if (!client.isConnected()) {
+			if (client.isUnexpectedDisconnect()) {
+				client.clearUnexpectedDisconnect();
+				if (hostPlayer) {
+					return; // host's own client connection broke; game continues, serverLost() handles cleanup
+				}
+				for (CharacterFrame frame : characterFrames.values()) {
+					frame.getCharacter().setMissingInAction(true);
+					frame.repaint();
+				}
+				characterTableModel.rebuild();
+				characterTable.repaint();
+				getMainFrame().showStatus("Disconnected from server — use Network > Reconnect to reconnect.");
+				Object[] options = {"Reconnect", "Restart", "Exit", "Ok"};
+				disconnectDialogShowing = true;
+				int choice;
+				try {
+					choice = JOptionPane.showOptionDialog(getMainFrame(),
+							"Disconnected from server.",
+							"Disconnected",
+							JOptionPane.DEFAULT_OPTION,
+							JOptionPane.INFORMATION_MESSAGE,
+							null, options, options[3]);
+				} finally {
+					disconnectDialogShowing = false;
+				}
+				if (choice == 0) {
+					reconnect();
+				} else if (choice == 1) {
+					parent.killHandler();
+				} else if (choice == 2) {
+					System.exit(0);
+				} else {
+					getMainFrame().setClientDisconnectedUnexpectedly();
+				}
+				return;
+			}
+			if (hostPlayer) {
+				return;
+			}
 			parent.killHandler();
 			if (!client.isLeave()) {
 				// This is bad - need to shut down the game handler
@@ -1379,6 +1565,10 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			// Update character table
 			updateCharacterList();
 			updateControls();
+			if (!layoutRestoreAttempted && !characterFrames.isEmpty()) {
+				layoutRestoreAttempted = true;
+				restoreClientLayout();
+			}
 		}
 	}
 
@@ -1975,13 +2165,27 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	public void submitChanges() {
 		logger.finer("submitChanges()");
-		GameClient.submitAndWait(client);
+		try {
+			GameClient.submitAndWait(client);
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChanges failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
-	
+
 	public void submitChangesWithTimeout() {
-		logger.finer("submitChanges()");
-		client.submitWithTimeout();
+		logger.finer("submitChangesWithTimeout()");
+		try {
+			client.submitWithTimeout();
+		}
+		catch(RuntimeException ex) {
+			logger.warning("submitChangesWithTimeout failed - client disconnected: " + ex.getMessage());
+			parent.killHandler();
+			return;
+		}
 		characterTable.repaint();
 	}
 
@@ -2128,6 +2332,12 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 						characterFrameOrder.add(0, id);
 						playerWarned.remove(character.getGameObject().getStringId()); // just in case
 						framesCreated = true;
+						if (layoutSaveTimer != null) {
+							frame.addComponentListener(new ComponentAdapter() {
+								@Override public void componentMoved(ComponentEvent e)   { scheduleLayoutSave(); }
+								@Override public void componentResized(ComponentEvent e) { scheduleLayoutSave(); }
+							});
+						}
 						// broadcastChat(character,"<JOINED>"); // This just
 						// looks ugly in the chat
 					}
@@ -2289,7 +2499,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 
 	private ActionListener clientSubmitter = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
-			GameClient.submitAndWait(client);
+			try {
+				GameClient.submitAndWait(client);
+			}
+			catch(RuntimeException ex) {
+				logger.warning("clientSubmitter failed - client disconnected: " + ex.getMessage());
+				parent.killHandler();
+			}
 		}
 	};
 
@@ -2458,6 +2674,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 						}
 						return name;
 					case 5:
+						if (game == null) return null;
 						boolean waiting = !game.getPlaceGoldSpecials() && !game.getGameStarted();
 						return character.getGameStatus(waiting);
 				}
