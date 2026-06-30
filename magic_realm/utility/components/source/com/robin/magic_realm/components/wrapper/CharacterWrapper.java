@@ -94,6 +94,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String SPELL_CONFLICTS = "_sp_cfct_";
 	public static final String STOP_FOLLOWING = "_st_F";
 	public static final String NEXT_PENDING_ACTION = "_npa_";
+	public static final String CURRENT_ACTION_PHASE_TOTAL = "_capt_";
+	public static final String CURRENT_ACTION_PHASE_INDEX = "_capi_";
 	public static final String DEATH_REASON = "_dxr_";
 	public static final String FORTIFIED = "_frtfid_";
 	public static final String FORT_DAMAGED = "_frtdmg_";
@@ -106,21 +108,37 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String FOLLOW_SPELL = "_flls_";
 	public static final String NEED_QUEST_CHECK = "_qc_";
 	public static final String DISCARDED_QUESTS = "_dq_";
-	public static final String NEEDS_BLOCK_DECISION = "_bckdc_";
+	public static final String NEEDS_REACT_DECISION = "_bckdc_";
 	public static final String NEEDS_BLOCK_EVALUATION = "_bckevl_";
 	public static final String INTERRUPT_PHASE_DECISION = "_ipdc_";
 	public static final String NEEDS_COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION = "_ccipbdc_";
 	public static final String NEEDS_COLOR_CHIT_INTERRUPT_PHASE_END_DECISION = "_ccipedc_";
 	public static final String COLOR_CHIT_INTERRUPTION_ACTION_COUNT_PHASE_BEGINNING = "_cciacpa_";
 	public static final String COLOR_CHIT_INTERRUPTION_ACTION_COUNT_PHASE_END = "_cciacpe_";
+	// Pre-phase activity flags: NEEDS_PRE_PHASE_ACTIVITY_DECISION marks that a character must resolve their
+	// pre-phase dialog before the phasing character's next action executes. PRE_PHASE_ACTIVITY_ACTION_COUNT
+	// records how many actions the phasing character had performed when the interrupt was triggered, so that
+	// the same action does not trigger a second interrupt if process() is called again while the dialog is open.
+	// Both flags are cleared at day end via clearDaylight() to avoid stale state carrying across days.
+	public static final String NEEDS_PRE_PHASE_ACTIVITY_DECISION = "_ppdc_";
+	public static final String PRE_PHASE_ACTIVITY_ACTION_COUNT = "_ppac_";
+	public static final String PRE_PHASE_NON_PHASING_ACTION_COUNT = "_ppnpac_";
+	// Post-phase activity flags: symmetric counterpart to the pre-phase flags. NEEDS_POST_PHASE_ACTIVITY_DECISION
+	// marks that a character must resolve their post-phase dialog before the phasing character's next action
+	// executes. POST_PHASE_ACTIVITY_ACTION_COUNT records the action count AFTER the triggering action completed,
+	// which is always one higher than the corresponding pre-phase count, ensuring no collision between the two.
+	// Participants are all individuals in the clearing the phasing individual occupies AFTER the action.
+	public static final String NEEDS_POST_PHASE_ACTIVITY_DECISION = "_poPdc_";
+	public static final String POST_PHASE_ACTIVITY_ACTION_COUNT = "_poPac_";
 	
 	public static final String CURRENT_GUILD = "_ccg_";
 	public static final String CURRENT_GUILD_LEVEL = "_ccgl_";
 	public static final String CURRENT_GUILD_JOIN_REQUIREMENT = "_ccjr_";
 
-	public static final String BLOCKING = "bkkng_"; // indicates the character is blocking everything in the clearing
-	public static final String BLOCK_DECISION = "bkkng_dec"; // the blocking character has decided what to do
-	public static final String KEEP_BLOCKING = "keep_bkkng_";
+	public static final String REACTING = "bkkng_"; // indicates the character has inter-phase reactions enabled (blocking, color-chit play, etc.)
+	public static final String REACT_DECISION = "bkkng_dec"; // the reacting character has decided what to do
+	public static final String KEEP_REACTING = "keep_bkkng_";
+	public static final String SKIP_PRE_PHASE_FATIGUE_CHIT_ONLY = "skip_pp_fat_chit_only_";
 	public static final String COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION = "_ccipbdc_dec";
 	public static final String COLOR_CHIT_INTERRUPT_PHASE_END_DECISION = "_ccipec_dec";
 	
@@ -393,27 +411,27 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public boolean isBlocked() {
 		return getBoolean(IS_BLOCKED);
 	}
-	public boolean isBlocking() {
-		return getBoolean(BLOCKING);
+	public boolean isReacting() {
+		return getBoolean(REACTING);
 	}
-	public boolean keepsBlocking() {
-		return getBoolean(KEEP_BLOCKING);
+	public boolean keepsReacting() {
+		return getBoolean(KEEP_REACTING);
 	}
-	public boolean hasBlockDecision(GameObject go) {
-		ArrayList<String> list = getList(BLOCK_DECISION);
+	public boolean hasReactDecision(GameObject go) {
+		ArrayList<String> list = getList(REACT_DECISION);
 		return list!=null && list.contains(go.getStringId());
 	}
-	public void removeBlockDecision(GameObject go) {
-		ArrayList<String> list = getList(BLOCK_DECISION);
+	public void removeReactDecision(GameObject go) {
+		ArrayList<String> list = getList(REACT_DECISION);
 		if (list!=null && list.contains(go.getStringId())) {
 			list.remove(go.getStringId());
 		}
 	}
-	public ArrayList<String> getAllBlockDecisions() {
-		return getList(BLOCK_DECISION);
+	public ArrayList<String> getAllReactDecisions() {
+		return getList(REACT_DECISION);
 	}
-	public void removeAllBlockDecisions() {
-		setBoolean(BLOCK_DECISION,false);
+	public void removeAllReactDecisions() {
+		setBoolean(REACT_DECISION,false);
 	}
 	public boolean hasColorChitInterruptPhaseBeginningDecision(GameObject go) {
 		ArrayList<String> list = getList(COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION);
@@ -623,8 +641,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public boolean getNeedsActionPanelUpdate() {
 		return getBoolean(NEEDS_ACTION_PANEL_UPDATE);
 	}
-	public boolean getNeedsBlockDecision() {
-		return getBoolean(NEEDS_BLOCK_DECISION);
+	public boolean getNeedsReactDecision() {
+		return getBoolean(NEEDS_REACT_DECISION);
 	}
 	public boolean getNeedsBlockEvaluation() {
 		return getBoolean(NEEDS_BLOCK_EVALUATION);
@@ -644,7 +662,13 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public boolean isOffroadTravelLost() {
 		return getBoolean(OFFROAD_TRAVEL_LOST);
 	}
-	
+	public boolean getNeedsPrePhaseActivityDecision() {
+		return getBoolean(NEEDS_PRE_PHASE_ACTIVITY_DECISION);
+	}
+	public int getPrePhaseActivityActionCount() {
+		if (getBoolean(PRE_PHASE_ACTIVITY_ACTION_COUNT) == false) return -1;
+		return getInt(PRE_PHASE_ACTIVITY_ACTION_COUNT);
+	}
 	// Other getters
 	public int getNextCacheNumber() {
 		int n = getInt(CACHE_NUMBER);
@@ -726,14 +750,6 @@ public class CharacterWrapper extends GameObjectWrapper {
 			result = result + " (Asleep)";
  		}
  		
- 		if (isBlocking() && (getNeedsPlayColorChitInterruptPhaseBeginningDecision() || getNeedsPlayColorChitInterruptPhaseEndDecision())) {
- 			result = result + " (REACTING?!)";
- 		}
- 		
- 		if (isBlocking() && (getNeedsBlockDecision() || getNeedsInterruptPhaseDecision())) {
- 			result = result + " (BLOCKING?!)";
- 		}
-		
 		return prefix+result;
 	}
 	public Strength getVulnerability() {
@@ -1726,6 +1742,25 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void setNextPendingAction(String val) {
 		setString(NEXT_PENDING_ACTION,val);
 	}
+	public int getCurrentActionPhaseTotal() {
+		String val = getString(CURRENT_ACTION_PHASE_TOTAL);
+		if (val == null) return 1;
+		try { return Integer.parseInt(val); } catch (NumberFormatException e) { return 1; }
+	}
+	public void setCurrentActionPhaseTotal(int total) {
+		setString(CURRENT_ACTION_PHASE_TOTAL, String.valueOf(total));
+	}
+	public void removeCurrentActionPhaseTotal() {
+		getGameObject().removeThisAttribute(CURRENT_ACTION_PHASE_TOTAL);
+	}
+	public int getCurrentActionPhaseIndex() {
+		String val = getString(CURRENT_ACTION_PHASE_INDEX);
+		if (val == null) return 1;
+		try { return Integer.parseInt(val); } catch (NumberFormatException e) { return 1; }
+	}
+	public void setCurrentActionPhaseIndex(int index) {
+		setString(CURRENT_ACTION_PHASE_INDEX, String.valueOf(index));
+	}
 	public boolean hasCurrentAction(String action) {
 		ActionId id = getIdForAction(action);
 		Collection<String> c = getCurrentActions();
@@ -1809,7 +1844,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void addCurrentActionValid(boolean val) {
 		addListItem(getCurrentDayKey()+"V",val?"T":"F");
 	}
-	public void addActionPerformedToday(String action,ActionState state,String message,DieRoller roller) {
+	public void addActionPhasePerformedToday(String action,ActionState state,String message,DieRoller roller) {
 		String prefix=" ";
 		switch(state) {
 			case Completed:
@@ -1838,7 +1873,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		ArrayList<String> list = getList(getCurrentDayKey()+"P");
 		return list!=null && list.size()>0;
 	}
-	public int getNumberOfPerformedActionsToday() {
+	public int getNumberOfPerformedActionPhasesToday() {
 		ArrayList<String> list = getList(getCurrentDayKey()+"P");
 		if (list==null) return 0;
 		return list.size();
@@ -1854,6 +1889,12 @@ public class CharacterWrapper extends GameObjectWrapper {
 			}
 		}
 		return null;
+	}
+	public String getLastPerformedAction() {
+		ArrayList<String> list = getList(getCurrentDayKey()+"P");
+		if (list == null || list.isEmpty()) return null;
+		String last = list.get(list.size() - 1);
+		return last.length() > 1 ? last.substring(1) : null;
 	}
 	public ActionState getStateForAction(String action,int index) {
 		ActionState state = ActionState.Pending; // default
@@ -2079,11 +2120,11 @@ public class CharacterWrapper extends GameObjectWrapper {
 		logger.fine("applyMidnight");
 //		setHidden(false); // This doesn't happen at midnight:  happens at the start of the player turn (rule 8.3)
 		setBlocked(false);
-		if (keepsBlocking()) {
-			setBlocking(true);
+		if (keepsReacting()) {
+			setReacting(true);
 		}
 		else {
-			setBlocking(false);
+			setReacting(false);
 		}
 		setNoSummon(false);
 		setPeerAny(false);
@@ -2106,6 +2147,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 		getGameObject().removeThisAttribute(Constants.FREE_ENCHANT_CHIT_USED);
 		removeColorChitInterruptionActionCountPhaseBeginning();
 		removeColorChitInterruptionActionCountPhaseEnd();
+		removePrePhaseActivityActionCount();
+		removePostPhaseActivityActionCount();
 		
 		if (getPonyGameObject()!=null) {
 			ArrayList<RealmComponent> fhList = getFollowingHirelings();
@@ -2341,6 +2384,14 @@ public class CharacterWrapper extends GameObjectWrapper {
 		return getGameObject().hasThisAttribute(Constants.MIST_LIKE);
 	}
 	
+	public boolean isSmall() {
+		GameObject transmorph = getTransmorph();
+		if (transmorph != null) {
+			return transmorph.hasThisAttribute(Constants.SMALL);
+		}
+		return getGameObject().hasThisAttribute(Constants.SMALL);
+	}
+
 	//can walk woods in valley tiles
 	public boolean isValeWalker(){
 		return this.getGameObject().hasThisAttribute(Constants.VALE_WALKER);
@@ -2847,7 +2898,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		if (isOffroadTravelLost() && id!=ActionId.Offroad) {
 			return false;
 		}
-		
+
 		// Test hide
 		if (id==ActionId.Hide) {
 			RealmCalendar cal = RealmCalendar.getCalendar(getGameObject().getGameData());
@@ -3828,17 +3879,23 @@ public class CharacterWrapper extends GameObjectWrapper {
 			setBoolean(IS_BLOCKED,val);
 		}
 	}
-	public void setBlocking(boolean val) {
-		setBoolean(BLOCKING,val);
-		
+	public void setReacting(boolean val) {
+		setBoolean(REACTING,val);
+
 		// Regardless, clear all decisions!
-		setBoolean(BLOCK_DECISION,false);
+		setBoolean(REACT_DECISION,false);
 	}
-	public void addBlockDecision(GameObject go) {
-		addListItem(BLOCK_DECISION,go.getStringId());
+	public void addReactDecision(GameObject go) {
+		addListItem(REACT_DECISION,go.getStringId());
 	}
-	public void setKeepBlocking(boolean val) {
-		setBoolean(KEEP_BLOCKING,val);
+	public void setKeepReacting(boolean val) {
+		setBoolean(KEEP_REACTING,val);
+	}
+	public boolean skipsPrePhaseWhenFatigueChitOnly() {
+		return getBoolean(SKIP_PRE_PHASE_FATIGUE_CHIT_ONLY);
+	}
+	public void setSkipPrePhaseWhenFatigueChitOnly(boolean val) {
+		setBoolean(SKIP_PRE_PHASE_FATIGUE_CHIT_ONLY, val);
 	}
 	public void addColorChitInterruptPhaseBeginningDecision(GameObject go) {
 		addListItem(COLOR_CHIT_INTERRUPT_PHASE_BEGINNING_DECISION,go.getStringId());
@@ -4064,8 +4121,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void setNeedsActionPanelUpdate(boolean val) {
 		setBoolean(NEEDS_ACTION_PANEL_UPDATE,val);
 	}
-	public void setNeedsBlockDecision(boolean val) {
-		setBoolean(NEEDS_BLOCK_DECISION,val);
+	public void setNeedsReactDecision(boolean val) {
+		setBoolean(NEEDS_REACT_DECISION,val);
 	}
 	public void setNeedsBlockEvaluation(boolean val) {
 		setBoolean(NEEDS_BLOCK_EVALUATION,val);
@@ -4104,7 +4161,31 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void setOffroadTravelLost(boolean val) {
 		setBoolean(OFFROAD_TRAVEL_LOST,val);
 	}
-	
+	public void setNeedsPrePhaseActivityDecision(boolean val) {
+		setBoolean(NEEDS_PRE_PHASE_ACTIVITY_DECISION, val);
+	}
+	public void setPrePhaseActivityActionCount(int val) {
+		setInt(PRE_PHASE_ACTIVITY_ACTION_COUNT, val);
+	}
+	public boolean getNeedsPostPhaseActivityDecision() {
+		return getBoolean(NEEDS_POST_PHASE_ACTIVITY_DECISION);
+	}
+	public int getPostPhaseActivityActionCount() {
+		if (getBoolean(POST_PHASE_ACTIVITY_ACTION_COUNT) == false) return -1;
+		return getInt(POST_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+	public void setNeedsPostPhaseActivityDecision(boolean val) {
+		setBoolean(NEEDS_POST_PHASE_ACTIVITY_DECISION, val);
+	}
+	public void setPostPhaseActivityActionCount(int val) {
+		setInt(POST_PHASE_ACTIVITY_ACTION_COUNT, val);
+	}
+	public void removePostPhaseActivityActionCount() {
+		removeAttribute(POST_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+	public void removePrePhaseActivityActionCount() {
+		removeAttribute(PRE_PHASE_ACTIVITY_ACTION_COUNT);
+	}
 	// Adders
 	public void addGold(double val) {
 		addGold(val,false);
@@ -8616,7 +8697,7 @@ public class CharacterWrapper extends GameObjectWrapper {
     private ArrayList<RealmComponent> getPossibleBlockees(boolean interruptMovement, TileLocation loc) {
 		if (getNeedsBlockEvaluation()) return null;
     	ArrayList<RealmComponent> list = null;
-		if (isBlocking() && !isMistLike() && !isMinion() && !isSleep() && !getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)) {
+		if (isReacting() && !isMistLike() && !isMinion() && !isSleep() && !getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)) {
 			TileLocation current;
 			if (loc!=null) {
 				current = loc;
@@ -8638,7 +8719,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 							if ((!target.isMistLike() || !getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) && !target.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) && !target.isSleep() && !target.getNeedsBlockEvaluation() && (takingTurn || targetPlayingTurn)
 									&& ((target.getTransmorph()==null && !target.getGameObject().hasThisAttribute(Constants.SMALL)) || ((target.getTransmorph()!=null && !target.getTransmorph().hasThisAttribute(Constants.SMALL))) || !hostPrefs.hasPref(Constants.HOUSE3_SMALL_MONSTERS))) {
 								if (!target.isHidden() || foundHiddenEnemy(rc.getGameObject())) {
-									if (!target.isBlocked() && !hasBlockDecision(target.getGameObject())) {
+									if (!target.isBlocked() && !hasReactDecision(target.getGameObject())) {
 										// Jeese, ENOUGH conditions to get here!!!!!  :)
 										list.add(rc);
 									}
@@ -8655,25 +8736,34 @@ public class CharacterWrapper extends GameObjectWrapper {
     public ArrayList<RealmComponent> checkForBlockingState() {
     	return checkForBlockingState(false,null);
     }
+
+	public ArrayList<RealmComponent> getBlockableCandidates(TileLocation loc) {
+		if (!isReacting() || isMistLike() || isSleep()
+				|| getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) || isMinion()) {
+			return new ArrayList<>();
+		}
+		ArrayList<RealmComponent> result = getPossibleBlockees(true, loc);
+		return result != null ? result : new ArrayList<>();
+	}
     
 	public ArrayList<RealmComponent> checkForBlockingState(boolean interruptPhase,TileLocation loc) {
 		ArrayList<RealmComponent> blockees = null;
 		// Check for blocking state
-		if (isBlocking() && !isMistLike() && !isSleep() && !getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) && !isMinion()) {
+		if (isReacting() && !isMistLike() && !isSleep() && !getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) && !isMinion()) {
 			// Look for characters in the clearing
 			blockees = getPossibleBlockees(interruptPhase,loc);
 			if (blockees!=null && !blockees.isEmpty()) {
 				if (interruptPhase) {
 					setInterruptPhaseDecision(true);
 				} else {
-					setNeedsBlockDecision(true);
+					setNeedsReactDecision(true);
 				}
 			}
 			else {
 				if (interruptPhase) {
 					setInterruptPhaseDecision(false);
 				} else {
-					setNeedsBlockDecision(false);
+					setNeedsReactDecision(false);
 				}
 			}
 		}
@@ -8683,7 +8773,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public ArrayList<RealmComponent> checkForColorChitInterruptionState(TileLocation loc,boolean phaseBeginnig, boolean phaseEnd) {
 		ArrayList<RealmComponent> interruptions = null;
 		// Check for blocking state
-		if (this.isPlayingTurn() || !isBlocking()) {
+		if (this.isPlayingTurn() || !isReacting()) {
 			setNeedsPlayColorChitInterruptPhaseDecision(false,phaseBeginnig,phaseEnd);
 			return null;
 		}
@@ -8703,7 +8793,7 @@ public class CharacterWrapper extends GameObjectWrapper {
     public ArrayList<RealmComponent> getPossibleColorChitInterruptions(TileLocation loc,boolean phaseBeginnig, boolean phaseEnd) {
     	if (getColorMagicChits().size()==0 || getGameObject().hasThisAttribute(Constants.MAGIC_PROTECTION_EXTENDED)) return null;
     	ArrayList<RealmComponent> list = null;
-		if (isBlocking() && !isMinion()) {
+		if (isReacting() && !isMinion()) {
 			TileLocation current;
 			if (loc!=null) {
 				current = loc;
@@ -8741,7 +8831,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 				if (!rc.getGameObject().getStringId().matches(getGameObject().getStringId()) && rc.isPlayerControlledLeader()) {
 					CharacterWrapper otherCharacter = new CharacterWrapper(rc.getGameObject());
 					if (otherCharacter.isSleep() && hostPrefs.hasPref(Constants.OPT_NO_COLOR_CHIT_FOR_SLEEPING_CHARACTERS)) continue;
-					if (otherCharacter.isBlocking() && otherCharacter.getColorMagicChits().size()>0 && !rc.getGameObject().hasThisAttribute(Constants.MAGIC_PROTECTION_EXTENDED)) {
+				if (otherCharacter.isReacting() && otherCharacter.getColorMagicChits().size()>0 && !rc.getGameObject().hasThisAttribute(Constants.MAGIC_PROTECTION_EXTENDED)) {
 						// Only count a blocker as an interrupter if checkForColorChitInterruptionState actually
 						// determined they need to play (i.e., the phasing character is a valid interrupt target).
 						// Familiars are not PlayerControlledLeaders, so blocking characters correctly set
