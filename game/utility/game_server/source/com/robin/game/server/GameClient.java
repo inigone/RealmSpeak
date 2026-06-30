@@ -21,7 +21,14 @@ public abstract class GameClient extends GameNet {
 	public static final String DATA_NAME = "client";
 	
 	private static GameClient mostRecentClient = null;
-	
+
+	public enum DisconnectAction { RECONNECT, RESTART, EXIT }
+
+	// PROMOTE-TO-DEFAULT: remove this flag and the setReconnectEnabled/isReconnectEnabled methods,
+	// remove the guard in onDisconnected(), and remove RECONNECT_ON_DISCONNECT from RealmSpeakOptions,
+	// RealmSpeakOptionPanel, and RealmGameHandler when reconnect is stable enough to always be on.
+	private boolean reconnectEnabled = false;
+
 	private static Logger logger = Logger.getLogger(GameClient.class.getName());
 	
 	// Client messages
@@ -43,6 +50,7 @@ public abstract class GameClient extends GameNet {
 	protected ArrayList<RequestObject> requestQueue = new ArrayList<RequestObject>();
 	
 	boolean clientDead = false;
+	boolean unexpectedDisconnect = false;
 
 	protected String clientName;
 	protected String clientPass;
@@ -133,6 +141,12 @@ public abstract class GameClient extends GameNet {
 	public boolean isConnected() {
 		return connected;
 	}
+	public boolean isUnexpectedDisconnect() {
+		return unexpectedDisconnect;
+	}
+	public void clearUnexpectedDisconnect() {
+		unexpectedDisconnect = false;
+	}
 	public boolean isLeave() {
 		return leave;
 	}
@@ -145,7 +159,15 @@ public abstract class GameClient extends GameNet {
 	public boolean isHosting() {
 		return hosting;
 	}
-	
+
+	public void setReconnectEnabled(boolean enabled) {
+		reconnectEnabled = enabled;
+	}
+
+	public boolean isReconnectEnabled() {
+		return reconnectEnabled;
+	}
+
 	public void addChangeListener(ChangeListener listener) {
 		if (changeListeners==null) {
 			changeListeners = new ArrayList();
@@ -218,8 +240,7 @@ public abstract class GameClient extends GameNet {
 		ArrayList<GameObjectChange> list;
 		if (!ro.isIdle()) logger.fine("handleResponse "+ro);
 		int response;
-		try {
-			switch(ro.getRequest()) {
+		switch(ro.getRequest()) {
 				case REQUEST_IDLE: // this is the default, if the requestQueue is empty
 					response = getInputStream().readInt();
 					// This is where the client is subverted by the server
@@ -312,16 +333,78 @@ public abstract class GameClient extends GameNet {
 					break;
 			}
 			if (!ro.isIdle()) logger.fine("finished "+ro);
-		}
-		catch(SocketException ex) {
-			leave = true;
-			fireStateChanged();
-			JOptionPane.showMessageDialog(null,"The server was shut down.  Game over!!");
-		}
 	}
 	public void run() {
+		if (connection == null) {
+			if (!connectSocket()) {
+				fireStateChanged();
+				mostRecentClient = null;
+				return;
+			}
+		}
+
+		boolean running = true;
+		while (running) {
+			running = false;
+			try {
+				send(REQUEST_LOGIN);
+				String password = (String)getInputStream().readObject();
+
+				if (clientPass.equals(password)) {
+					logger.info("GameClient "+clientName+": logged in");
+					doRequest(new RequestObject(SUBMIT_LOGIN));
+					connected = true;
+					fireStateChanged();
+
+					logger.info("GameClient "+clientName+": main loop started");
+					while(!timeToLeave()) {
+						doRequest(getNextInQueue());
+						while(requestQueue.size()>0) {
+							doRequest(getNextInQueue());
+						}
+					}
+				}
+				else {
+					JOptionPane.showMessageDialog(null,"Invalid Password","Login Error",JOptionPane.ERROR_MESSAGE);
+					leave = true;
+				}
+				try {
+					send(SUBMIT_GOODBYE);
+					if (in != null) in.close();
+					if (out != null) out.close();
+					connection.close();
+				}
+				catch(SocketException ex) {
+					// ignore
+				}
+				catch(IOException ex) {
+					// ignore
+				}
+				connected = false;
+				fireStateChanged();
+			}
+			catch(SocketTimeoutException ex) {
+				System.err.println("Timed out!");
+				ex.printStackTrace();
+				running = onDisconnected();
+			}
+			catch(IOException ex) {
+				ex.printStackTrace();
+				running = onDisconnected();
+			}
+			catch(Exception ex) {
+				ex.printStackTrace();
+				running = onDisconnected();
+			}
+		}
+
+		clientDead = true;
+		mostRecentClient = null;
+	}
+
+	private boolean connectSocket() {
 		int attempts = 0;
-		while(connection==null && (attempts++)<5) { // only try 5 times
+		while (connection==null && (attempts++)<5) {
 			if (ipAddress==null) {
 				mostRecentClient = null;
 				throw new IllegalStateException("Can't start an unconnected GameClient with a null ipAddress!!!");
@@ -333,82 +416,90 @@ public abstract class GameClient extends GameNet {
 				logger.info("Client connected");
 			}
 			catch(IOException ex) {
-				// Server might not be ready yet...  wait a half-second and try again
 				connection = null;
 				try {
 					Thread.sleep(500);
 				}
 				catch(InterruptedException iex) {
-					// this would be bad, so exit here
 					iex.printStackTrace();
 					mostRecentClient = null;
-					return; // This ends the thread
+					return false;
 				}
 			}
 		}
-		
-		if (connection==null) {
-			// Couldn't get a good connection - ever.
-			fireStateChanged();
-			mostRecentClient = null;
-			return; // This ends the thread
-		}
+		return connection != null;
+	}
 
-		try {
-			// Do login first
-			send(REQUEST_LOGIN);
-			String password = (String)getInputStream().readObject();
-			
-			if (clientPass.equals(password)) {
-				logger.info("GameClient "+clientName+": logged in");
-				// Send name information
-				doRequest(new RequestObject(SUBMIT_LOGIN));
-				connected = true;
-				
-				fireStateChanged();
-				
-				// Now, loop through queue
-				logger.info("GameClient "+clientName+": main loop started");
-				while(!timeToLeave()) {
-					doRequest(getNextInQueue());
-					
-					// Process any other requests in the queue, if there are any
-					while(requestQueue.size()>0) {
-						doRequest(getNextInQueue());
-					}
-//if ((beeper++)%10==0) {System.out.println("BEEP! "+beeper);}					
-				}
-			}
-			else {
-				JOptionPane.showMessageDialog(null,"Invalid Password","Login Error",JOptionPane.ERROR_MESSAGE);
-			}
-			try {
-				send(SUBMIT_GOODBYE);
-				in.close();
-				out.close();
-				connection.close();
-			}
-			catch(SocketException ex) {
-				// ignore
-			}
-			catch(IOException ex) {
-				// ignore
-			}
-			connected = false;
+	private boolean onDisconnected() {
+		// Close the socket so the server-side thread gets an IOException immediately rather than
+		// waiting for its own SO_TIMEOUT. Without this, isNameUnique() still sees the old
+		// GameServer in the list and rejects a reconnect (or same-name re-login) attempt.
+		try { if (in != null) in.close(); } catch(IOException iex) { }
+		try { if (out != null) out.close(); } catch(IOException iex) { }
+		try { if (connection != null) connection.close(); } catch(IOException iex) { }
+		if (!reconnectEnabled) {
+			unexpectedDisconnect = true;
 			fireStateChanged();
+			return false;
 		}
-		catch(SocketTimeoutException ex) {
-			System.err.println("Timed out!");
-			ex.printStackTrace();
+		switch (handleDisconnect()) {
+			case RECONNECT:
+				resetForReconnect();
+				if (ipAddress != null && !connectSocket()) {
+					JOptionPane.showMessageDialog(null,"Unable to reach server at "+ipAddress+".","Reconnect Failed",JOptionPane.ERROR_MESSAGE);
+					leave = true;
+					connected = false;
+					unexpectedDisconnect = true;
+					fireStateChanged();
+					return false;
+				}
+				return true;
+			case RESTART:
+				leave = true;
+				connected = false;
+				fireStateChanged();
+				return false;
+			case EXIT:
+			default:
+				System.exit(0);
+				return false;
+		}
+	}
+
+	protected DisconnectAction handleDisconnect() {
+		final DisconnectAction[] result = {DisconnectAction.EXIT};
+		try {
+			SwingUtilities.invokeAndWait(() -> {
+				Object[] options = {"Reconnect","Restart","Exit"};
+				int choice = JOptionPane.showOptionDialog(
+					null,
+					"Lost connection to server" + (ipAddress != null ? " ("+ipAddress+")" : "") + ".",
+					"Disconnected",
+					JOptionPane.YES_NO_CANCEL_OPTION,
+					JOptionPane.WARNING_MESSAGE,
+					null,
+					options,
+					options[0]);
+				if (choice == 0) result[0] = DisconnectAction.RECONNECT;
+				else if (choice == 1) result[0] = DisconnectAction.RESTART;
+			});
 		}
 		catch(Exception ex) {
 			ex.printStackTrace();
 		}
-		
-		clientDead = true;
-		
-		 // This ends the thread
-		mostRecentClient = null;
+		return result[0];
+	}
+
+	private void resetForReconnect() {
+		in = null;
+		out = null;
+		connection = null;
+		connected = false;
+		dataLoaded = false;
+		requestQueue.clear();
+		waitingSubmit = false;
+		gameData.rebuildChanges();
+		gameData.setTracksChanges(true);
 	}
 	private void doRequest(RequestObject ro) throws SocketTimeoutException,Exception {
 		send(ro.getRequest());
