@@ -157,6 +157,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		characterTable.getColumnModel().getColumn(2).setMaxWidth(100);
 		CharacterTableCellRenderer renderer = new CharacterTableCellRenderer();
 		characterTable.setDefaultRenderer(ImageIcon.class, renderer);
+		characterTable.setDefaultRenderer(String.class, renderer);
 		characterTable.setRowHeight(25);
 		characterTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
 			public void valueChanged(ListSelectionEvent ev) {
@@ -2465,6 +2466,45 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		}
 	}
 
+	/**
+	 * Returns true when the game is waiting for this character's player to provide input.
+	 * Used to highlight the character row in red in the character list.
+	 * <p>
+	 * During birdsong: the character has not yet submitted their planned actions.
+	 * During daylight: the character has a pending block decision (blocker deciding whether
+	 * to fight), needs to evaluate a block (blocked character responding), or it is their
+	 * turn and they are not currently blocked (waiting for a block to resolve).
+	 * During evening/combat: the character has an active combat state that requires
+	 * player input (status is non-zero, below the COMBAT_WAIT threshold, and not DONE),
+	 * or they need to evaluate a block.
+	 * During day-end: the character's trading dialog is open (not yet clicked Done Trading).
+	 */
+	private boolean needsInput(CharacterWrapper character) {
+		if (game == null) return false;
+		if (game.isRecording()) {
+			return character.isDoRecord();
+		}
+		if (game.isDaylight()) {
+			// Blocker needs to decide whether to fight or release
+			if (character.getNeedsReactDecision()) return true;
+			// Blocked character needs to respond to the block
+			if (character.getNeedsBlockEvaluation()) return true;
+			// Active turn, but not while waiting for a block to resolve
+			return character.getPlayOrder() == 1 && !character.isBlocked();
+		}
+		if (game.inCombat()) {
+			int status = character.getCombatStatus();
+			boolean activeStatus = status > 0
+				&& status < Constants.COMBAT_WAIT
+				&& status != Constants.COMBAT_DONE;
+			return activeStatus || character.getNeedsBlockEvaluation();
+		}
+		if (game.isDayEnd()) {
+			return character.isDayEndTradingActive();
+		}
+		return false;
+	}
+
 	private class CharacterTableCellRenderer extends DefaultTableCellRenderer {
 		public CharacterTableCellRenderer() {
 		}
@@ -2478,6 +2518,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			}
 			else {
 				setIcon(null);
+			}
+			CharacterWrapper character = characterTableModel.getCharacter(row);
+			if (character != null && needsInput(character)) {
+				setForeground(Color.RED);
+			}
+			else {
+				setForeground(isSel ? UIManager.getColor("Table.selectionForeground") : UIManager.getColor("Table.foreground"));
 			}
 			return this;
 		}
