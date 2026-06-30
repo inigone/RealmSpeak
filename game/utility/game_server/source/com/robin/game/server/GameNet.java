@@ -5,7 +5,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 
 public abstract class GameNet extends Thread {
-	public static int DEFAULT_TIMEOUT_MS = 10000;
+	public static int DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
 	/**
 	 * Client-side SO_TIMEOUT for the LOGIN SYNC ONLY.
 	 * that one reuqest has the server shipped the whole masterData-to-gameData diff
