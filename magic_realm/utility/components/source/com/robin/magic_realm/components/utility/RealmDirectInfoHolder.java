@@ -45,6 +45,7 @@ public class RealmDirectInfoHolder {
 	
 	public static final String HOST_NEED_EMAIL = "hsNeedEmail";
 	public static final String CLIENT_RESPOND_EMAIL = "clRespEmail";
+	public static final String CLIENT_LAYOUT = "clLayout";
 	
 	public static final String RANDOM_NUMBER_GENERATOR = "hsRndNumGen";
 	
