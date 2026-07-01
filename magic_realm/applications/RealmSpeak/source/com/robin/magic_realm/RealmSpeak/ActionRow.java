@@ -65,6 +65,7 @@ public class ActionRow {
 
 	private boolean isContinuation = false;        // true when this row is the 2nd+ sub-phase of a split multi-phase action
 	private boolean isActionNeedsFurtherPhases = false; // true when this row has been split — dispatch is deferred until the final phase
+	private boolean phaseIndexSet = false;         // guards the phase-index/total set so re-entries into process() don't double-increment
 
 	private RealmTable realmTable = null;
 
@@ -582,11 +583,14 @@ public class ActionRow {
 				// Store total phase count and current sub-phase index before handlePrePhase fires so
 				// the dialog header can show ordinal info for multi-phase actions. Non-continuation
 				// rows start a new action (P=1, PTOT=phaseCount); continuation rows increment P.
-				if (!isContinuation) {
-					character.setCurrentActionPhaseTotal(getPhaseCount());
-					character.setCurrentActionPhaseIndex(1);
-				} else {
-					character.setCurrentActionPhaseIndex(character.getCurrentActionPhaseIndex() + 1);
+				if (!phaseIndexSet) {
+					if (!isContinuation) {
+						character.setCurrentActionPhaseTotal(getPhaseCount());
+						character.setCurrentActionPhaseIndex(1);
+					} else {
+						character.setCurrentActionPhaseIndex(character.getCurrentActionPhaseIndex() + 1);
+					}
+					phaseIndexSet = true;
 				}
 				if (handlePrePhase(hostPrefs)) return;
 			}
