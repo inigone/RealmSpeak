@@ -422,8 +422,25 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				actionLabel.setFont(headerFont);
 				topRow.add(actionLabel);
 				int phaseM = cw.getCurrentActionPhaseTotal();
+				int phaseP = cw.getCurrentActionPhaseIndex();
+				// In the combined post+pre dialog (character has a pending post-phase decision),
+				// the stored index/total still reflect the just-completed phase because the
+				// continuation row hasn't processed yet. Look ahead to get the correct ordinal.
+				if (getCharacter().getNeedsPostPhaseActivityDecision()) {
+					if (phaseP < phaseM) {
+						// More sub-phases of the current action remain — upcoming is the next one.
+						phaseP++;
+					} else {
+						// Current action complete — upcoming is a fresh action; parse its phase count.
+						if (nextAction != null && nextAction.indexOf(',') >= 0) {
+							phaseM = nextAction.split(",", -1).length;
+							phaseP = 1;
+						} else {
+							phaseM = 1;
+						}
+					}
+				}
 				if (phaseM > 1) {
-					int phaseP = cw.getCurrentActionPhaseIndex();
 					subtitle = "(" + ordinal(phaseP) + " of " + phaseM + " phases for this action)";
 				}
 				break;
