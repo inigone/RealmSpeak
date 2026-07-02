@@ -574,9 +574,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		}
 		content.add(buildDialogNotePanel(), BorderLayout.NORTH);
 		content.add(preSection, BorderLayout.CENTER);
-		content.add(buildSouthArea(prePhaseActivityDialog, e -> showAboutDialog(prePhaseActivityDialog, ABOUT_PHASE_START, PRE_PHASE_COLOR), e -> submitPrePhaseActivities()), BorderLayout.SOUTH);
+		JButton[] preSubmitRef = {null};
+		content.add(buildSouthArea(prePhaseActivityDialog, e -> showAboutDialog(prePhaseActivityDialog, ABOUT_PHASE_START, PRE_PHASE_COLOR), e -> submitPrePhaseActivities(), preSubmitRef), BorderLayout.SOUTH);
 
 		prePhaseActivityDialog.setContentPane(content);
+		attachSubmitLabelListeners(content, prePhaseActivityDialog, preSubmitRef[0]);
 		prePhaseActivityDialog.pack();
 		prePhaseActivityDialog.setLocationRelativeTo(this);
 		prePhaseActivityDialog.setVisible(true);
@@ -584,32 +586,32 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private static final String ABOUT_PHASE_START =
-		"<html><b>Phase Start Reactions</b><br><br>" +
+		"<html><b>Phase-Start Reactions</b><br><br>" +
 		"Every action PHASE of a character's turn has a phase-start segment which allows the active character and others in their clearing to perform certain activities before the PHASE is executed.¹<br><br>" +
-		"The active character is generally allowed to perform Trades, Rearrange Belongings, and Mission Chit pickups before the PHASE begins, and they may also play or fatigue color magic chits.²<br><br>" +
+		"The active character is generally allowed to perform Trades, Rearrange Belongings, and Mission Chit pickups before the PHASE begins (MR 3rd Ed 7.2.[1, 2, 4]), and they may also play or fatigue color magic chits.²<br><br>" +
 		"Non-active characters in the same clearing may play or fatigue color magic chits if they have such.²<br><br>" +
 		"The active character first performs their phase-start activities (if any), then other characters in the clearing may perform their allowed phase-start activities (if any).<br><br>" +
-		"FOLLOWERS of an active guide are a special case of non-active characters who get additional phase-start capabilities: they may rearrange belongings, trade with others in the clearing,<br>" +
-		"pick up mission chits, and importantly, they may choose to stop following their guide <i>before</i> the PHASE is executed.<br><br>" +
+		"FOLLOWERS of an active guide are a special case of non-active characters who get additional phase-start capabilities: they may rearrange belongings, trade with others in the clearing (MR 3rd Ed 7.2.1.c),<br>" +
+		"and pick up mission chit (MR 3rd Ed 4.3.1).  They may also choose to stop following their guide (MR 3rd Ed 7.11.5) <i>before</i> the PHASE is executed.<br><br>" +
 		"The content of each Phase-Start dialog depends on the character's capabilities as well as the options the player has enabled/disabled wrt Reactions for the character.<br><br>" +
-		"Click <b>SUBMIT</b> to confirm your choices and allow play to continue.<br>" +
-		"Click <b>Hide</b> to hide the window temporarily — but the game waits until all players have SUBMITed.<br><br><br>" +
+		"Click [Do Nothing / SUBMIT] to confirm your choices and allow play to continue.<br><br>" +
+		"Click [Hide This Dialog] to hide the window temporarily — but the game waits until all players have submitted their choices.  The dialog can be accessed again via the button in the character window.<br><br><br>" +
 		"¹ A PHASE being executed usually means an ACTION itself is executed, like a Move, Alert, Rest, etc., but there are exceptions for multi-PHASE actions like a mountain-Move<br>" +
 		"where the ACTION is executed only in the final PHASE.<br><br>" +
-		"² As per 3rd edition rules. If using 1st edition rules, color magic chits are played instead at phase-end.</html>";
+		"² As per MR 3rd Ed 7.2.3. But if using 1st edition rules, color magic chits are played instead at phase-end.</html>";
 
 	private static final String ABOUT_PHASE_END =
-		"<html><b>Phase End Reactions</b><br><br>" +
+		"<html><b>Phase-End Reactions</b><br><br>" +
 		"Every action PHASE of a character's turn has a phase-end segment which allows the active character and others in their clearing to perform certain activities after the PHASE is executed.¹<br><br>" +
-		"Non-active characters in the same clearing may declare Blocking against the active character. Blocking cancels any remaining action phases for both characters.²<br><br>" +
-		"The active character may also block non-active characters in the clearing, or monsters that are present.<br><br>" +
+		"Non-active characters in the same clearing may declare Blocking (MR 3rd Ed 7.12) against a detectable² active character.  Blocking cancels any remaining action phases for both characters.³<br><br>" +
+		"The active character may also block detectable² non-active characters in the clearing, or monsters that are present.<br><br>" +
 		"If playing with 1st edition rules, the active character and non-active characters may play or fatigue color magic chits at phase-end.<br><br>" +
 		"The content of each Phase-End dialog depends on the character's capabilities as well as the options the player has enabled/disabled wrt Reactions.<br><br>" +
-		"Click <b>SUBMIT</b> to confirm your choices and allow play to continue.<br>" +
-		"Click <b>Hide</b> to hide the window temporarily — the game waits until all players have submitted.<br><br><br>" +
-		"¹ A PHASE being executed usually means an ACTION itself is executed, like a Move, Alert, Rest, etc., but there are exceptions for multi-PHASE actions like a mountain-Move<br>" +
-		"where the ACTION is executed only in the final PHASE.<br><br>" +
-		"² Both characters are considered Blocking each other — neither can perform any more action phases this turn.</html>";
+		"Click [Do Nothing / SUBMIT] to confirm your choices and allow play to continue.<br><br>" +
+		"Click [Hide This Dialog] to hide the window temporarily — but the game waits until all players have submitted their choices.  The dialog can be accessed again via the button in the character window.<br><br><br>" +
+		"¹ A PHASE being executed usually means an ACTION itself is executed, like a Move, Alert, Rest, etc., but there are exceptions for multi-PHASE actions like a mountain-Move where the ACTION is executed only in the final PHASE.<br><br>" +
+		"² A <i>detectable</i> character is either unhidden or may be hidden if the detecting character has found hidden enemies that day.<br><br>" +
+		"³ Both characters are considered Blocking each other — neither can perform any more action phases this turn.</html>";
 
 	private static final String ABOUT_PHASE_COMBINED =
 		"<html><b>Phase End &amp; Start Reactions — Combined Window</b><br><br>" +
@@ -707,22 +709,25 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		dlg.setVisible(true);
 	}
 
-	private static JPanel buildSouthArea(JDialog dialog, ActionListener aboutAction, ActionListener submitAction) {
+	private static JPanel buildSouthArea(JDialog dialog, ActionListener aboutAction, ActionListener submitAction, JButton[] submitRef) {
 		JButton aboutButton = new JButton("About");
 		aboutButton.addActionListener(aboutAction);
-		JButton hideButton = new JButton("Hide");
+		aboutButton.setToolTipText("How to use this dialog and MR rules references.");
+		JButton hideButton = new JButton("Hide This Dialog");
 		hideButton.addActionListener(e -> dialog.setVisible(false));
-		JButton submitButton = new JButton("SUBMIT");
+		hideButton.setToolTipText("Temporarily hide this dialog.  Show it again by clicking the button in the Character window.");
+		JButton submitButton = new JButton("Do Nothing");
 		submitButton.addActionListener(submitAction);
+		submitRef[0] = submitButton;
 
 		JPanel buttonRow = new JPanel(new BorderLayout());
 		JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
 		leftButtons.add(aboutButton);
-		JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-		rightButtons.add(hideButton);
+		leftButtons.add(hideButton);
+		JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 		rightButtons.add(submitButton);
 		buttonRow.add(leftButtons, BorderLayout.WEST);
-		buttonRow.add(rightButtons, BorderLayout.CENTER);
+		buttonRow.add(rightButtons, BorderLayout.EAST);
 
 		JPanel southArea = new JPanel();
 		southArea.setLayout(new BoxLayout(southArea, BoxLayout.Y_AXIS));
@@ -730,6 +735,28 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		southArea.add(Box.createVerticalStrut(6));
 		southArea.add(buttonRow);
 		return southArea;
+	}
+	private static boolean hasAnySelection(Container c) {
+		for (Component comp : c.getComponents()) {
+			if (comp instanceof AbstractButton && !(comp instanceof JButton)) {
+				if (((AbstractButton)comp).isSelected()) return true;
+			}
+			if (comp instanceof Container) {
+				if (hasAnySelection((Container)comp)) return true;
+			}
+		}
+		return false;
+	}
+	private static void attachSubmitLabelListeners(Container c, JDialog dialog, JButton submitBtn) {
+		for (Component comp : c.getComponents()) {
+			if (comp instanceof AbstractButton && !(comp instanceof JButton)) {
+				((AbstractButton)comp).addChangeListener(e ->
+					submitBtn.setText(hasAnySelection(dialog.getContentPane()) ? "SUBMIT" : "Do Nothing"));
+			}
+			if (comp instanceof Container) {
+				attachSubmitLabelListeners((Container)comp, dialog, submitBtn);
+			}
+		}
 	}
 
 	private static void styleChitToggleButton(JToggleButton btn) {
@@ -1087,9 +1114,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		postSection.add(blockPanel, BorderLayout.CENTER);
 		content.add(buildDialogNotePanel(), BorderLayout.NORTH);
 		content.add(postSection, BorderLayout.CENTER);
-		content.add(buildSouthArea(postPhaseActivityDialog, e -> showAboutDialog(postPhaseActivityDialog, ABOUT_PHASE_END, POST_PHASE_COLOR), e -> submitPostPhaseActivities()), BorderLayout.SOUTH);
+		JButton[] postSubmitRef = {null};
+		content.add(buildSouthArea(postPhaseActivityDialog, e -> showAboutDialog(postPhaseActivityDialog, ABOUT_PHASE_END, POST_PHASE_COLOR), e -> submitPostPhaseActivities(), postSubmitRef), BorderLayout.SOUTH);
 
 		postPhaseActivityDialog.setContentPane(content);
+		attachSubmitLabelListeners(content, postPhaseActivityDialog, postSubmitRef[0]);
 		postPhaseActivityDialog.pack();
 		postPhaseActivityDialog.setLocationRelativeTo(this);
 		postPhaseActivityDialog.setVisible(true);
@@ -1473,11 +1502,13 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		content.add(buildDialogNotePanel(), BorderLayout.NORTH);
 		content.add(mainPanel, BorderLayout.CENTER);
-		content.add(buildSouthArea(combinedPhaseActivityDialog, e -> showCombinedAboutDialog(combinedPhaseActivityDialog), e -> submitCombinedPhaseActivities()), BorderLayout.SOUTH);
+		JButton[] combinedSubmitRef = {null};
+		content.add(buildSouthArea(combinedPhaseActivityDialog, e -> showCombinedAboutDialog(combinedPhaseActivityDialog), e -> submitCombinedPhaseActivities(), combinedSubmitRef), BorderLayout.SOUTH);
 
 		wireCombinedDialogExclusion();
 
 		combinedPhaseActivityDialog.setContentPane(content);
+		attachSubmitLabelListeners(content, combinedPhaseActivityDialog, combinedSubmitRef[0]);
 		combinedPhaseActivityDialog.pack();
 		combinedPhaseActivityDialog.setLocationRelativeTo(this);
 		combinedPhaseActivityDialog.setVisible(true);
