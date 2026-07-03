@@ -2853,9 +2853,17 @@ public class ActionRow {
 				}
 				else if (count > 1) {
 					TileLocation current = character.getCurrentLocation();
-					if (!character.isMinion() && current != null && current.isInClearing()
-							&& !getPostPhaseParticipants(current).isEmpty()) {
-						blockRestAction = true;
+					if (!character.isMinion() && current != null && current.isInClearing()) {
+						// Post-phase: a reacting character needs a decision after each rest.
+						boolean postPhaseNeeded = !getPostPhaseParticipants(current).isEmpty();
+						// Pre-phase: an active follower with Reactions ON must get the stop-following
+						// opportunity before each rest phase — handlePrePhase() only fires once for
+						// the whole stack unless we break it up here.
+						boolean followerPrePhaseNeeded = character.getActionFollowers().stream()
+								.anyMatch(CharacterWrapper::isReacting);
+						if (postPhaseNeeded || followerPrePhaseNeeded) {
+							blockRestAction = true;
+						}
 					}
 				}
 
