@@ -605,7 +605,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		"<html><b>Phase-End Reactions</b><br><br>" +
 		"Every action PHASE of a character's turn has a phase-end segment which allows the active character and others in their clearing to perform certain activities after the PHASE is executed.¹<br><br>" +
 		"Non-active characters in the same clearing may declare Blocking (MR 3rd Ed 7.12) against a detectable² active character.  Blocking cancels any remaining action phases for both characters.³<br><br>" +
-		"The active character may also block detectable² non-active characters in the clearing, or monsters that are present.<br><br>" +
+		"The active character may also block detectable² non-active characters or denizens that are present in the clearing.<br><br>" +
 		"If playing with 1st edition rules, the active character and non-active characters may play or fatigue color magic chits at phase-end.<br><br>" +
 		"The content of each Phase-End dialog depends on the character's capabilities as well as the options the player has enabled/disabled wrt Reactions.<br><br>" +
 		"Click [Do Nothing / SUBMIT] to confirm your choices and allow play to continue.<br><br>" +
