@@ -139,6 +139,35 @@ public class CenteredMapView extends JComponent {
 	
 	private boolean clearingHighlight = false;
 	private boolean showSeasonIcon = false;
+
+	private boolean showPlayerMarkers = true;
+	private CharacterWrapper localCharacter = null;
+	public void setLocalCharacter(CharacterWrapper character) {
+		localCharacter = character;
+		replot = true;
+		repaint();
+	}
+	private void resolveLocalCharacter() {
+		// localCharacter is set by RealmGameHandler via setLocalCharacter() on character list selection
+	}
+
+	@Override
+	public String getToolTipText(MouseEvent ev) {
+		if (!showPlayerMarkers || localCharacter == null) return null;
+		TileLocation tl = getTileLocationAtPoint(ev.getPoint());
+		if (tl == null || !tl.isInClearing()) return null;
+		ArrayList<String> hits = localCharacter.getPlayerMarkersInClearing(tl.tile.getTileName(), tl.clearing.getNum());
+		if (hits.isEmpty()) return null;
+		StringBuilder sb = new StringBuilder("<html>");
+		String charName = localCharacter.getCharacterName();
+		for (String entry : hits) {
+			String[] parts = entry.split("/", 4);
+			String label = parts.length == 4 ? parts[3] : "";
+			sb.append(charName).append(label.isEmpty() ? "" : ": " + label).append("<br>");
+		}
+		sb.append("</html>");
+		return sb.toString();
+	}
 	private boolean drawSeasonInfo = false;
 	
 	private int chatLineBufferSize = 10;
@@ -283,6 +312,7 @@ public class CenteredMapView extends JComponent {
 		});
 		doLayout();
 		centerMap();
+		ToolTipManager.sharedInstance().registerComponent(this);
 	}
 	private String findAnchorTileName() {
 		GamePool pool = new GamePool(gameData.getGameObjects());
@@ -1360,10 +1390,178 @@ public class CenteredMapView extends JComponent {
 			ChitDisplayOption displayOption = mapRightClickMenu.getDisplayOption();
 			for (Point gridPos : sortedKeys) {
 				TileComponent tile = mapGrid.get(gridPos);
-				if (tile instanceof EmptyTileComponent) continue; 
+				if (tile instanceof EmptyTileComponent) continue;
 				tile.drawEmbellishments(g,displayOption);
 			}
+			drawPlayerMarkers(g);
 		}
+	}
+
+	private void drawPlayerMarkers(Graphics2D g) {
+		if (!showPlayerMarkers || localCharacter == null) return;
+		ArrayList<String> markers = localCharacter.getPlayerMarkers();
+		if (markers.isEmpty()) return;
+
+		// Group by (tileName, clearingNum)
+		LinkedHashMap<String, ArrayList<String>> byClearing = new LinkedHashMap<>();
+		for (String entry : markers) {
+			String[] parts = entry.split("/", 4);
+			if (parts.length < 3) continue;
+			String key = parts[0] + "/" + parts[1];
+			byClearing.computeIfAbsent(key, k -> new ArrayList<>()).add(entry);
+		}
+
+		Font markerFont = new Font("SansSerif", Font.BOLD, 16);
+		g.setFont(markerFont);
+		FontMetrics fm = g.getFontMetrics();
+		int r = 17;
+		int dist = TileComponent.CLEARING_RADIUS + r + 4;
+
+		for (Map.Entry<String, ArrayList<String>> e : byClearing.entrySet()) {
+			String[] keyParts = e.getKey().split("/", 2);
+			String tileName = keyParts[0];
+			int clearingNum;
+			try { clearingNum = Integer.parseInt(keyParts[1]); } catch (NumberFormatException ex) { continue; }
+			TileComponent tile = getTileByName(tileName);
+			if (tile == null) continue;
+			ClearingDetail cd = tile.getClearing(clearingNum);
+			if (cd == null) continue;
+			Point p = cd.getAbsolutePosition();
+			if (p == null) continue;
+
+			ArrayList<String> clearingMarkers = e.getValue();
+			int n = clearingMarkers.size();
+			int baseX = p.x + (int)(dist * 0.707);
+			int baseY = p.y - (int)(dist * 0.707);
+			// Lay out horizontally, centered on baseX
+			int totalWidth = n * 2 * r + (n - 1) * 4;
+			int startX = baseX - totalWidth / 2 + r;
+
+			for (int i = 0; i < n; i++) {
+				String[] parts = clearingMarkers.get(i).split("/", 4);
+				Color color;
+				try { color = new Color(Integer.parseInt(parts[2], 16)); } catch (NumberFormatException ex) { continue; }
+				String label = parts.length == 4 ? parts[3] : "";
+				int ox = startX + i * (2 * r + 4);
+				int oy = baseY;
+				g.setColor(color);
+				g.fillOval(ox - r, oy - r, r * 2, r * 2);
+				g.setColor(Color.BLACK);
+				g.setStroke(new BasicStroke(1f));
+				g.drawOval(ox - r, oy - r, r * 2, r * 2);
+				if (!label.isEmpty()) {
+					int tw = fm.stringWidth(label);
+					int th = fm.getAscent();
+					g.setColor(brightness(color) < 128 ? Color.WHITE : Color.BLACK);
+					g.drawString(label, ox - tw / 2, oy + th / 2 - 1);
+				}
+			}
+		}
+	}
+
+	private static final Color[] MARKER_PALETTE = { Color.RED, new Color(0xFF8C00), Color.YELLOW, Color.GREEN, Color.CYAN, new Color(0x6666FF), Color.MAGENTA, Color.WHITE };
+	private static final String[] MARKER_PALETTE_NAMES = { "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Magenta", "White" };
+
+	private void showMarkerDialog(TileLocation tl) {
+		String tileName = tl.tile.getTileName();
+		int clearingNum = tl.clearing.getNum();
+		ArrayList<String> existing = localCharacter.getPlayerMarkersInClearing(tileName, clearingNum);
+
+		JPanel panel = new JPanel(new BorderLayout(6, 6));
+
+		// Existing markers section
+		if (!existing.isEmpty()) {
+			JPanel existingPanel = new JPanel();
+			existingPanel.setLayout(new BoxLayout(existingPanel, BoxLayout.Y_AXIS));
+			existingPanel.setBorder(BorderFactory.createTitledBorder("Existing markers (click to remove)"));
+			for (String entry : existing) {
+				String[] parts = entry.split("/", 4);
+				Color c = Color.RED;
+				try { c = new Color(Integer.parseInt(parts[2], 16)); } catch (NumberFormatException ignored) {}
+				String lbl = parts.length == 4 ? parts[3] : "";
+				final Color fc = c;
+				JButton removeBtn = new JButton(lbl.isEmpty() ? "(no label)" : lbl);
+				removeBtn.setBackground(c);
+				removeBtn.setOpaque(true);
+				removeBtn.setForeground(brightness(c) < 128 ? Color.WHITE : Color.BLACK);
+				removeBtn.setAlignmentX(0f);
+				removeBtn.addActionListener(ev -> {
+					localCharacter.removePlayerMarker(tileName, clearingNum, fc);
+					replot = true;
+					repaint();
+					SwingUtilities.getWindowAncestor(removeBtn).dispose();
+				});
+				existingPanel.add(removeBtn);
+			}
+			panel.add(existingPanel, BorderLayout.NORTH);
+		}
+
+		// Add new marker section — only show unused colors
+		Set<Integer> usedRgb = new HashSet<>();
+		for (String entry : existing) {
+			String[] parts = entry.split("/", 4);
+			try { usedRgb.add(Integer.parseInt(parts[2], 16)); } catch (NumberFormatException ignored) {}
+		}
+		JPanel addPanel = new JPanel(new BorderLayout(4, 4));
+		addPanel.setBorder(BorderFactory.createTitledBorder("Add new marker"));
+		JPanel colorPanel = new JPanel();
+		ButtonGroup bg = new ButtonGroup();
+		ArrayList<JToggleButton> colorButtons = new ArrayList<>();
+		for (int i = 0; i < MARKER_PALETTE.length; i++) {
+			if (usedRgb.contains(MARKER_PALETTE[i].getRGB() & 0xFFFFFF)) continue;
+			JToggleButton btn = new JToggleButton();
+			btn.setBackground(MARKER_PALETTE[i]);
+			btn.setOpaque(true);
+			btn.setPreferredSize(new Dimension(28, 28));
+			btn.setToolTipText(MARKER_PALETTE_NAMES[i]);
+			bg.add(btn);
+			colorButtons.add(btn);
+			colorPanel.add(btn);
+		}
+		if (!colorButtons.isEmpty()) colorButtons.get(0).setSelected(true);
+
+		JTextField labelField = new JTextField(3);
+		labelField.setDocument(new javax.swing.text.PlainDocument() {
+			public void insertString(int offs, String str, javax.swing.text.AttributeSet a) throws javax.swing.text.BadLocationException {
+				if (str == null) return;
+				if ((getLength() + str.length()) <= 2) super.insertString(offs, str, a);
+			}
+		});
+		JPanel labelRow = new JPanel();
+		labelRow.add(new JLabel("Label (max 2):"));
+		labelRow.add(labelField);
+		addPanel.add(colorPanel, BorderLayout.CENTER);
+		addPanel.add(labelRow, BorderLayout.SOUTH);
+
+		if (!colorButtons.isEmpty()) panel.add(addPanel, BorderLayout.CENTER);
+
+		int result = JOptionPane.showConfirmDialog(
+			SwingUtilities.getWindowAncestor(this), panel,
+			"Markers at " + tileName + " clearing " + clearingNum,
+			JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+		if (result != JOptionPane.OK_OPTION || colorButtons.isEmpty()) return;
+
+		Color chosen = null;
+		for (JToggleButton btn : colorButtons) {
+			if (btn.isSelected()) { chosen = btn.getBackground(); break; }
+		}
+		if (chosen == null) return;
+		localCharacter.addPlayerMarker(tileName, clearingNum, chosen, labelField.getText().trim());
+		replot = true;
+		repaint();
+	}
+
+	private static float brightness(Color c) {
+		return (c.getRed() * 299f + c.getGreen() * 587f + c.getBlue() * 114f) / 1000f;
+	}
+
+	private TileComponent getTileByName(String tileName) {
+		for (TileComponent tile : mapGrid.values()) {
+			if (!(tile instanceof EmptyTileComponent) && tileName.equals(tile.getTileName())) {
+				return tile;
+			}
+		}
+		return null;
 	}
 	/**
 	 * @param replot The replot to set.
@@ -1453,6 +1651,11 @@ public class CenteredMapView extends JComponent {
 		
 		private JSeparator separator;
 		private JMenuItem showClearingDetail;
+
+		private JCheckBoxMenuItem showMarkersItem;
+		private JSeparator markerSeparator;
+		private JMenuItem addEditMarker;
+		private JMenuItem removeMarker;
 		
 		private TileLocation tileLocation;
 		private ClearingDetail clearing;
@@ -1474,6 +1677,20 @@ public class CenteredMapView extends JComponent {
 			}
 			separator.setVisible(clearing!=null);
 			showClearingDetail.setVisible(clearing!=null);
+			resolveLocalCharacter();
+			boolean hasClearing = tl != null && tl.isInClearing();
+			boolean hasChar = localCharacter != null;
+			markerSeparator.setVisible(hasClearing && hasChar);
+			addEditMarker.setVisible(hasClearing && hasChar);
+			removeMarker.setVisible(hasClearing && hasChar && hasMarkerAt(tl));
+		}
+		private boolean hasMarkerAt(TileLocation tl) {
+			if (localCharacter == null || tl == null || !tl.isInClearing()) return false;
+			String prefix = tl.tile.getTileName() + "/" + tl.clearing.getNum() + "/";
+			for (String entry : localCharacter.getPlayerMarkers()) {
+				if (entry.startsWith(prefix)) return true;
+			}
+			return false;
 		}
 		private void initMenu() {
 			if (gmFunctions) {
@@ -1585,6 +1802,15 @@ public class CenteredMapView extends JComponent {
 			showTileBewitchingSpells = new JCheckBoxMenuItem("Show Tile Bewitching Spells",displayOption.tileBewitchingSpells);
 			showTileBewitchingSpells.addActionListener(this);
 			add(showTileBewitchingSpells);
+			showMarkersItem = new JCheckBoxMenuItem("Show Markers", showPlayerMarkers);
+			showMarkersItem.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					showPlayerMarkers = showMarkersItem.isSelected();
+					replot = true;
+					repaint();
+				}
+			});
+			add(showMarkersItem);
 			add(new JSeparator());
 			showAllChits = new JMenuItem("Show ALL Chits");
 			showAllChits.addActionListener(new ActionListener() {
@@ -1683,6 +1909,27 @@ public class CenteredMapView extends JComponent {
 				}
 			});
 			add(showClearingDetail);
+
+			markerSeparator = new JSeparator();
+			markerSeparator.setVisible(false);
+			add(markerSeparator);
+			addEditMarker = new JMenuItem("Add/Edit Marker...");
+			addEditMarker.setVisible(false);
+			addEditMarker.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					if (tileLocation == null || !tileLocation.isInClearing() || localCharacter == null) return;
+					showMarkerDialog(tileLocation);
+				}
+			});
+			add(addEditMarker);
+			removeMarker = new JMenuItem("Remove Marker");
+			removeMarker.setVisible(false);
+			removeMarker.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					showMarkerDialog(tileLocation);
+				}
+			});
+			add(removeMarker);
 		}
 		public ChitDisplayOption getDisplayOption() {
 			return displayOption;
