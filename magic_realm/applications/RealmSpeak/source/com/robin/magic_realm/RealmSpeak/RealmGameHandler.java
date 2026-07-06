@@ -302,6 +302,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 					}
 				}
 				updateControls();
+				updateLocalCharacterOnMap();
 			}
 		});
 		characterTable.addMouseListener(new MouseAdapter() {
@@ -2559,7 +2560,28 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				frame.updateCharacter();
 			}
 		}
+		updateLocalCharacterOnMap();
 		getInspector().redrawMap();
+	}
+
+	private void updateLocalCharacterOnMap() {
+		String myName = client.getClientName();
+		CharacterWrapper selected = getSelectedCharacter();
+		CharacterWrapper local;
+		if (selected != null) {
+			// A character is selected — only show markers if it's ours
+			local = myName.equals(selected.getPlayerName()) ? selected : null;
+		} else {
+			// Nothing selected — default to first owned character
+			local = null;
+			for (CharacterWrapper cw : characterList) {
+				if (myName.equals(cw.getPlayerName())) {
+					local = cw;
+					break;
+				}
+			}
+		}
+		getInspector().getMap().setLocalCharacter(local);
 	}
 	
 	public void updateCharacterFramesWithoutMap() {
