@@ -1,5 +1,6 @@
 package com.robin.magic_realm.components.wrapper;
 
+import java.awt.Color;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -88,6 +89,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String CHARACTER_TYPE = "_pl_ch_ty_"; // Currently only applies to Elf:  great or light
 	public static final String CAMPAIGN = "_cmpgn_";
 	public static final String CACHE_NUMBER = "_cHcNm_";
+	public static final String PLAYER_MARKERS = "_plMrk__";
 	public static final String WEATHER_FATIGUE = "_weathF_";
 	public static final String EXTRA_WOUNDS = "_xtWnd_";
 	public static final String DO_INSTANT_PEER = "_do_insp_"; // Informs the combat frame to do an instant peer
@@ -8853,5 +8855,45 @@ public class CharacterWrapper extends GameObjectWrapper {
 			}
 		}
 		return list;
+	}
+
+	// ---- Player map markers (personal, not synced) ----
+
+	public ArrayList<String> getPlayerMarkers() {
+		ArrayList<String> list = getGameObject().getThisAttributeList(PLAYER_MARKERS);
+		return list == null ? new ArrayList<>() : list;
+	}
+
+	public void addPlayerMarker(String tileName, int clearingNum, Color color, String label) {
+		removePlayerMarker(tileName, clearingNum, color);
+		String encoded = tileName + "/" + clearingNum + "/" + Integer.toHexString(color.getRGB() & 0xFFFFFF) + "/" + label;
+		getGameObject().addThisAttributeListItem(PLAYER_MARKERS, encoded);
+	}
+
+	public void removePlayerMarker(String tileName, int clearingNum, Color color) {
+		String colorHex = Integer.toHexString(color.getRGB() & 0xFFFFFF);
+		String prefix = tileName + "/" + clearingNum + "/" + colorHex + "/";
+		for (String entry : getPlayerMarkers()) {
+			if (entry.startsWith(prefix)) {
+				getGameObject().removeThisAttributeListItem(PLAYER_MARKERS, entry);
+				return;
+			}
+		}
+	}
+
+	public void removeAllPlayerMarkersInClearing(String tileName, int clearingNum) {
+		String prefix = tileName + "/" + clearingNum + "/";
+		new ArrayList<>(getPlayerMarkers()).stream()
+			.filter(e -> e.startsWith(prefix))
+			.forEach(e -> getGameObject().removeThisAttributeListItem(PLAYER_MARKERS, e));
+	}
+
+	public ArrayList<String> getPlayerMarkersInClearing(String tileName, int clearingNum) {
+		String prefix = tileName + "/" + clearingNum + "/";
+		ArrayList<String> result = new ArrayList<>();
+		for (String entry : getPlayerMarkers()) {
+			if (entry.startsWith(prefix)) result.add(entry);
+		}
+		return result;
 	}
 }
