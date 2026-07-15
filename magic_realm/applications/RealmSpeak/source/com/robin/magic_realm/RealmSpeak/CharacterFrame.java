@@ -4265,13 +4265,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	public void showYourTurn(RealmTurnPanel panel) {
 		if (!showingTurn()) { // don't show it twice!
 			turnPanel = panel;
-			SwingUtilities.invokeLater(new Runnable() {
-				public void run() {
-					tabs.addTab(null,ImageCache.getIcon("tab/turn"),turnPanel,RealmTurnPanel.TAB_NAME);
-					tabs.setSelectedIndex(tabs.getTabCount()-1);
-					updateControls();
-				 }
-			});
+			tabs.addTab(null,ImageCache.getIcon("tab/turn"),panel,RealmTurnPanel.TAB_NAME);
+			tabs.setSelectedIndex(tabs.getTabCount()-1);
+			updateControls();
 		}
 	}
 
@@ -4285,19 +4281,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	public void hideYourTurn() {
-		SwingUtilities.invokeLater(new Runnable() { // This should get rid of the ArrayIndexOutOfBoundsException problem
-			public void run() {
-				for (int i = 0; i < tabs.getTabCount(); i++) {
-					if (RealmTurnPanel.TAB_NAME.equals(tabs.getToolTipTextAt(i))) {
-						tabs.removeTabAt(i);
-						break;
-					}
-				}
-				turnPanel = null;
-				tabs.setSelectedIndex(0);
-				updateControls();
+		for (int i = 0; i < tabs.getTabCount(); i++) {
+			if (RealmTurnPanel.TAB_NAME.equals(tabs.getToolTipTextAt(i))) {
+				tabs.removeTabAt(i);
+				break;
 			}
-		});
+		}
+		turnPanel = null;
+		tabs.setSelectedIndex(0);
+		updateControls();
 	}
 
 	public void showGameOver() {
