@@ -151,6 +151,9 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		layoutRestoreAttempted = false;
 		pendingLayoutData = null;
 		if (layoutSaveTimer != null) { layoutSaveTimer.stop(); layoutSaveTimer = null; }
+		if (client != null) {
+			client.closeConnection();
+		}
 		removeAllCharacterFrames();
 		if (inspector != null) {
 			parent.removeFrameFromDesktop(inspector);

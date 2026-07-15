@@ -669,7 +669,7 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 		launchRealmViewer.setEnabled(!joinedGame && !gameInProgress);
 		
 		joinNetworkGame.setEnabled(!joinedGame);
-		reconnectGame.setEnabled(clientDisconnectedUnexpectedly && !CombatFrame.isSingletonShowing());
+		reconnectGame.setEnabled(joinedGame && !CombatFrame.isSingletonShowing());
 	}
 	public void updateMenuActions() {
 		CharacterActionControlManager acm = getFrontActionControlManager();
@@ -897,6 +897,15 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 				reconnectGame.setMnemonic(KeyEvent.VK_R);
 				reconnectGame.addActionListener(new ActionListener() {
 					public void actionPerformed(ActionEvent ev) {
+						if (!clientDisconnectedUnexpectedly) {
+							if (JOptionPane.showConfirmDialog(
+									RealmSpeakFrame.this,
+									"Re-initialize your client connection?\nYour character windows will be rebuilt from server state.",
+									"Reconnect",
+									JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+								return;
+							}
+						}
 						clientDisconnectedUnexpectedly = false;
 						updateControls();
 						SwingUtilities.invokeLater(new Runnable() {
