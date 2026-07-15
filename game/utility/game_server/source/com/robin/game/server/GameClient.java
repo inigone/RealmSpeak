@@ -430,13 +430,17 @@ public abstract class GameClient extends GameNet {
 		return connection != null;
 	}
 
+	public void closeConnection() {
+		try { if (in != null) in.close(); } catch(IOException iex) { }
+		try { if (out != null) out.close(); } catch(IOException iex) { }
+		try { if (connection != null) connection.close(); } catch(IOException iex) { }
+	}
+
 	private boolean onDisconnected() {
 		// Close the socket so the server-side thread gets an IOException immediately rather than
 		// waiting for its own SO_TIMEOUT. Without this, isNameUnique() still sees the old
 		// GameServer in the list and rejects a reconnect (or same-name re-login) attempt.
-		try { if (in != null) in.close(); } catch(IOException iex) { }
-		try { if (out != null) out.close(); } catch(IOException iex) { }
-		try { if (connection != null) connection.close(); } catch(IOException iex) { }
+		closeConnection();
 		if (!reconnectEnabled) {
 			unexpectedDisconnect = true;
 			fireStateChanged();
