@@ -2003,7 +2003,7 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 		frame.reshape(p.x,p.y,d.width+1,d.height+1);
 		
 		desktop.moveToFront(frame);
-		windowLayoutManager.applyLastLayout();
+		windowLayoutManager.applyLastLayoutToFrame(frame);
 	}
 	public void removeFrameFromDesktop(RealmSpeakInternalFrame frame) {
 		desktop.remove(frame);
