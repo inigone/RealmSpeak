@@ -38,6 +38,32 @@ public class WindowLayoutManager {
 			applyLayout(layout);
 		}
 	}
+	public void applyLastLayoutToFrame(RealmSpeakInternalFrame targetFrame) {
+		int layout = getLastLayout();
+		if (layout <= 0) return;
+		Hashtable<String,Integer> instanceCount = new Hashtable<>();
+		for (Component component : desktop.getComponents()) {
+			if (!(component instanceof RealmSpeakInternalFrame)) continue;
+			RealmSpeakInternalFrame frame = (RealmSpeakInternalFrame) component;
+			String name = frame.getFrameTypeName();
+			int modifier = 0;
+			if (!frame.onlyOneInstancePerGame() && instanceCount.containsKey(name)) {
+				modifier = instanceCount.get(name) + 1;
+			}
+			instanceCount.put(name, modifier);
+			if (frame == targetFrame) {
+				Rectangle rect = getLayout(layout, name, modifier);
+				if (rect == null && modifier > 0) {
+					rect = getLayout(layout, name, 0);
+				}
+				if (rect != null) {
+					frame.setLocation(rect.x, rect.y);
+					frame.setSize(rect.width, rect.height);
+				}
+				return;
+			}
+		}
+	}
 	// Key pattern:   <Layout#>_<Window><mod>
 	// Value will be:   <x>_<y>_<width>_<height>
 	private static String getKeyFor(int layoutNumber,String windowName,int modifier) {
