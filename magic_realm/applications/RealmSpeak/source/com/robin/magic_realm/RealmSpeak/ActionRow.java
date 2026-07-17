@@ -1222,6 +1222,8 @@ public class ActionRow {
 		boolean monstersPresent = false;
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isPlayerControlledLeader()) {
+				// Underling hirelings (owned but no player name) always follow their guide — never independent post-phase participants
+				if (rc.getOwner() != null && !rc.getGameObject().hasThisAttribute(CharacterWrapper.NAME_KEY)) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 				if (!excludedFollowers.contains(cw.getGameObject())) {
 					nonFollowers.add(cw);
