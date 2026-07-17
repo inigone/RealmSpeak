@@ -1218,6 +1218,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 				if (rc.getGameObject().equals(blocker.getGameObject())) continue;
 				if (ownFollowers.contains(rc.getGameObject())) continue;
+				// Underling hirelings (owned but no player name) always follow their guide — never blockable by/for their guide
+				if (rc.getOwner() != null && !rc.getGameObject().hasThisAttribute(CharacterWrapper.NAME_KEY)) continue;
 				if (rc.isPlayerControlledLeader()) {
 					if (skipChars) continue;
 					if (!isValidBlockTarget(rc, blockerIgnoresMist)) continue;
