@@ -1049,8 +1049,7 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_FOLLOWERS_ENCHANTING_ACTION,"FOLLOWERS ENCHANTING ACTION (Super Realm Basic) - Followers can use the Enchant action if following (like the Rest and Alert action).",false));
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_MOVEMENT_RESTRICTION,"MOVEMENT RESTRICTION (Super Realm Basic) - A MOVE chit is required for carring negligible weight items.",false));
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_OPT_MOVEMENT_RESTRICTION,"MOVEMENT RESTRICTION (Super Realm Optional) - A MOVE chit is required for moving.",false,null,new String[]{Constants.SR_MOVEMENT_RESTRICTION}));
-		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.OPT_FOLLOWERS_ACTIONS_DURING_GUIDES_PHASE,"FOLLOWERS ACTIONS DURING GUIDES PHASE (all Rules) - Followers are alerting (and enchanting) during the guide's turn (and not in their own turn).",false));
-		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_NO_HORSES_IN_CAVES,"NO HORSES IN CAVES (Super Realm Basic) - Horse is abandoned in the clearing moved from, when entering a cave (exception: TWT horses).",false));
+newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_NO_HORSES_IN_CAVES,"NO HORSES IN CAVES (Super Realm Basic) - Horse is abandoned in the clearing moved from, when entering a cave (exception: TWT horses).",false));
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_HORSES_REMOVING_FROM_REALM,"REMOVE HORSES FROM THE REALM (Super Realm Basic) - Dropped horse are removed from the Realm.",false));
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.SR_BOOTS_ACTIVE_WHILE_RIDING,"ACTIVATING BOOTS WHILE RIDING (Super Realm Basic) - Riding characters can activate boots, which are not strong enough to carry them.",false));
 		newOptionPane.addOption(EXTENDING_GAME_SYSTEM_TAB,new GameOption(Constants.ADV_FLYING_ACTIVITIES,"FLYING ACTIVITIES A.3 (Magic Realm Advanced) - Flying characters can inspect the tiles they fly over and do the Alert activity.",false));
@@ -1074,7 +1073,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_NO_COLOR_CHIT_FOR_SLEEPING_CHARACTERS,"NO COLOR CHIT PLAY FOR SLEEPING CHARACTERS - Sleeping characters cannot play color chits.",false));
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS,"NO COLOR CHIT PLAY CANNOT AIM AT HIDDEN TARGETS - When burning a color chit you cannot energize a spell which targets a hidden characters.",false));
 		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_DISABLE_ACTIONS_WHEN_AWAITING_REACTIONS,"DISABLE ACTIONS WHEN AWAITING REACTIONS - Cannot play color chits, activate, deactivate items etc. when waiting for another character to block or playing a color chit.",false));
-		
+		newOptionPane.addOption(REACTIONS_TAB,new GameOption(Constants.OPT_FOLLOWERS_SEARCH_DURING_GUIDE_HIDE,"FOLLOWERS SEARCH DURING GUIDE HIDE - When a guide performs a HIDE action, each direct follower may perform a simultaneous PEER Search. Followers which have Found Hidden Enemies cannot be ditched by a hidden guide.",false));
+
 		newOptionPane.setTabHtmlDescription(DENIZEN_RULES_TAB,"<html><body><font face=\"Helvetica, Arial, sans-serif\">Denizen Rules</font></body></html>");
 		newOptionPane.addOption(DENIZEN_RULES_TAB,new GameOption(Constants.OPT_QUIET_MONSTERS,"QUIET MONSTERS B.1.1-1.4 (Magic Realm Optional) - Hidden characters and hirelings do not cause chits to flip, or monsters to be summoned.",false));
 		newOptionPane.addOption(DENIZEN_RULES_TAB,new GameOption(Constants.OPT_NO_BATTLE_DIST,"QUIET MONSTERS B.1.5 (Magic Realm Optional) - When positioning attackers on a character sheet, they do NOT have to be positioned in as many red boxes as possible.",false));
@@ -1458,8 +1458,7 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		optionPane.setOption(Constants.MAP_BUILDING_INCREASED_PRIO_TILE_PLACEMENT,true);
 		optionPane.setOption(Constants.SR_ADV_SURVIVAL_TACTICS,true);
 		optionPane.setOption(Constants.SR_ADV_SURVIVAL_TACTICS_PARRY_NOT_ALERTING,true);
-		optionPane.setOption(Constants.OPT_FOLLOWERS_ACTIONS_DURING_GUIDES_PHASE,true);
-		updateWarnings();
+updateWarnings();
 	}
 	
 	public static int readInt(String val) {

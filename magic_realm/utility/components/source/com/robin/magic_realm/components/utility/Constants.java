@@ -867,14 +867,14 @@ public class Constants {
 	public static final String OPT_POWER_OF_THE_PIT_ATTACK = "OptPowerOfThePitAttack";
 	public static final String OPT_POWER_OF_THE_PIT_DEMON = "OptPowerOfThePitDemon";
 	public static final String OPT_NATIVES_FRIENDLY = "OptNativeFriendly";
-	public static final String OPT_FOLLOWERS_ACTIONS_DURING_GUIDES_PHASE = "OptFollowersActionsDuringGuidesPhase";
-	public static final String OPT_BLOCKING_PHASES = "OptBlockingPhases";
+public static final String OPT_BLOCKING_PHASES = "OptBlockingPhases";
 	public static final String OPT_NO_COLOR_CHIT_FOR_BLOCKED_CHARACTERS = "OptNoColorChitForBlockedCharacters";
 	public static final String OPT_SUSPICIOUS_CHARACTERS = "OptSuspiciousCharacters";
 	public static final String OPT_NO_COLOR_CHIT_FOR_SLEEPING_CHARACTERS = "OptNoColorChitForSleepingCharacters";
 	public static final String OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS = "OptColorChitTargetingNoHiddenCharacters";
 	public static final String OPT_DISABLE_ACTIONS_WHEN_AWAITING_REACTIONS = "OptDisableActionsWhenAwaitingReactions";
-	
+	public static final String OPT_FOLLOWERS_SEARCH_DURING_GUIDE_HIDE = "OptFollowersSearchDuringGuideHide";
+
 	// Revised Rules
 	public static final String REV_MISSILE = "RevisedMissileTable";
 	public static final String REV_DAMPEN_FAST_SPELLS = "DampenFastSpells";

@@ -76,6 +76,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	
 	private Timer activatePlayNextTimer = null;
 	private boolean wasAwaitingPrePhase = false;
+	private boolean wasAwaitingInPhase = false;
 	private ActionListener activatePlayNextListener = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
 			activatePlayNextTimer = (Timer)ev.getSource();
@@ -170,6 +171,15 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				line.add(Box.createHorizontalGlue());
 				box.add(line);
 			}
+			if (actionFollowers.size() > 1) {
+				box.add(Box.createVerticalStrut(6));
+				line = Box.createHorizontalBox();
+				label = new JLabel("[ Note:  Some may be following other followers instead of directly following the "+getCharacter().getGameObject().getName()+". ]");
+				label.setFont(followFont);
+				line.add(label);
+				line.add(Box.createHorizontalGlue());
+				box.add(line);
+			}
 			JOptionPane.showMessageDialog(getGameHandler().getMainFrame(),box,getCharacter().getGameObject().getName()+" is being Followed!",JOptionPane.WARNING_MESSAGE);
 		}
 	}
@@ -246,22 +256,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			}
 		}
 	}
-	private boolean isAwaitingFollowersResting() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowRests()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
-	private boolean isAwaitingFollowersAlerting() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowAlerts()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
 	private boolean isAwaitingFollowersWeatherFatigue() {
 		for (CharacterWrapper follower:actionFollowers) {
 			if (follower.getWeatherFatigue()>0) {
@@ -270,14 +264,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		return false;
 	}
-	private boolean isAwaitingFollowersSpellActions() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowSpellActions()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
+
 	public boolean isAwaitingReactDecision() {
 		return isAwaitingReactDecision(false,null);
 	}
@@ -356,6 +343,19 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
 				return true;
 			}
+		}
+		return false;
+	}
+
+	private boolean isAwaitingInPhaseDecision() {
+		if (!getCharacter().isPlayingTurn()) return false;
+		return anyInPhaseDecisionPending(getCharacter());
+	}
+
+	private boolean anyInPhaseDecisionPending(CharacterWrapper guide) {
+		for (CharacterWrapper follower : guide.getActionFollowers()) {
+			if (follower.getNeedsInPhaseActivityDecision()) return true;
+			if (anyInPhaseDecisionPending(follower)) return true;
 		}
 		return false;
 	}
@@ -444,9 +444,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			}
 		}
 		String me = getCharacter().getPlayerName();
-		boolean haveFollowersThatHaveSpellActions = isAwaitingFollowersSpellActions();
-		boolean haveFollowersThatHaveFollowAlerts = isAwaitingFollowersAlerting();
-		boolean haveFollowersThatHaveFollowRests = isAwaitingFollowersResting();
 		boolean haveFollowersThatHaveWeatherFatigue = isAwaitingFollowersWeatherFatigue();
 		boolean beingFollowedByOtherPlayers = false;
 		for (CharacterWrapper follower:actionFollowers) {
@@ -455,19 +452,10 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				break;
 			}
 		}
-		if (haveFollowersThatHaveSpellActions) {
-			playNextButton.setText("Followers Enchanting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Enchanting...)");
-		} else if(haveFollowersThatHaveFollowAlerts) {
-			playNextButton.setText("Followers Alerting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Alerting...)");
-		} else if (haveFollowersThatHaveFollowRests) {
-			playNextButton.setText("Followers Enchanting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Enchanting...)");
-		} else if (haveFollowersThatHaveWeatherFatigue) {
+		if (haveFollowersThatHaveWeatherFatigue) {
 			playNextButton.setText("Followers Exhausting...");
 			playAllButton.setText(PLAY_ALL+" (Followers Exhausting...)");
-		} else { 
+		} else {
 			playNextButton.setText(PLAY_NEXT);
 			playAllButton.setText(PLAY_ALL);
 		}
@@ -491,6 +479,15 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			wasAwaitingPrePhase = nowAwaitingPrePhase;
 		}
 
+		boolean nowAwaitingInPhase = isAwaitingInPhaseDecision();
+		if (wasAwaitingInPhase && !nowAwaitingInPhase && getCharacter().isPlayingTurn()
+				&& actionsLeft && !waitingForSingleButton && activatePlayNextTimer == null) {
+			wasAwaitingInPhase = false;
+			SwingUtilities.invokeLater(() -> playNext(false));
+		} else {
+			wasAwaitingInPhase = nowAwaitingInPhase;
+		}
+
 		// POST-PHASE AUTO-ADVANCE REMOVED: Unlike pre-phase (which auto-advances to the next action once all
 		// pre-phase dialogs are resolved), post-phase does NOT auto-advance. After the phasing character's
 		// action executes and any post-phase dialogs are shown, the user must explicitly click Play Next.
@@ -498,7 +495,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// immediately triggered the next action without user intent. The pending check at the top of
 		// ActionRow.process() already blocks the next action until post-phase is cleared.
 
-		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue);
+		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue);
 		playNextButton.setFlashing(playNextButton.isEnabled());
 		// Play All re-enabled: it runs the same playNext(true) loop as before, but the loop's
 		// isAwaitingInterruptionDecision() check (re-evaluated before every iteration) now also
@@ -506,7 +503,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// first unresolved ID interrupt — same as if the player had clicked Play Next repeatedly
 		// and stopped there. Disabled here (like Play Next) whenever an interrupt is already pending,
 		// so a click can't silently no-op.
-		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
+		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
 		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
 		
@@ -1138,7 +1135,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	}
 	
 	private void playAll() {
-		while(nextAction()!=null && /*!isAwaitingReactDecision() &&*/ !isAwaitingFollowersResting() && !isAwaitingFollowersAlerting() &!isAwaitingFollowersSpellActions() &!isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
+		while(nextAction()!=null && /*!isAwaitingReactDecision() &&*/ !isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
 			if (!playNext(true)) {
 				// player cancelled action, or awaiting input (like transport to caves result in TableLoot)
 				break;
@@ -1468,10 +1465,21 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		DieRoller monsterDieRoller = game.getMonsterDie();
 		DieRoller nativeDieRoller = game.getNativeDie();
+		String guideId = getCharacter().getGameObject().getStringId();
 		for (CharacterWrapper aFollower : toRemove) {
+			// Silently skip sub-followers — the guide can only ditch characters who are directly
+			// following them. Sub-followers' immediate guide is someone else; the Swordsman cannot
+			// ditch the Sorceror who is following Woods Girl, even though the Sorceror appears in
+			// the Swordsman's flat ACTION_FOLLOWER list. Use getCharacterImFollowing() which always
+			// points to the character's own immediate guide, not the top-of-chain guide.
+			CharacterWrapper theirGuide = aFollower.getCharacterImFollowing();
+			if (theirGuide == null || !guideId.equals(theirGuide.getGameObject().getStringId())) continue;
+			// Silently skip followers who found the hidden guide — they're aware of the guide's
+			// position and cannot be ditched. The guide can't hide from someone who already sees them.
+			if (getCharacter().isHidden() && aFollower.foundHiddenEnemy(getCharacter().getGameObject())) continue;
 			if (!aFollower.hasActiveInventoryThisKey(Constants.LINKS)) {
-				getCharacter().removeActionFollower(aFollower,monsterDieRoller,nativeDieRoller);
-				abandonFollowerChain(aFollower, monsterDieRoller, nativeDieRoller);
+				getCharacter().removeActionFollower(aFollower, monsterDieRoller, nativeDieRoller);
+				abandonFollowerChain(getCharacter(), aFollower, monsterDieRoller, nativeDieRoller);
 			}
 		}
 
@@ -1479,19 +1487,26 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		actionFollowers = getCharacter().getActionFollowers();
 	}
 
-	private void abandonFollowerChain(CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
-		// TBD(9): Sub-followers continue following the main guide even after their intermediate
-		// guide is ditched. This suggests sub-followers are also registered in the main guide's
-		// ACTION_FOLLOWER list (flattened chain), so removeActionFollower on the dropped guide
-		// alone does not remove them from the main guide's list. The fix: after recursively
-		// clearing dropped's own followers here, also remove each sub-follower from the main
-		// guide's ACTION_FOLLOWER list (getCharacter().removeActionFollower(subFollower, ...)).
-		for (CharacterWrapper subFollower : dropped.getActionFollowers()) {
-			dropped.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
+	private void abandonFollowerChain(CharacterWrapper topGuide, CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
+		// RealmHostPanel only populates the TOP guide's ACTION_FOLLOWER list (a flat list of all
+		// followers at every depth). Intermediate guides like Woods Girl have empty ACTION_FOLLOWER
+		// lists, so dropped.getActionFollowers() would return nothing. Instead, scan the top guide's
+		// flat list for anyone whose getCharacterImFollowing() points to the dropped character —
+		// those are the dropped character's direct sub-followers.
+		String droppedId = dropped.getGameObject().getStringId();
+		ArrayList<CharacterWrapper> subFollowers = new ArrayList<>();
+		for (CharacterWrapper candidate : topGuide.getActionFollowers()) {
+			CharacterWrapper theirGuide = candidate.getCharacterImFollowing();
+			if (theirGuide != null && droppedId.equals(theirGuide.getGameObject().getStringId())) {
+				subFollowers.add(candidate);
+			}
+		}
+		for (CharacterWrapper subFollower : subFollowers) {
+			topGuide.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
 			subFollower.setStopFollowing(true);
 			RealmLogging.logMessage(subFollower.getGameObject().getName(),
 				"Stops following (guide " + dropped.getGameObject().getName() + " was left behind).");
-			abandonFollowerChain(subFollower, monsterDieRoller, nativeDieRoller);
+			abandonFollowerChain(topGuide, subFollower, monsterDieRoller, nativeDieRoller);
 		}
 	}
 	public void updatePanel() {
