@@ -1248,15 +1248,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	 * actionFollowers list whose immediate guide is {@code stopped} (or is itself already
 	 * stopping). Handles arbitrarily deep chains because RealmHostPanel flattens all
 	 * cascade followers into the primary guide's actionFollowers list.
-	 *
-	 * TBD(interphase-dialogs): when a middle-chain character (follower of the guide AND guide
-	 * of their own sub-followers) chooses to stop following during pre-phase, their sub-followers
-	 * should either also stop following OR be offered their own stop-following decision.
-	 * Currently cascadeStopFollowing() forces sub-followers to stop, but this happens silently
-	 * on the guide's client machine only — the sub-followers' CharacterFrame instances on their
-	 * own clients don't get a pre-phase dialog to decide for themselves. The correct behaviour is
-	 * TBD from a rules/design standpoint: auto-cascade (current), or give sub-followers their own
-	 * choice (requires them to receive NeedsPrePhaseActivityDecision after their guide resolves).
 	 */
 	private void cascadeStopFollowing(CharacterWrapper stopped, CharacterWrapper phasingChar) {
 		for (CharacterWrapper follower : phasingChar.getActionFollowers()) {
@@ -1422,12 +1413,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		if (blocker.isPlayingTurn()) {
 			// Phasing character: can block all detectable chars, denizens, and monsters
 			// except own current followers (subject to per-target guards).
-			// TBD(interphase-dialogs): guides also cannot block their own followers at post-phase
-			// (the follower's window fires at phase-end, not the guide's). Currently own followers
-			// are excluded here — that is correct. But followers of the phasing guide should also
-			// be excluded from seeing the phasing guide as a block candidate in their own
-			// post-phase dialog: the blocking opportunity has passed by the time the guide's turn ends.
-			// See the non-phasing branch: isFollowerOfPhasingChar() check at line ~1210.
 			Set<GameObject> ownFollowers = new HashSet<>();
 			for (CharacterWrapper f : blocker.getActionFollowers()) {
 				ownFollowers.add(f.getGameObject());
@@ -1836,22 +1821,60 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		// Phase Start: apply decisions unless deferred or any blocking occurred.
 		// Blocking either direction means no next phase for anyone in this clearing.
-		boolean anyBlocking = blockedPhasingChar;
-		// Check the phasing character specifically for blocked state.
+		boolean actuallyBlocked = blockedPhasingChar;
 		// Also check every character in the clearing for a still-pending post-phase decision:
 		// any of them may yet apply a Block, so pre-phase must not be applied until all
-		// post-phase dialogs are resolved — order of submission is undefined.
+		// post-phase dialogs are resolved — order of submission is undefined. This is tracked
+		// separately from actuallyBlocked: a sibling merely not having submitted yet is not a
+		// real block, and must not be treated as one when deciding whether to discard this
+		// character's PrePhaseActivityActionCount stamp below (doing so would make the phasing
+		// character's clearing-walk in doPrePhaseActivities() re-prompt this character even
+		// though they already made a real (non-deferred) decision this action phase).
+		boolean othersStillPending = false;
 		TileLocation loc = getCharacter().getCurrentLocation();
-		if (!anyBlocking && loc != null && loc.isInClearing()) {
+		if (!actuallyBlocked && loc != null && loc.isInClearing()) {
 			for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 				if (!rc.isPlayerControlledLeader()) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
-				if (cw.isPlayingTurn() && cw.isBlocked()) { anyBlocking = true; break; }
-				if (cw.getNeedsPostPhaseActivityDecision()) { anyBlocking = true; break; }
+				if (cw.isPlayingTurn() && cw.isBlocked()) { actuallyBlocked = true; break; }
+				if (cw.getNeedsPostPhaseActivityDecision()) { othersStillPending = true; }
 			}
 		}
+		boolean anyBlocking = actuallyBlocked || othersStillPending;
 		boolean deferred = deferPrePhaseCheckbox != null && deferPrePhaseCheckbox.isSelected();
-		if (!deferred && !anyBlocking) {
+		// deferred is checked first and takes priority over anyBlocking: deferral is an explicit
+		// user choice to wait for the phasing character, and must not be overridden just because
+		// a sibling's post-phase decision happens to still be pending at submission time (order
+		// of submission is undefined) — otherwise the deferral is silently dropped and this
+		// character never gets re-prompted after the phasing character resolves their own
+		// pre-phase decision.
+		if (deferred) {
+			// Deferred and not blocked: pre-phase flag stays set; ensure phasing char shows Done: Pre-Phase button.
+			for (GameObject go : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
+				CharacterWrapper cw = new CharacterWrapper(go);
+				if (cw.isPlayingTurn()) {
+					cw.setNeedsPrePhaseActivityDecision(true);
+					break;
+				}
+			}
+		} else if (anyBlocking) {
+			// Either an actual block occurred, or a sibling's post-phase decision is still
+			// pending (order of submission is undefined) — either way, don't apply this
+			// character's pre-phase decisions yet, and hide their dialog for now.
+			getCharacter().setNeedsPrePhaseActivityDecision(false);
+			if (actuallyBlocked) {
+				// A real block cancels the next phase for everyone in the clearing. Reset the
+				// stamp so handlePrePhase() re-evaluates this character for the next action —
+				// without the reset the stamp would match actionsTaken and the character would
+				// be permanently skipped.
+				getCharacter().removePrePhaseActivityActionCount();
+			}
+			// else: only othersStillPending — this character's stamp (set by triggerPostPhase())
+			// still matches the current action phase, so leave it alone. Wiping it here would
+			// make the phasing character's clearing-walk in doPrePhaseActivities() treat this
+			// character as never having been offered a pre-phase decision, re-prompting them
+			// even though they already decided (and did not choose to defer).
+		} else {
 			GameWrapper game = gameHandler.getGame();
 			for (ChitSelection sel : currentChitSelections) {
 				if (!sel.isPlayed()) continue;
@@ -1892,22 +1915,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				if (phasingChar != null) cascadeStopFollowing(getCharacter(), phasingChar);
 			}
 			getCharacter().setNeedsPrePhaseActivityDecision(false);
-		} else if (anyBlocking) {
-			// Blocked (or another character still has a pending post-phase decision) →
-			// discard this character's pre-phase flag. Reset the stamp so handlePrePhase()
-			// re-evaluates this character for the next action — without the reset the stamp
-			// would match actionsTaken and the character would be permanently skipped.
-			getCharacter().setNeedsPrePhaseActivityDecision(false);
-			getCharacter().removePrePhaseActivityActionCount();
-		} else {
-			// Deferred and not blocked: pre-phase flag stays set; ensure phasing char shows Done: Pre-Phase button.
-			for (GameObject go : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
-				CharacterWrapper cw = new CharacterWrapper(go);
-				if (cw.isPlayingTurn()) {
-					cw.setNeedsPrePhaseActivityDecision(true);
-					break;
-				}
-			}
 		}
 
 		currentChitSelections.clear();
@@ -3141,14 +3148,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		showPrePhaseDialogButton = new SingleButton("Show Reactions Dialog", false) {
 			public boolean needsShow() {
 				boolean isLocal = gameHandler.getClient().getClientName().equals(getCharacter().getPlayerName());
-				// TBD(interphase-dialogs): button appears prematurely when a non-phasing char defers via
-				// the combined dialog — their NeedsPrePhaseActivityDecision stays set while the phasing
-				// char's Done:Pre-Phase button is also set.  The auto-show path already guards this with
-				// !phasingCharPendingPrePhase(); this needsShow() should add the same guard:
-				//   && !phasingCharPendingPrePhase()
-				// Needs regression testing across solo, follower-defer, and multi-char combined-dialog paths.
 				return !getCharacter().isPlayingTurn() && getCharacter().getNeedsPrePhaseActivityDecision()
-					&& !getCharacter().getNeedsPostPhaseActivityDecision() && isLocal;
+					&& !getCharacter().getNeedsPostPhaseActivityDecision() && isLocal
+					&& !phasingCharPendingPrePhase();
 			}
 		};
 		showPrePhaseDialogButton.setBorder(BorderFactory.createLineBorder(MagicRealmColor.GOLD, 2));
