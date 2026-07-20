@@ -2519,6 +2519,17 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	}
 
 	/**
+	 * Selects the given character's row in the character list, without affecting frame z-order.
+	 * Called when a CharacterFrame is activated (clicked on), so the list stays in sync.
+	 */
+	public void selectCharacterInList(CharacterWrapper character) {
+		int row = characterTableModel.getCharacterRow(character);
+		if (row >= 0) {
+			characterTable.getSelectionModel().setSelectionInterval(row, row);
+		}
+	}
+
+	/**
 	 * Brings the next recording frame to front, if any
 	 */
 	public void showNextRecordFrame() {
