@@ -89,6 +89,25 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 	};
 
+	// Auto-completes a follower's turn 5 seconds after their last action row is resolved —
+	// a follower's Done click carries no decision (Follow has nothing left to decide once its
+	// action rows are done), so requiring it is pure friction. The brief pause and the Done
+	// button's existing flash-when-enabled give the player a moment to notice and react (e.g. if
+	// they wanted to do something else via this panel) before the turn closes on its own.
+	private Timer autoFollowerDoneTimer = null;
+	private ActionListener autoFollowerDoneListener = new ActionListener() {
+		public void actionPerformed(ActionEvent ev) {
+			autoFollowerDoneTimer = (Timer)ev.getSource();
+			autoFollowerDoneTimer.stop();
+			autoFollowerDoneTimer.removeActionListener(autoFollowerDoneListener);
+			autoFollowerDoneTimer = null;
+			// Re-check at fire time — conditions may have changed during the pause.
+			if (isFollowing && finishedPlayButton.isEnabled()) {
+				turnDone();
+			}
+		}
+	};
+
 	public RealmTurnPanel(CharacterFrame parentFrame,GameWrapper game,HostPrefWrapper hostPrefs) {
 		super(parentFrame);
 		this.game = game;
@@ -506,7 +525,22 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
 		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
-		
+
+		if (isFollowing) {
+			if (finishedPlayButton.isEnabled()) {
+				if (autoFollowerDoneTimer == null) {
+					autoFollowerDoneTimer = new Timer(5000, autoFollowerDoneListener);
+					autoFollowerDoneTimer.setRepeats(false);
+					autoFollowerDoneTimer.start();
+				}
+			} else if (autoFollowerDoneTimer != null) {
+				// Conditions changed before the timer fired (e.g. a new action row appeared) — cancel it.
+				autoFollowerDoneTimer.stop();
+				autoFollowerDoneTimer.removeActionListener(autoFollowerDoneListener);
+				autoFollowerDoneTimer = null;
+			}
+		}
+
 		if (playNextButton.isEnabled()) makeDefault(playNextButton);
 		if (finishedPlayButton.isEnabled()) makeDefault(finishedPlayButton);
 		
@@ -1202,11 +1236,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		return list;
 	}
 	
-	// TBD(4): Followers' turns should auto-end once all their action rows are processed,
-	// without requiring the player to click Done. When isFollowing is true and all action
-	// rows are completed (no pending rows remain), turnDone() should be called automatically
-	// from updateControls() or playNext() rather than waiting for the button. The Done button
-	// should be hidden or disabled for followers during this period.
 	private void turnDone() {
 		// Assign combat order here
 		getCharacter().setCombatPlayOrder(game.getNextDayTurnCount());

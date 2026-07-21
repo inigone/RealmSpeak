@@ -825,8 +825,7 @@ public class ActionRow {
 			// In 1st edition, non-phasing characters play color chits at phase-END rather than phase-start.
 			// This block evaluates who qualifies and defers block evaluation until they resolve.
 			// NOTE: triggerPostPhase() (below) handles the interphase-dialogs post-phase system and runs
-			// for both editions — but the 1st-edition nuances of this block are not yet replicated there
-			// (see TBD(10)). These two mechanisms are parallel paths, not duplicates.
+			// for both editions. These two mechanisms are parallel paths, not duplicates.
 			boolean blockEvaluation = true;
 			if (hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT)) {
 				TileLocation current = character.getCurrentLocation();
@@ -1253,18 +1252,6 @@ public class ActionRow {
 				}
 			}
 		}
-
-		// TBD(10): 1st-edition (FE_PHASE_END_PLAYING_COLOR_CHIT ON) following and color chit play
-		// in interphase dialogs are not fully implemented.
-		//   - Follower exclusion: currently NO followers are excluded, so a follower of any guide
-		//     can receive a post-phase color chit dialog. The original master behavior excluded only
-		//     the phasing character's active followers; that nuance is not yet replicated here.
-		//   - Combined pre+post dialog: canPlayColorChits (below) is false in 1st-edition mode, so
-		//     1st-edition followers who qualify for post-phase never get the eager pre-phase stamp —
-		//     they receive two sequential dialogs instead of one combined dialog.
-		//   - The !isFollowing guard in process() may additionally prevent followers from ever
-		//     reaching triggerPostPhase(), suppressing the dialog entirely.
-		// All three issues require coordinated testing with FE_PHASE_END_PLAYING_COLOR_CHIT enabled.
 
 		// Collect player characters eligible for post-phase (not excluded as active followers)
 		// and note whether any unhired, non-mist-like monsters are present in the clearing.
