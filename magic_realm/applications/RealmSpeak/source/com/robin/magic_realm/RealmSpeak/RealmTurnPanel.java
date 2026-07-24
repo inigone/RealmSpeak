@@ -1471,7 +1471,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		for (CharacterWrapper aFollower : toRemove) {
 			if (!aFollower.hasActiveInventoryThisKey(Constants.LINKS)) {
 				getCharacter().removeActionFollower(aFollower,monsterDieRoller,nativeDieRoller);
-				abandonFollowerChain(aFollower, monsterDieRoller, nativeDieRoller);
+				abandonFollowerChain(getCharacter(), aFollower, monsterDieRoller, nativeDieRoller);
 			}
 		}
 
@@ -1479,19 +1479,28 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		actionFollowers = getCharacter().getActionFollowers();
 	}
 
-	private void abandonFollowerChain(CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
-		// TBD(9): Sub-followers continue following the main guide even after their intermediate
-		// guide is ditched. This suggests sub-followers are also registered in the main guide's
-		// ACTION_FOLLOWER list (flattened chain), so removeActionFollower on the dropped guide
-		// alone does not remove them from the main guide's list. The fix: after recursively
-		// clearing dropped's own followers here, also remove each sub-follower from the main
-		// guide's ACTION_FOLLOWER list (getCharacter().removeActionFollower(subFollower, ...)).
-		for (CharacterWrapper subFollower : dropped.getActionFollowers()) {
-			dropped.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
+	private void abandonFollowerChain(CharacterWrapper topGuide, CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
+		// RealmHostPanel flattens the entire follow-chain into the TOP guide's ACTION_FOLLOWER list;
+		// intermediate guides (a ditched mid-chain follower like Captain) have an EMPTY list, so
+		// dropped.getActionFollowers() would find nothing. Instead scan the top guide's flat list for
+		// anyone whose immediate guide (getCharacterImFollowing()) is the dropped character — those are
+		// dropped's sub-followers — remove them from the top guide's list, stop them, and recurse.
+		String droppedId = dropped.getGameObject().getStringId();
+		ArrayList<CharacterWrapper> subFollowers = new ArrayList<>();
+		for (CharacterWrapper candidate : topGuide.getActionFollowers()) {
+			CharacterWrapper theirGuide = candidate.getCharacterImFollowing();
+			if (theirGuide != null && droppedId.equals(theirGuide.getGameObject().getStringId())) {
+				subFollowers.add(candidate);
+			}
+		}
+		for (CharacterWrapper subFollower : subFollowers) {
+			System.out.println("[IPD] abandonFollowerChain: " + subFollower.getGameObject().getName()
+				+ " stops following (its guide " + dropped.getGameObject().getName() + " was ditched)");
+			topGuide.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
 			subFollower.setStopFollowing(true);
 			RealmLogging.logMessage(subFollower.getGameObject().getName(),
 				"Stops following (guide " + dropped.getGameObject().getName() + " was left behind).");
-			abandonFollowerChain(subFollower, monsterDieRoller, nativeDieRoller);
+			abandonFollowerChain(topGuide, subFollower, monsterDieRoller, nativeDieRoller);
 		}
 	}
 	public void updatePanel() {
