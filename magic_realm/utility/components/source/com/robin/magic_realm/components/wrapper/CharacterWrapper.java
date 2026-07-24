@@ -132,7 +132,13 @@ public class CharacterWrapper extends GameObjectWrapper {
 	// Participants are all individuals in the clearing the phasing individual occupies AFTER the action.
 	public static final String NEEDS_POST_PHASE_ACTIVITY_DECISION = "_poPdc_";
 	public static final String POST_PHASE_ACTIVITY_ACTION_COUNT = "_poPac_";
-	
+	// Stamped with the phasing guide's action-phase count when a follower is released at the guide's
+	// last action (releaseLastPhaseFollowers). The guide's post-phase block dialog is built AFTER that
+	// release, so getActionFollowers() no longer lists them — this stamp lets the block-candidate scan
+	// still recognize "you were my follower this very action" and exclude them (a guide never blocks
+	// their own follower, and followers count as followers until the guide's turn truly ends).
+	public static final String JUST_RELEASED_FOLLOWER_ACTION_COUNT = "_jrfac_";
+
 	public static final String CURRENT_GUILD = "_ccg_";
 	public static final String CURRENT_GUILD_LEVEL = "_ccgl_";
 	public static final String CURRENT_GUILD_JOIN_REQUIREMENT = "_ccjr_";
@@ -2154,7 +2160,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 		removeColorChitInterruptionActionCountPhaseEnd();
 		removePrePhaseActivityActionCount();
 		removePostPhaseActivityActionCount();
-		
+		removeAttribute(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+
 		if (getPonyGameObject()!=null) {
 			ArrayList<RealmComponent> fhList = getFollowingHirelings();
 			if (!fhList.isEmpty()) {
@@ -4205,6 +4212,13 @@ public class CharacterWrapper extends GameObjectWrapper {
 	}
 	public void removePostPhaseActivityActionCount() {
 		removeAttribute(POST_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+	public int getJustReleasedFollowerActionCount() {
+		if (getBoolean(JUST_RELEASED_FOLLOWER_ACTION_COUNT) == false) return -1;
+		return getInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+	}
+	public void setJustReleasedFollowerActionCount(int val) {
+		setInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT, val);
 	}
 	public void removePrePhaseActivityActionCount() {
 		removeAttribute(PRE_PHASE_ACTIVITY_ACTION_COUNT);

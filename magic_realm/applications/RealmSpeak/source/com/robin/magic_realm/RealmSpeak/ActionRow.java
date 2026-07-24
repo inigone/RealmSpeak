@@ -49,7 +49,7 @@ public class ActionRow {
 	
 	private String blankReason = null; // identifies a BLANK phase
 	private boolean spawned = false; // identifies "spawned" actions that aren't recorded or tracked
-	private boolean invalid = false; // identifies an INVALID phase (this doesn't count as a real phase!!)
+	private boolean invalid = false; // INVALID phase: a real phase whose action is a no-op (illegal/impossible action). It still counts as a phase and still gets pre/post reaction dialogs; only the action dispatch is skipped.
 	private boolean invalidPlanned = false; // identifies an phase, which was INVALID when planned
 
 	private RealmTurnPanel turnPanel;
@@ -578,8 +578,17 @@ public class ActionRow {
 				return;
 			}
 
-			if (isExecutableAction) {
-				if (isPostPhasePending()) return;
+			// Pre-phase (and the post-phase-pending gate) apply to EVERY non-cancelled phase, NOT just
+			// executable ones. A blank/invalid phase is still a real phase — its action simply becomes a
+			// no-op — and other characters in the clearing can still react to it. Only the action
+			// DISPATCH below is gated on isExecutableAction; the reaction windows are not. (Cancelled
+			// phases — blocked/sleeping — already returned early above, so reaching here means the phase
+			// is happening.)
+			{
+				boolean postPending = isPostPhasePending();
+				System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+					+ " isExecutableAction=" + isExecutableAction + " isPostPhasePending=" + postPending);
+				if (postPending) { System.out.println("[IPD]   -> DEFER (post-phase still pending)"); return; }
 				// Store total phase count and current sub-phase index before handlePrePhase fires so
 				// the dialog header can show ordinal info for multi-phase actions. Non-continuation
 				// rows start a new action (P=1, PTOT=phaseCount); continuation rows increment P.
@@ -592,7 +601,10 @@ public class ActionRow {
 					}
 					phaseIndexSet = true;
 				}
-				if (handlePrePhase(hostPrefs)) return;
+				boolean prePending = handlePrePhase(hostPrefs);
+				System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+					+ " handlePrePhase deferred=" + prePending);
+				if (prePending) return;
 			}
 		}
 
@@ -871,11 +883,16 @@ public class ActionRow {
 				gameHandler.updateCharacterFramesWithoutMap();
 			}
 
-			// Notify post-phase participants and release end-of-turn followers.
-			// Skipped for follower rows (handled via guide) and blank/invalid phases (nothing happened).
+			// Notify post-phase participants and release end-of-turn followers. Fires for EVERY
+			// non-follower phase, including blank/invalid no-op phases — the action did nothing, but
+			// the phase still happened and other characters in the clearing can still react to it.
+			// (Only follower rows are skipped; they are handled via their guide.)
 			// triggerPostPhase() runs first so followers are still in getActionFollowers() when the
 			// clearing is scanned; releaseLastPhaseFollowers() then removes them immediately after.
-			if (!isFollowing && isExecutableAction) {
+			System.out.println("[IPD] post-action char=" + character.getGameObject().getName() + " action=" + action
+				+ " isFollowing=" + isFollowing + " isExecutableAction=" + isExecutableAction
+				+ (!isFollowing ? " -> triggerPostPhase+releaseFollowers" : " -> SKIP (follower row)"));
+			if (!isFollowing) {
 				triggerPostPhase();
 				releaseLastPhaseFollowers();
 			}
@@ -897,25 +914,20 @@ public class ActionRow {
 	 *       3rd-edition mode ({@code FE_PHASE_END_PLAYING_COLOR_CHIT} absent). In 1st-edition, color
 	 *       chit play shifts to post-phase, leaving non-followers nothing to do pre-phase.</li>
 	 * </ul>
-	 * When qualifying characters exist and the segment has not already fired for this action
-	 * (action-count guard via {@code getPrePhaseActivityActionCount()}), two cases are distinguished:
-	 * <ul>
-	 *   <li><b>Combined case</b>: a qualifying character already has an outstanding post-phase
-	 *       decision. Their pre-phase flag is set immediately so CharacterFrame shows a single
-	 *       combined dialog. No "Done: Pre-Phase" button is needed initially — however, if the
-	 *       character defers their pre-phase choices in the combined dialog, the deferred path
-	 *       sets the phasing character's {@code NeedsPrePhaseActivityDecision} flag, effectively
-	 *       transferring this character into the done-button case for the next cycle.</li>
-	 *   <li><b>Done-button case</b>: a qualifying character has no outstanding post-phase decision.
-	 *       They must wait for the phasing character to acknowledge before their dialog fires.
-	 *       The phasing character's {@code NeedsPrePhaseActivityDecision} flag is set, which causes
-	 *       CharacterFrame to show the "Done: Pre-Phase" button.</li>
-	 * </ul>
-	 * The "Done: Pre-Phase" button therefore only appears when at least one non-phasing character
-	 * needs to make pre-phase decisions. After flags are set, the method scans the clearing: if any
-	 * player-controlled leader still has the pre-phase flag set, it returns {@code true} to defer
-	 * the action.  (Be careful that the term "defer" here is not confused with the "defer" button
-	 * in the pre-phase dialog mentioned above.  Completely different usages.)
+	 * When at least one qualifying character exists and the segment has not already fired for this
+	 * action (action-count guard via {@code getPrePhaseActivityActionCount()}), the phasing
+	 * character's own {@code NeedsPrePhaseActivityDecision} flag is set, which causes CharacterFrame
+	 * to show the "Done: Pre-Phase" button. The qualifying non-phasing characters must wait for the
+	 * phasing character to click that button before their own pre-phase dialogs fire (their flags
+	 * are set by the phasing character's {@code doPrePhaseActivities()} clearing-walk at that point).
+	 * <p>
+	 * Post-phase is always fully resolved before this method runs (the {@code isPostPhasePending()}
+	 * gate in {@code process()} returns early otherwise), so a non-phasing character never has both
+	 * a pre-phase and a post-phase decision outstanding at the same time -- the post-phase (blocking)
+	 * dialog and the pre-phase dialog are strictly sequential, never merged.
+	 * <p>
+	 * After flags are set, the method scans the clearing: if any player-controlled leader still has
+	 * the pre-phase flag set, it returns {@code true} to defer the action.
 	 *
 	 * A hidden phasing guide whose upcoming action is a move may release followers who cannot
 	 * detect them during the pre-phase window, before the move executes.
@@ -927,93 +939,78 @@ public class ActionRow {
 	 *         unresolved pre-phase decision and the action must not yet execute;
 	 *         {@code false} if the action may proceed
 	 */
+	/**
+	 * Whether {@code reactor} is eligible for a pre-phase reaction dialog during {@code phasing}'s
+	 * action: they must have Reactions ON, and be either an active follower of the phasing character
+	 * (who may choose to stop following) or a color-chit holder in 3rd-edition mode (who may play
+	 * color chits). Shared by ActionRow (deciding whether to open the pre-phase gate) and
+	 * CharacterFrame (flagging the actual reactors when the phasing char clicks "Done: Pre-Phase"),
+	 * so the two can never drift apart.
+	 */
+	static boolean isEligiblePrePhaseReactor(CharacterWrapper phasing, CharacterWrapper reactor, HostPrefWrapper hostPrefs) {
+		if (!reactor.isReacting()) return false;
+		boolean isFollower = phasing.getActionFollowers().stream()
+			.anyMatch(f -> f.getGameObject().equals(reactor.getGameObject()));
+		boolean canPlayColorChits = !reactor.getColorMagicChits().isEmpty()
+			&& !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
+		return isFollower || canPlayColorChits;
+	}
+
+	/**
+	 * The pre-phase gate for the phasing character's upcoming action. Two clean steps:
+	 * <ol>
+	 *   <li><b>Setup (once per action phase):</b> if any eligible reactor is in the clearing, flag
+	 *       the phasing character (which shows the "Done: Pre-Phase" button). The reactors are NOT
+	 *       flagged here — they wait until the phasing character clicks Done, at which point
+	 *       {@code CharacterFrame.doPrePhaseActivities()}'s clearing-walk flags them.</li>
+	 *   <li><b>Gate:</b> defer the action while ANY player-controlled leader in the clearing still
+	 *       holds a pre-phase decision — the phasing character (until they click Done) or a reactor
+	 *       (until they submit).</li>
+	 * </ol>
+	 * The single guard against re-running setup on every polled {@code process()} call is the
+	 * phasing character's {@code PrePhaseActivityActionCount}: it records which action phase (by
+	 * performed-count) the gate was already opened for. Using the performed-count rather than a
+	 * plain boolean means it auto-distinguishes each successive action with no manual reset.
+	 */
 	private boolean handlePrePhase(HostPrefWrapper hostPrefs) {
 		if (character.isMinion()) return false; // minions have no independent pre-phase activity
-		
+
 		TileLocation loc = character.getCurrentLocation();
 		if (loc == null || !loc.isInClearing()) return false; // pre-phase only applies in a clearing
 
-		// Pre-phase fires at most once per action phase. An action phase is a single unit of daylight
-		// activity: a single-phase action (e.g. Alert) consumes one; a multi-phase action (e.g. a
-		// mountain move) consumes two or more in sequence; repeated actions ganged together (e.g.
-		// three Rests) each consume one phase in turn. actionPhasesPerformed counts how many action
-		// phases have completed today (0 before the first, 1 before the second, etc.), incremented
-		// by each call to addActionPhasePerformedToday. The stamp is written to actionPhasesPerformed
-		// the first time pre-phase evaluates for the current phase. On subsequent process() calls
-		// while the same phase is still pending, actionPhasesPerformed is unchanged, so
-		// stamp == actionPhasesPerformed means pre-phase already ran for this phase — skip
-		// re-evaluation and go straight to the flag scan (lines below the if block) that checks
-		// whether any character's NeedsPrePhaseActivityDecision is still outstanding.
-		int actionPhasesPerformed = character.getNumberOfPerformedActionPhasesToday();
-		int currentStamp = character.getPrePhaseActivityActionCount();
-		boolean alreadyOccurred = currentStamp == actionPhasesPerformed;
+		int perf = character.getNumberOfPerformedActionPhasesToday();
+		boolean alreadySetup = character.getPrePhaseActivityActionCount() == perf;
+		System.out.println("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " action=" + action
+			+ " loc=" + (loc.clearing != null ? loc.clearing.getDescription() : "?")
+			+ " perf=" + perf + " alreadySetup=" + alreadySetup);
 
-		if (!alreadyOccurred) {
-			// true for 3rd edition (pre-phase color chit play), false for 1st edition (post-phase color chit play)
-			boolean prePhaseColorChitPlay = !hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
-
-			ArrayList<CharacterWrapper> phasingFollowers = character.getActionFollowers();
-
-			// anyNeedsPostAndPrePhaseComboDialog: at least one char has an unresolved post-phase
-			// decision from the just-completed phase AND will also need a pre-phase decision for
-			// the coming phase — both are flagged now so a single combined dialog covers them.
-			// anyNeedsPrePhaseOnlyDialog: at least one char needs a pre-phase dialog but has no
-			// outstanding post-phase decision — they wait for the phasing char's "Done: Pre-Phase"
-			// acknowledgement before their pre-phase dialog fires.
-			boolean anyNeedsPrePhaseOnlyDialog = false;
-			boolean anyNeedsPostAndPrePhaseComboDialog = false;
+		if (!alreadySetup) {
+			boolean anyEligible = false;
 			for (RealmComponent rc : loc.clearing.getClearingComponents()) {
-
 				if (rc.getGameObject().equals(character.getGameObject())) continue;
-
+				if (!rc.isPlayerControlledLeader()) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
-				if (!rc.isPlayerControlledLeader() && !cw.isMinion()) continue;
-
-				boolean isReacting = cw.isReacting();
-				boolean isFollower = phasingFollowers.stream().anyMatch(f -> f.getGameObject().equals(rc.getGameObject()));
-				boolean canPlayColorChits = !cw.getColorMagicChits().isEmpty() && prePhaseColorChitPlay;
-				// Reactions must be ON for any pre-phase dialog — followers for stop-following,
-				// non-followers for color chit play.
-				if (isReacting && (isFollower || canPlayColorChits)) {
-					if (cw.getNeedsPostPhaseActivityDecision()) {
-						// Post-phase still outstanding — set the pre-phase flag directly so CharacterFrame
-						// sees both flags simultaneously and shows the combined dialog.
-						cw.setNeedsPrePhaseActivityDecision(true);
-						anyNeedsPostAndPrePhaseComboDialog = true;
-					} else {
-						// No outstanding post-phase — needs a pre-phase-only dialog, gated on the
-						// phasing char's "Done: Pre-Phase" acknowledgement. Skip chars whose stamp
-						// already matches (already handled this action phase via combo/deferred path).
-						if (cw.getPrePhaseActivityActionCount() != actionPhasesPerformed) {
-							anyNeedsPrePhaseOnlyDialog = true;
-						}
-					}
+				if (isEligiblePrePhaseReactor(character, cw, hostPrefs)) {
+					System.out.println("[IPD]   eligible reactor: " + cw.getGameObject().getName());
+					anyEligible = true;
 				}
 			}
-
-			if (anyNeedsPostAndPrePhaseComboDialog || anyNeedsPrePhaseOnlyDialog) {
-				character.setPrePhaseActivityActionCount(actionPhasesPerformed);
-				if (anyNeedsPrePhaseOnlyDialog) {
-					// At least one char needs a pre-phase-only dialog — show the "Done: Pre-Phase"
-					// button on the phasing char so they can signal when those chars' dialogs may fire.
-					character.setNeedsPrePhaseActivityDecision(true);
-				}
-				// Notify all character frames so their updateCharacter() auto-show logic can detect
-				// the newly set flags and queue the appropriate dialogs via SwingUtilities.invokeLater.
+			System.out.println("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " anyEligible=" + anyEligible);
+			if (anyEligible) {
+				character.setPrePhaseActivityActionCount(perf);   // mark the gate opened for this action phase
+				character.setNeedsPrePhaseActivityDecision(true);  // show the "Done: Pre-Phase" button on the phasing char
 				gameHandler.updateCharacterFramesWithoutMap();
 			}
 		}
 
-		// Defer the action if any player character in the clearing still has a pre-phase decision pending.
+		// GATE: defer while any player-controlled leader in the clearing still has a pending pre-phase decision.
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
-			boolean isPlayerChar = rc.isPlayerControlledLeader();
-			boolean hasPrePhaseDecisionPending = isPlayerChar && new CharacterWrapper(rc.getGameObject()).getNeedsPrePhaseActivityDecision();
-			if (hasPrePhaseDecisionPending) {
+			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPrePhaseActivityDecision()) {
+				System.out.println("[IPD] handlePrePhase -> DEFER (pending: " + rc.getGameObject().getName() + ")");
 				return true;
 			}
 		}
-
-		// don't defer the action - all pre-phase dialogs have been resolved and the phasing character may proceed.
+		System.out.println("[IPD] handlePrePhase -> proceed (no pre-phase pending)");
 		return false;
 	}
 
@@ -1037,12 +1034,22 @@ public class ActionRow {
 	private boolean isPostPhasePending() {
 		TileLocation loc = character.getCurrentLocation();
 		if (loc == null || !loc.isInClearing()) return false;
-		if (character.getPostPhaseActivityActionCount() != character.getNumberOfPerformedActionPhasesToday()) return false;
+		int stamp = character.getPostPhaseActivityActionCount();
+		int perf = character.getNumberOfPerformedActionPhasesToday();
+		if (stamp != perf) {
+			System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+				+ " stamp=" + stamp + " perf=" + perf + " -> false (stamp mismatch)");
+			return false;
+		}
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
+				System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+					+ " stamp=" + stamp + " perf=" + perf + " -> true (pending: " + rc.getGameObject().getName() + ")");
 				return true;
 			}
 		}
+		System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+			+ " stamp=" + stamp + " perf=" + perf + " -> false (no one flagged)");
 		return false;
 	}
 
@@ -1079,10 +1086,16 @@ public class ActionRow {
 	 * is mutated by each {@code removeActionFollower} call.
 	 */
 	private void releaseLastPhaseFollowers() {
-		if (newAction != null) return; // continuation pending — don't release until the final phase
-		if (turnPanel.hasPendingActionsAfterCurrent()) return;
+		if (newAction != null) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (continuation pending)"); return; }
+		if (turnPanel.hasPendingActionsAfterCurrent()) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (more actions pending)"); return; }
+		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		for (CharacterWrapper follower : character.getActionFollowers()) {
+			System.out.println("[IPD] releaseLastPhaseFollowers releasing " + follower.getGameObject().getName() + " from " + character.getGameObject().getName());
 			follower.setStopFollowing(true);
+			// Stamp so the guide's post-phase block dialog (built after this release, when
+			// getActionFollowers() is already empty) still recognizes this char as a just-released
+			// follower for this action and excludes them from the guide's block candidates.
+			follower.setJustReleasedFollowerActionCount(actionPhasesPerformedNow);
 			character.removeActionFollower(follower, gameHandler.getGame().getMonsterDie(), gameHandler.getGame().getNativeDie());
 		}
 	}
@@ -1137,31 +1150,16 @@ public class ActionRow {
 
 		ArrayList<CharacterWrapper> postPhaseParticipants = getPostPhaseParticipants(loc);
 
+		StringBuilder dbg = new StringBuilder();
+		for (CharacterWrapper cw : postPhaseParticipants) dbg.append(cw.getGameObject().getName()).append(",");
+		System.out.println("[IPD] triggerPostPhase phasing=" + character.getGameObject().getName()
+			+ " loc=" + (loc.clearing != null ? loc.clearing.getDescription() : "?")
+			+ " participants=[" + dbg + "]");
+
 		if (!postPhaseParticipants.isEmpty()) {
 			character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
-
-			HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
-			boolean colorChitPostPhase = hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT);
-			ArrayList<CharacterWrapper> phasingFollowers = character.getActionFollowers();
-
-			// Eagerly check if a pre-phase will immediately follow. If the phasing character has
-			// more actions queued and a non-phasing post-phase participant also qualifies for
-			// pre-phase (follower OR holds color chits in 3rd-edition mode), set both flags at
-			// once so CharacterFrame shows a single combined dialog instead of two sequential ones.
-			boolean nextActionExists = (newAction != null) || turnPanel.hasPendingActionsAfterCurrent();
 			for (CharacterWrapper cw : postPhaseParticipants) {
 				cw.setNeedsPostPhaseActivityDecision(true);
-				if (nextActionExists && !cw.getGameObject().equals(character.getGameObject())) {
-					boolean isFollower = phasingFollowers.stream()
-						.anyMatch(f -> f.getGameObject().equals(cw.getGameObject()));
-					boolean canPlayColorChits = !cw.getColorMagicChits().isEmpty() && !colorChitPostPhase;
-					if (cw.isReacting() && (isFollower || canPlayColorChits)) {
-						cw.setNeedsPrePhaseActivityDecision(true);
-						// Stamp so doPrePhaseActivities() knows this char's pre-phase for this action
-						// is already handled via the combined dialog and must not be re-triggered.
-						cw.setPrePhaseActivityActionCount(actionPhasesPerformedNow);
-					}
-				}
 			}
 			gameHandler.updateCharacterFramesWithoutMap();
 		}
@@ -1209,21 +1207,30 @@ public class ActionRow {
 		//   - Follower exclusion: currently NO followers are excluded, so a follower of any guide
 		//     can receive a post-phase color chit dialog. The original master behavior excluded only
 		//     the phasing character's active followers; that nuance is not yet replicated here.
-		//   - Combined pre+post dialog: canPlayColorChits (below) is false in 1st-edition mode, so
-		//     1st-edition followers who qualify for post-phase never get the eager pre-phase stamp —
-		//     they receive two sequential dialogs instead of one combined dialog.
 		//   - The !isFollowing guard in process() may additionally prevent followers from ever
 		//     reaching triggerPostPhase(), suppressing the dialog entirely.
 		// All three issues require coordinated testing with FE_PHASE_END_PLAYING_COLOR_CHIT enabled.
 
 		// Collect player characters eligible for post-phase (not excluded as active followers)
 		// and note whether any unhired, non-mist-like monsters are present in the clearing.
+		System.out.println("[IPD] RAW clearing contents for " + character.getGameObject().getName() + " @ " + (loc.clearing != null ? loc.clearing.getDescription() : "?") + ":");
+		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
+			boolean excl = excludedFollowers.contains(rc.getGameObject());
+			System.out.println("[IPD]   comp=" + rc.getGameObject().getName()
+				+ " playerLeader=" + rc.isPlayerControlledLeader()
+				+ " owner=" + (rc.getOwner() != null ? rc.getOwner().getGameObject().getName() : "null")
+				+ " hasNameKey=" + rc.getGameObject().hasAttribute(CharacterWrapper.PLAYER_BLOCK, CharacterWrapper.NAME_KEY)
+				+ " inExcludedFollowers=" + excl
+				+ " isMonster=" + (rc instanceof MonsterChitComponent));
+		}
 		ArrayList<CharacterWrapper> nonFollowers = new ArrayList<>();
 		boolean monstersPresent = false;
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isPlayerControlledLeader()) {
-				// Underling hirelings (owned but no player name) always follow their guide — never independent post-phase participants
-				if (rc.getOwner() != null && !rc.getGameObject().hasThisAttribute(CharacterWrapper.NAME_KEY)) continue;
+				// Underling hirelings (owned but no player name) always follow their guide — never independent post-phase participants.
+				// NAME_KEY lives in PLAYER_BLOCK, not the "this" block, so must use hasAttribute(PLAYER_BLOCK, NAME_KEY):
+				// hasThisAttribute(NAME_KEY) always returns false for real player characters and would wrongly skip them all.
+				if (rc.getOwner() != null && !rc.getGameObject().hasAttribute(CharacterWrapper.PLAYER_BLOCK, CharacterWrapper.NAME_KEY)) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 				if (!excludedFollowers.contains(cw.getGameObject())) {
 					nonFollowers.add(cw);
@@ -1261,9 +1268,16 @@ public class ActionRow {
 		// Determine who participates in post-phase: the phasing char (if they can block detectable
 		// others or monsters) and non-followers who can block the phasing char or play color chits.
 		ArrayList<CharacterWrapper> phasingFollowers = character.getActionFollowers();
+		System.out.println("[IPD] getPostPhaseParticipants phasing=" + character.getGameObject().getName()
+			+ " phasingHidden=" + phasingCharHidden + " phasingBlockable=" + phasingCharBlockable
+			+ " detectableOthers=" + detectableOthers + " monstersPresent=" + monstersPresent
+			+ " nonFollowersInClearing=" + nonFollowers.size() + " excludedFollowers=" + excludedFollowers.size());
 		ArrayList<CharacterWrapper> postPhaseParticipants = new ArrayList<>();
 		for (CharacterWrapper cw : nonFollowers) {
-			if (!cw.isReacting()) continue;
+			if (!cw.isReacting()) {
+				System.out.println("[IPD]   " + cw.getGameObject().getName() + " SKIP (not reacting)");
+				continue;
+			}
 
 			boolean isPhasingChar = cw.getGameObject().equals(character.getGameObject());
 			if (isPhasingChar) {
@@ -1272,7 +1286,10 @@ public class ActionRow {
 					&& !cw.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)
 					&& !cw.isMinion()
 					&& !(cw.isSmall() && smallHouseRule);
-				if (phasingCanBlock && (detectableOthers >= 1 || monstersPresent)) {
+				boolean qualifies = phasingCanBlock && (detectableOthers >= 1 || monstersPresent);
+				System.out.println("[IPD]   " + cw.getGameObject().getName() + " (PHASING) canBlock=" + phasingCanBlock
+					+ " detectableOthers=" + detectableOthers + " monsters=" + monstersPresent + " -> " + (qualifies ? "PARTICIPANT" : "no"));
+				if (qualifies) {
 					postPhaseParticipants.add(cw);
 				}
 			} else {
@@ -1288,7 +1305,12 @@ public class ActionRow {
 				boolean canBlockPhasing = !isFollower && canDetectPhasing && blockerCanBlock
 					&& (phasingCharBlockable || ignoreMist);
 				boolean hasColorChitsForPostPhase = colorChitPostPhase && !cw.getColorMagicChits().isEmpty();
-				if (canBlockPhasing || hasColorChitsForPostPhase) {
+				boolean qualifies = canBlockPhasing || hasColorChitsForPostPhase;
+				System.out.println("[IPD]   " + cw.getGameObject().getName() + " isFollower=" + isFollower
+					+ " canDetectPhasing=" + canDetectPhasing + " blockerCanBlock=" + blockerCanBlock
+					+ " canBlockPhasing=" + canBlockPhasing + " colorChitsPost=" + hasColorChitsForPostPhase
+					+ " -> " + (qualifies ? "PARTICIPANT" : "no"));
+				if (qualifies) {
 					postPhaseParticipants.add(cw);
 				}
 			}
@@ -2837,55 +2859,51 @@ public class ActionRow {
 		}
 		else {
 			ArrayList<CharacterActionChitComponent> restChoices = character.getRestableChits();
-			if (!restChoices.isEmpty()) { // has to be chits to rest!
-				// The legacy PvP-react check (checkForBlockingState + the old Block Now button flow)
-				// was removed here, mirroring the equivalent doMoveAction() fix — but unlike a
-				// multi-phase move, a stacked Rest (count > 1, built in RealmTurnPanel.initActionRow())
-				// is NOT split into separate ActionRows up front, so ActionRow.process()'s pre-phase
-				// gate only runs once for the whole stack, and triggerPostPhase() likewise only fires
-				// once, AFTER doRestAction() resolves every rest in the stack. Without a check here, a
-				// qualifying reactor (e.g. another reacting character in the clearing) would never get
-				// a post-phase decision until all of the stacked rests had already completed. So: if
-				// anyone currently qualifies for a post-phase decision, do just one rest now and queue
-				// the remainder as a new ActionRow — its own process() call re-evaluates this fresh,
-				// so the stack still resolves in one dialog whenever no one actually needs to react.
-				boolean blockRestAction = false;
-				if (RealmUtility.willBeBlocked(character,isFollowing,false)) {
-					blockRestAction = true;
-				}
-				else if (count > 1) {
-					TileLocation current = character.getCurrentLocation();
-					if (!character.isMinion() && current != null && current.isInClearing()) {
-						// Post-phase: a reacting character needs a decision after each rest.
-						boolean postPhaseNeeded = !getPostPhaseParticipants(current).isEmpty();
-						// Pre-phase: an active follower with Reactions ON must get the stop-following
-						// opportunity before each rest phase — handlePrePhase() only fires once for
-						// the whole stack unless we break it up here.
-						boolean followerPrePhaseNeeded = character.getActionFollowers().stream()
-								.anyMatch(CharacterWrapper::isReacting);
-						if (postPhaseNeeded || followerPrePhaseNeeded) {
-							blockRestAction = true;
-						}
-					}
-				}
 
-				// Block after the first phase!
-				if (blockRestAction) {	
-					// Make this one 1 phase, and then split any remaining count into a new action row
-					int newCount = count-1;
-					count = 1;
-					if (newCount>0) {
-						newAction = makeCopy();
-						newAction.setCount(newCount);
+			// UN-STACKING: a stacked Rest (count > 1, built in RealmTurnPanel.initActionRow()) is one
+			// ActionRow, so process()'s pre-phase gate and triggerPostPhase() otherwise fire only ONCE
+			// for the whole stack. When a reactor needs a decision between rests, split off a single
+			// rest now and re-queue the remainder as a new ActionRow (its own process() re-evaluates
+			// fresh, so the stack still resolves in one dialog whenever nobody needs to react).
+			// This applies WHETHER OR NOT there are restable chits: a stack of no-op rests (nothing to
+			// recover) must still un-split, so each individual no-op rest is its own phase and gets its
+			// own pre/post reaction windows — previously this lived inside the has-chits branch, so
+			// no-op rests ganged into one phase and skipped the between-rest reaction dialogs.
+			boolean blockRestAction = false;
+			if (RealmUtility.willBeBlocked(character,isFollowing,false)) {
+				blockRestAction = true;
+			}
+			else if (count > 1) {
+				TileLocation current = character.getCurrentLocation();
+				if (!character.isMinion() && current != null && current.isInClearing()) {
+					// Post-phase: a reacting character needs a decision after each rest.
+					boolean postPhaseNeeded = !getPostPhaseParticipants(current).isEmpty();
+					// Pre-phase: an active follower with Reactions ON must get the stop-following
+					// opportunity before each rest phase.
+					boolean followerPrePhaseNeeded = character.getActionFollowers().stream()
+							.anyMatch(CharacterWrapper::isReacting);
+					if (postPhaseNeeded || followerPrePhaseNeeded) {
+						blockRestAction = true;
 					}
 				}
-				
+			}
+			if (blockRestAction) {
+				// Make this one 1 phase, and then split any remaining count into a new action row.
+				int newCount = count-1;
+				count = 1;
+				if (newCount>0) {
+					newAction = makeCopy();
+					newAction.setCount(newCount);
+				}
+			}
+
+			if (!restChoices.isEmpty()) { // has to be chits to rest!
 				bonusCount = character.getRestBonus(count);
 				ChitRestManager rester = new ChitRestManager(gameHandler.getMainFrame(),character,count+bonusCount);
 				rester.setVisible(true);
 				if (rester.isFinished()) {
 					result = "Rested "+(count+bonusCount)+" asterisk"+((count+bonusCount)==1?"":"s");
-					
+
 					QuestRequirementParams params = new QuestRequirementParams();
 					params.actionType = CharacterActionType.Rest;
 					character.testQuestRequirements(gameHandler.getMainFrame(),params);
