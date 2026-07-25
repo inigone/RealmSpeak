@@ -31,7 +31,7 @@ public class MapDefaultViewControl extends JPanel {
 		JComponent grip = createGripHandle();
 		add(grip,BorderLayout.WEST);
 
-		JPanel buttons = new JPanel(new GridLayout(1,2,4,0));
+		JPanel buttons = new JPanel(new GridLayout(2,1,0,4));
 		JButton defaultViewButton = new JButton("Default View");
 		defaultViewButton.setToolTipText("Recall the saved default view");
 		defaultViewButton.addActionListener(ev -> map.restoreDefaultView());
