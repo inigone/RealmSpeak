@@ -105,9 +105,6 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public static final String NEEDS_ACTION_PANEL_UPDATE = "_appu_";
 	public static final String TREACHERY_PREFERENCE = "_trpr_";
 	public static final String CHAT_STYLE = "_chs_";
-	public static final String FOLLOW_RESTS = "_fllr_";
-	public static final String FOLLOW_ALERTS = "_flla_";
-	public static final String FOLLOW_SPELL = "_flls_";
 	public static final String NEED_QUEST_CHECK = "_qc_";
 	public static final String DISCARDED_QUESTS = "_dq_";
 	public static final String NEEDS_REACT_DECISION = "_bckdc_";
@@ -138,6 +135,12 @@ public class CharacterWrapper extends GameObjectWrapper {
 	// still recognize "you were my follower this very action" and exclude them (a guide never blocks
 	// their own follower, and followers count as followers until the guide's turn truly ends).
 	public static final String JUST_RELEASED_FOLLOWER_ACTION_COUNT = "_jrfac_";
+	// In-phase activity flags: NEEDS_IN_PHASE_ACTIVITY_DECISION marks that a follower must resolve
+	// their in-phase dialog before the phasing character's current action executes.
+	// IN_PHASE_ACTIVITY_ACTION_COUNT is the stamp that prevents re-triggering within the same phase.
+	public static final String NEEDS_IN_PHASE_ACTIVITY_DECISION = "_inpdc_";
+	public static final String IN_PHASE_ACTIVITY_ACTION_COUNT = "_inpac_";
+	public static final String IN_PHASE_ACTION_TYPE = "_inpat_";
 
 	public static final String CURRENT_GUILD = "_ccg_";
 	public static final String CURRENT_GUILD_LEVEL = "_ccgl_";
@@ -2161,6 +2164,9 @@ public class CharacterWrapper extends GameObjectWrapper {
 		removePrePhaseActivityActionCount();
 		removePostPhaseActivityActionCount();
 		removeAttribute(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+		removeInPhaseActivityActionCount();
+		setNeedsInPhaseActivityDecision(false);
+		setInPhaseActionType(null);
 
 		if (getPonyGameObject()!=null) {
 			ArrayList<RealmComponent> fhList = getFollowingHirelings();
@@ -4220,6 +4226,29 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void setJustReleasedFollowerActionCount(int val) {
 		setInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT, val);
 	}
+	public boolean getNeedsInPhaseActivityDecision() {
+		return getBoolean(NEEDS_IN_PHASE_ACTIVITY_DECISION);
+	}
+	public int getInPhaseActivityActionCount() {
+		if (getBoolean(IN_PHASE_ACTIVITY_ACTION_COUNT) == false) return -1;
+		return getInt(IN_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+	public void setNeedsInPhaseActivityDecision(boolean val) {
+		setBoolean(NEEDS_IN_PHASE_ACTIVITY_DECISION, val);
+	}
+	public void setInPhaseActivityActionCount(int val) {
+		setInt(IN_PHASE_ACTIVITY_ACTION_COUNT, val);
+	}
+	public void removeInPhaseActivityActionCount() {
+		removeAttribute(IN_PHASE_ACTIVITY_ACTION_COUNT);
+	}
+	public String getInPhaseActionType() {
+		return getString(IN_PHASE_ACTION_TYPE);
+	}
+	public void setInPhaseActionType(String actionType) {
+		if (actionType == null) removeAttribute(IN_PHASE_ACTION_TYPE);
+		else setString(IN_PHASE_ACTION_TYPE, actionType);
+	}
 	public void removePrePhaseActivityActionCount() {
 		removeAttribute(PRE_PHASE_ACTIVITY_ACTION_COUNT);
 	}
@@ -4338,6 +4367,25 @@ public class CharacterWrapper extends GameObjectWrapper {
 			}
 		}
 		return ret;
+	}
+	/**
+	 * Returns only DIRECT followers — characters whose immediate guide is this character.
+	 * getActionFollowers() returns a flat list (all followers at every depth) because
+	 * RealmHostPanel resolves the full chain only to the top guide; intermediate guides do
+	 * not have their own sub-followers registered in their ACTION_FOLLOWER attribute.
+	 * The correct filter is each follower's own "who am I following" pointer
+	 * (getCharacterImFollowing()), which always points to their immediate guide.
+	 */
+	public ArrayList<CharacterWrapper> getDirectActionFollowers() {
+		String myId = getGameObject().getStringId();
+		ArrayList<CharacterWrapper> direct = new ArrayList<>();
+		for (CharacterWrapper follower : getActionFollowers()) {
+			CharacterWrapper theirGuide = follower.getCharacterImFollowing();
+			if (theirGuide != null && myId.equals(theirGuide.getGameObject().getStringId())) {
+				direct.add(follower);
+			}
+		}
+		return direct;
 	}
 	public ArrayList<CharacterWrapper> getStoppedActionFollowers() {
 		GameData data = getGameObject().getGameData();
@@ -8361,33 +8409,6 @@ public class CharacterWrapper extends GameObjectWrapper {
     public String getChatStyle() {
     	String val = getString(CHAT_STYLE);
     	return val==null?"black":val;
-    }
-    public void setFollowRests(int rests) {
-    	setInt(FOLLOW_RESTS,rests);
-    }
-    public int getFollowRests() {
-    	return getInt(FOLLOW_RESTS);
-    }
-    public void clearFollowRests() {
-    	clear(FOLLOW_RESTS);
-    }
-    public void setFollowAlerts(int alert) {
-    	setInt(FOLLOW_ALERTS,alert);
-    }
-    public int getFollowAlerts() {
-    	return getInt(FOLLOW_ALERTS);
-    }
-    public void clearFollowAlerts() {
-    	clear(FOLLOW_ALERTS);
-    }
-    public void setFollowSpellActions(int spell) {
-    	setInt(FOLLOW_SPELL,spell);
-    }
-    public int getFollowSpellActions() {
-    	return getInt(FOLLOW_SPELL);
-    }
-    public void clearFollowSpellActions() {
-    	clear(FOLLOW_SPELL);
     }
     public int getRestBonus(int rests) {
 		int advantage = 0;
