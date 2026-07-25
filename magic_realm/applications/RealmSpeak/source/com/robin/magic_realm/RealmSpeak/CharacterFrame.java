@@ -100,8 +100,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	protected JButton shoutButton;
 	protected JButton unhideButton;
 	protected JButton tradeButton;
-	protected static final Color POST_PHASE_COLOR = new Color(240, 140, 140);
-	protected static final Color PRE_PHASE_COLOR  = new Color(130, 195, 130);
+	protected static final Color POST_PHASE_COLOR = new Color(50, 15, 15);
+	protected static final Color PRE_PHASE_COLOR  = new Color(25, 45, 25);
 	protected static final Color IN_PHASE_COLOR   = new Color(15, 30, 60);
 	private  static final Color NOIR_TEXT         = new Color(220, 220, 210);
 
@@ -376,6 +376,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		Font headerFont = new JLabel().getFont().deriveFont(Font.BOLD, 16f);
 		Font subFont    = new JLabel().getFont().deriveFont(Font.PLAIN, 11f);
+		Color fg = textColorFor(bgColor);
 
 		JPanel topRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 4));
 		if (bgColor != null) { topRow.setBackground(bgColor); topRow.setOpaque(true); }
@@ -383,6 +384,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		topRow.add(new JLabel(selfRc.getMediumIcon()));
 		JLabel titleLabel = new JLabel("Phase-Start Reactions  -  Before");
 		titleLabel.setFont(headerFont);
+		if (fg != null) titleLabel.setForeground(fg);
 		topRow.add(titleLabel);
 
 		String subtitle = "";
@@ -393,6 +395,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				int phaseN = cw.getNumberOfPerformedActionPhasesToday() + 1;
 				JLabel phaseLabel = new JLabel("Phase " + phaseN);
 				phaseLabel.setFont(headerFont);
+				if (fg != null) phaseLabel.setForeground(fg);
 				topRow.add(phaseLabel);
 				String nextAction = cw.getNextPendingAction();
 				if (nextAction != null) {
@@ -403,6 +406,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				}
 				JLabel actionLabel = new JLabel("Action");
 				actionLabel.setFont(headerFont);
+				if (fg != null) actionLabel.setForeground(fg);
 				topRow.add(actionLabel);
 				int phaseM = cw.getCurrentActionPhaseTotal();
 				int phaseP = cw.getCurrentActionPhaseIndex();
@@ -437,6 +441,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			if (bgColor != null) { subRow.setBackground(bgColor); subRow.setOpaque(true); }
 			JLabel subLabel = new JLabel(subtitle);
 			subLabel.setFont(subFont);
+			if (fg != null) subLabel.setForeground(fg);
 			subRow.add(subLabel);
 			wrapper.add(subRow);
 		}
@@ -464,12 +469,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 		if (bgColor != null) { panel.setBackground(bgColor); panel.setOpaque(true); }
+		Color fg = textColorFor(bgColor);
 
 		JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 2));
 		if (bgColor != null) { titleRow.setBackground(bgColor); titleRow.setOpaque(true); }
 		RealmComponent selfRc = RealmComponent.getRealmComponent(getCharacter().getGameObject());
 		titleRow.add(new JLabel(selfRc.getMediumIcon()));
-		titleRow.add(new JLabel("is following"));
+		JLabel isFollowingLabel = new JLabel("is following");
+		if (fg != null) isFollowingLabel.setForeground(fg);
+		titleRow.add(isFollowingLabel);
 		// Show the character's actual direct guide, not necessarily the phasing character.
 		// In a cascade (Follower 1 → Guide 1 → Guide 2 phasing), all followers end up in
 		// Guide 2's actionFollowers, but each should show their own immediate guide.
@@ -494,7 +502,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			// If the direct guide is not the phasing character, they are themselves a follower —
 			// append "who seems to be following <phasing char>" regardless of chain depth.
 			if (phasingChar != null && !directGuide.getGameObject().equals(phasingChar.getGameObject())) {
-				titleRow.add(new JLabel("who seems to be following"));
+				JLabel whoLabel = new JLabel("who seems to be following");
+				if (fg != null) whoLabel.setForeground(fg);
+				titleRow.add(whoLabel);
 				titleRow.add(new JLabel(RealmComponent.getRealmComponent(phasingChar.getGameObject()).getMediumIcon()));
 			}
 		}
@@ -502,6 +512,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		stopFollowingCheckbox = new JCheckBox("Stop Following");
 		if (bgColor != null) { stopFollowingCheckbox.setBackground(bgColor); stopFollowingCheckbox.setOpaque(true); }
+		if (fg != null) stopFollowingCheckbox.setForeground(fg);
 		JPanel checkRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 2));
 		if (bgColor != null) { checkRow.setBackground(bgColor); checkRow.setOpaque(true); }
 		checkRow.add(stopFollowingCheckbox);
@@ -622,6 +633,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	private static JPanel makeAboutSection(String htmlText, Color bgColor) {
 		JLabel label = new JLabel(htmlText);
 		label.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+		Color fg = textColorFor(bgColor);
+		if (fg != null) label.setForeground(fg);
 		JPanel panel = new JPanel(new BorderLayout());
 		panel.setBackground(bgColor);
 		panel.setOpaque(true);
@@ -723,6 +736,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		ArrayList<MagicChit> colorChits = getCharacter().getColorMagicChits();
 		if (colorChits.isEmpty() || hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT)) return wrapper;
 		RealmComponent selfRc = RealmComponent.getRealmComponent(getCharacter().getGameObject());
+		Color fg = textColorFor(bgColor);
 
 		JPanel grid = new JPanel();
 		grid.setLayout(new BoxLayout(grid, BoxLayout.Y_AXIS));
@@ -739,7 +753,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		if (bgColor != null) { headerRow.setBackground(bgColor); headerRow.setOpaque(true); }
 		headerRow.add(new JLabel(selfRc.getMediumIcon()));
 		headerRow.add(Box.createHorizontalStrut(4));
-		headerRow.add(new JLabel("May Play Color-Chits:"));
+		JLabel chitHeaderLabel = new JLabel("May Play Color-Chits:");
+		if (fg != null) chitHeaderLabel.setForeground(fg);
+		headerRow.add(chitHeaderLabel);
 		headerRow.add(Box.createHorizontalGlue());
 		grid.add(headerRow);
 
@@ -775,6 +791,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			noTargetBtn.setVerticalTextPosition(SwingConstants.TOP);
 			noTargetBtn.setToolTipText("No target – fatigue chit only");
 			styleChitToggleButton(noTargetBtn);
+			if (fg != null) noTargetBtn.setForeground(fg);
 			toggles.add(noTargetBtn);
 			spellByButton.put(noTargetBtn, null);
 			row.add(chitCell(noTargetBtn, gridColor, bgColor));
@@ -1063,12 +1080,14 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		Font headerFont = new JLabel().getFont().deriveFont(Font.BOLD, 16f);
 		Font subFont    = new JLabel().getFont().deriveFont(Font.PLAIN, 11f);
 
+		Color fg = textColorFor(bgColor);
 		JPanel topRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 4));
 		if (bgColor != null) { topRow.setBackground(bgColor); topRow.setOpaque(true); }
 		RealmComponent selfRc = RealmComponent.getRealmComponent(getCharacter().getGameObject());
 		topRow.add(new JLabel(selfRc.getMediumIcon()));
 		JLabel titleLabel = new JLabel("Phase-End Reactions  -  After");
 		titleLabel.setFont(headerFont);
+		if (fg != null) titleLabel.setForeground(fg);
 		topRow.add(titleLabel);
 
 		String subtitle = "";
@@ -1079,6 +1098,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				int phaseN = cw.getNumberOfPerformedActionPhasesToday();
 				JLabel phaseLabel = new JLabel("Phase " + phaseN);
 				phaseLabel.setFont(headerFont);
+				if (fg != null) phaseLabel.setForeground(fg);
 				topRow.add(phaseLabel);
 				String lastAction = cw.getLastPerformedAction();
 				if (lastAction != null) {
@@ -1089,6 +1109,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				}
 				JLabel actionLabel = new JLabel("Action");
 				actionLabel.setFont(headerFont);
+				if (fg != null) actionLabel.setForeground(fg);
 				topRow.add(actionLabel);
 				int phaseM = cw.getCurrentActionPhaseTotal();
 				if (phaseM > 1) {
@@ -1104,6 +1125,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			if (bgColor != null) { subRow.setBackground(bgColor); subRow.setOpaque(true); }
 			JLabel subLabel = new JLabel(subtitle);
 			subLabel.setFont(subFont);
+			if (fg != null) subLabel.setForeground(fg);
 			subRow.add(subLabel);
 			wrapper.add(subRow);
 		}
@@ -1228,6 +1250,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
 		if (bgColor != null) { wrapper.setBackground(bgColor); wrapper.setOpaque(true); }
 		if (candidates.isEmpty()) return wrapper;
+		Color fg = textColorFor(bgColor);
 
 		if (!getCharacter().isPlayingTurn()) {
 			// Non-phasing: at most one candidate (the phasing char) — simple section like Stop Following.
@@ -1235,11 +1258,14 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 2));
 			if (bgColor != null) { titleRow.setBackground(bgColor); titleRow.setOpaque(true); }
 			titleRow.add(new JLabel(RealmComponent.getRealmComponent(getCharacter().getGameObject()).getMediumIcon()));
-			titleRow.add(new JLabel("can block"));
+			JLabel canBlockLabel = new JLabel("can block");
+			if (fg != null) canBlockLabel.setForeground(fg);
+			titleRow.add(canBlockLabel);
 			titleRow.add(new JLabel(target.getMediumIcon()));
 			wrapper.add(titleRow);
 			blockCheckbox = new JCheckBox("Block");
 			if (bgColor != null) { blockCheckbox.setBackground(bgColor); blockCheckbox.setOpaque(true); }
+			if (fg != null) blockCheckbox.setForeground(fg);
 			JPanel checkRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 2));
 			if (bgColor != null) { checkRow.setBackground(bgColor); checkRow.setOpaque(true); }
 			checkRow.add(blockCheckbox);
@@ -1252,7 +1278,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			if (bgColor != null) { titleRow.setBackground(bgColor); titleRow.setOpaque(true); }
 			titleRow.add(new JLabel(RealmComponent.getRealmComponent(getCharacter().getGameObject()).getMediumIcon()));
 			String anyOrAll = candidates.size() > 1 ? " can block any or all:" : " can block:";
-			titleRow.add(new JLabel(anyOrAll));
+			JLabel anyOrAllLabel = new JLabel(anyOrAll);
+			if (fg != null) anyOrAllLabel.setForeground(fg);
+			titleRow.add(anyOrAllLabel);
 			wrapper.add(titleRow, BorderLayout.NORTH);
 			int X = candidates.size();
 			int N = 1;
