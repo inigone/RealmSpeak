@@ -76,6 +76,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	
 	private Timer activatePlayNextTimer = null;
 	private boolean wasAwaitingPrePhase = false;
+	private boolean wasAwaitingInPhase = false;
 	private ActionListener activatePlayNextListener = new ActionListener() {
 		public void actionPerformed(ActionEvent ev) {
 			activatePlayNextTimer = (Timer)ev.getSource();
@@ -246,33 +247,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			}
 		}
 	}
-	private boolean isAwaitingFollowersResting() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowRests()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
-	private boolean isAwaitingFollowersAlerting() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowAlerts()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
 	private boolean isAwaitingFollowersWeatherFatigue() {
 		for (CharacterWrapper follower:actionFollowers) {
 			if (follower.getWeatherFatigue()>0) {
-				return true;
-			}
-		}
-		return false;
-	}
-	private boolean isAwaitingFollowersSpellActions() {
-		for (CharacterWrapper follower:actionFollowers) {
-			if (follower.getFollowSpellActions()>0) {
 				return true;
 			}
 		}
@@ -340,6 +317,22 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 			if (!rc.isPlayerControlledLeader() && !cw.isMinion()) continue;
 			if (cw.getNeedsPrePhaseActivityDecision()) return true;
+		}
+		return false;
+	}
+
+	// isAwaitingInPhaseDecision() drives the wasAwaitingInPhase falling-edge auto-advance: it returns true
+	// while any follower in the phasing guide's follower tree still has an unresolved in-phase flag. When
+	// all clear, updateControls() fires playNext() so the guide's parked action executes automatically.
+	private boolean isAwaitingInPhaseDecision() {
+		if (!getCharacter().isPlayingTurn()) return false;
+		return anyInPhaseDecisionPending(getCharacter());
+	}
+
+	private boolean anyInPhaseDecisionPending(CharacterWrapper guide) {
+		for (CharacterWrapper follower : guide.getActionFollowers()) {
+			if (follower.getNeedsInPhaseActivityDecision()) return true;
+			if (anyInPhaseDecisionPending(follower)) return true;
 		}
 		return false;
 	}
@@ -444,9 +437,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			}
 		}
 		String me = getCharacter().getPlayerName();
-		boolean haveFollowersThatHaveSpellActions = isAwaitingFollowersSpellActions();
-		boolean haveFollowersThatHaveFollowAlerts = isAwaitingFollowersAlerting();
-		boolean haveFollowersThatHaveFollowRests = isAwaitingFollowersResting();
 		boolean haveFollowersThatHaveWeatherFatigue = isAwaitingFollowersWeatherFatigue();
 		boolean beingFollowedByOtherPlayers = false;
 		for (CharacterWrapper follower:actionFollowers) {
@@ -455,19 +445,10 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				break;
 			}
 		}
-		if (haveFollowersThatHaveSpellActions) {
-			playNextButton.setText("Followers Enchanting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Enchanting...)");
-		} else if(haveFollowersThatHaveFollowAlerts) {
-			playNextButton.setText("Followers Alerting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Alerting...)");
-		} else if (haveFollowersThatHaveFollowRests) {
-			playNextButton.setText("Followers Enchanting...");
-			playAllButton.setText(PLAY_ALL+" (Followers Enchanting...)");
-		} else if (haveFollowersThatHaveWeatherFatigue) {
+		if (haveFollowersThatHaveWeatherFatigue) {
 			playNextButton.setText("Followers Exhausting...");
 			playAllButton.setText(PLAY_ALL+" (Followers Exhausting...)");
-		} else { 
+		} else {
 			playNextButton.setText(PLAY_NEXT);
 			playAllButton.setText(PLAY_ALL);
 		}
@@ -491,6 +472,18 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			wasAwaitingPrePhase = nowAwaitingPrePhase;
 		}
 
+		// IN-PHASE AUTO-ADVANCE: the guide's Rest/Alert/Hide/Spell row is parked by handleInPhase() while its
+		// followers still have unresolved in-phase flags. When the last follower submits (true→false edge),
+		// fire playNext() so the guide's action executes automatically without a manual Play Next click.
+		boolean nowAwaitingInPhase = isAwaitingInPhaseDecision();
+		if (wasAwaitingInPhase && !nowAwaitingInPhase && getCharacter().isPlayingTurn()
+				&& actionsLeft && !waitingForSingleButton && activatePlayNextTimer == null) {
+			wasAwaitingInPhase = false;
+			SwingUtilities.invokeLater(() -> playNext(false));
+		} else {
+			wasAwaitingInPhase = nowAwaitingInPhase;
+		}
+
 		// POST-PHASE AUTO-ADVANCE REMOVED: Unlike pre-phase (which auto-advances to the next action once all
 		// pre-phase dialogs are resolved), post-phase does NOT auto-advance. After the phasing character's
 		// action executes and any post-phase dialogs are shown, the user must explicitly click Play Next.
@@ -498,7 +491,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// immediately triggered the next action without user intent. The pending check at the top of
 		// ActionRow.process() already blocks the next action until post-phase is cleared.
 
-		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue);
+		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue);
 		playNextButton.setFlashing(playNextButton.isEnabled());
 		// Play All re-enabled: it runs the same playNext(true) loop as before, but the loop's
 		// isAwaitingInterruptionDecision() check (re-evaluated before every iteration) now also
@@ -506,7 +499,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// first unresolved ID interrupt — same as if the player had clicked Play Next repeatedly
 		// and stopped there. Disabled here (like Play Next) whenever an interrupt is already pending,
 		// so a click can't silently no-op.
-		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveFollowRests && !haveFollowersThatHaveFollowAlerts && !haveFollowersThatHaveSpellActions && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
+		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
 		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
 		
@@ -1138,7 +1131,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	}
 	
 	private void playAll() {
-		while(nextAction()!=null && /*!isAwaitingReactDecision() &&*/ !isAwaitingFollowersResting() && !isAwaitingFollowersAlerting() &!isAwaitingFollowersSpellActions() &!isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
+		while(nextAction()!=null && !isAwaitingFollowersWeatherFatigue() && !isAwaitingInterruptionDecision()) {
 			if (!playNext(true)) {
 				// player cancelled action, or awaiting input (like transport to caves result in TableLoot)
 				break;
@@ -1468,7 +1461,27 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		}
 		DieRoller monsterDieRoller = game.getMonsterDie();
 		DieRoller nativeDieRoller = game.getNativeDie();
+		String myId = getCharacter().getGameObject().getStringId();
 		for (CharacterWrapper aFollower : toRemove) {
+			// Only DIRECT followers (those whose immediate guide is this character) can be ditched.
+			// The chooser deliberately lists ALL in-clearing followers so the hidden guide cannot
+			// deduce the chain structure, but selecting an indirect follower (one following a
+			// sub-guide) has no effect — its direct guide is still following, so it stays in the chain.
+			CharacterWrapper theirGuide = aFollower.getCharacterImFollowing();
+			if (theirGuide == null || !myId.equals(theirGuide.getGameObject().getStringId())) {
+				System.out.println("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
+					+ " selected but is NOT a direct follower of " + getCharacter().getGameObject().getName()
+					+ " (follows " + (theirGuide != null ? theirGuide.getGameObject().getName() : "nobody")
+					+ ") -> no effect");
+				continue;
+			}
+			// Silently skip followers who found the hidden guide — they're aware of the guide's
+			// position and cannot be ditched. The guide can't hide from someone who already sees them.
+			if (getCharacter().isHidden() && aFollower.foundHiddenEnemy(getCharacter().getGameObject())) {
+				System.out.println("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
+					+ " found hidden guide " + getCharacter().getGameObject().getName() + " -> cannot be ditched");
+				continue;
+			}
 			if (!aFollower.hasActiveInventoryThisKey(Constants.LINKS)) {
 				getCharacter().removeActionFollower(aFollower,monsterDieRoller,nativeDieRoller);
 				abandonFollowerChain(getCharacter(), aFollower, monsterDieRoller, nativeDieRoller);
