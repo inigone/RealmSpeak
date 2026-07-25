@@ -9,6 +9,8 @@ import java.util.*;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.event.ChangeEvent;
+import javax.swing.event.InternalFrameAdapter;
+import javax.swing.event.InternalFrameEvent;
 
 import com.robin.game.objects.GameObject;
 import com.robin.game.objects.GamePool;
@@ -160,6 +162,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		lastVersion = -1; // forces a "first" update
 		hostPrefs = HostPrefWrapper.findHostPrefs(handler.getClient().getGameData());
 		initComponents(iconSize);
+		addInternalFrameListener(new InternalFrameAdapter() {
+			public void internalFrameActivated(InternalFrameEvent ev) {
+				gameHandler.selectCharacterInList(character);
+			}
+		});
 	}
 	public void cleanup() {
 		getChatPanel().cleanup();
@@ -290,25 +297,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			label.setToolTipText("Mesmerize - "+effects + postfix);
 			box.add(label);
 		}
-	}
-	private void doBlockNow() {
-		if (blockees!=null && !blockees.isEmpty()) {
-			for (RealmComponent target:blockees) {
-				handleBlockCharacter(target);
-			}
-			blockees = null;
-			gameHandler.submitChanges();
-			gameHandler.updateCharacterList(); // This is necessary so that THIS client is updated
-		}
-		else if (getCharacter().getNeedsInterruptPhaseDecision()){
-			for (RealmComponent target:getCharacter().checkForBlockingState(true,null)) {
-				handleBlockCharacter(target);
-			}
-			getCharacter().setInterruptPhaseDecision(false);
-			gameHandler.submitChanges();
-			gameHandler.updateCharacterList(); // This is necessary so that THIS client is updated
-		}
-		updateControls();
 	}
 	// doPrePhaseActivities() is the shared resolution point for both phasing and non-phasing characters.
 	// For non-phasing characters it shows a modal dialog (they can only click OK for now; future content
@@ -1577,64 +1565,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			updateControls();
 		}
 	}
-	private void handleBlockCharacter(RealmComponent rc) {
-		if (getCharacter().isSleep()) {
-			JOptionPane.showMessageDialog(this,"Cannot block if sleeping (affected by Flowers of Rest).","Cannot block - Flowers of Rest",JOptionPane.ERROR_MESSAGE);
-			getCharacter().addReactDecision(rc.getGameObject());
-			return;
-		}
-		if (((getCharacter().getTransmorph()==null && getCharacter().getGameObject().hasThisAttribute(Constants.SMALL)) || (getCharacter().getTransmorph()!=null && getCharacter().getTransmorph().hasThisAttribute(Constants.SMALL))) && hostPrefs.hasPref(Constants.HOUSE3_SMALL_MONSTERS)) {
-			JOptionPane.showMessageDialog(this,"Small individuals cannot block.","Cannot block - Small",JOptionPane.ERROR_MESSAGE);
-			getCharacter().addReactDecision(rc.getGameObject());
-			return;
-		}
-		if (rc.getGameObject().hasThisAttribute(Constants.BLINDING_LIGHT)) {
-			JOptionPane.showMessageDialog(this,"Cannot block characters affected by Blinding Light.","Cannot block - Blinding Light",JOptionPane.ERROR_MESSAGE);
-			getCharacter().addReactDecision(rc.getGameObject());
-			return;
-		}
-		CharacterWrapper target = new CharacterWrapper(rc.getGameObject());
-		if (getCharacter().isMistLike() || (target.isMistLike() && !getCharacter().getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE))) {
-			JOptionPane.showMessageDialog(this,"Cannot block as Melt-into-Mist character or block other Melt-into-Mist characters.","Cannot block - Melt into Mist",JOptionPane.ERROR_MESSAGE);
-			getCharacter().addReactDecision(rc.getGameObject());
-			return;
-		}
-		if (getCharacter().getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING) || target.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)) {
-			JOptionPane.showMessageDialog(this,"You are affected by the Meditate effect or your target is affected by the Medidate effect.","Cannot block - Medidate effect",JOptionPane.ERROR_MESSAGE);
-			getCharacter().addReactDecision(rc.getGameObject());
-			return;
-		}
-		int ret = JOptionPane.showConfirmDialog(
-				this,
-				"Do you want to block the "+rc.getGameObject().getName()+" ?",
-				getCharacter().getGameObject().getName()+" Blocking",
-				JOptionPane.YES_NO_OPTION,JOptionPane.PLAIN_MESSAGE,rc.getIcon());
-		getCharacter().addReactDecision(rc.getGameObject());
-		if (ret == JOptionPane.YES_OPTION) {
-			if (rc.isPlayerControlledLeader()) {
-				target.setBlocked(true);
-				if (target.isHidden()) { // Getting blocked brings them out of hiding
-					target.setHidden(false);
-				}
-			}
-			else if (rc.isMonster()) {
-				MonsterChitComponent monster = (MonsterChitComponent)rc;
-				if (!monster.isBlocked()) {
-					monster.setBlocked(true);
-				}
-			}
-			if (getCharacter().isHidden()) {
-				// Blocking brings you out of hiding
-				getCharacter().setHidden(false);
-			}
-			if (!getCharacter().isBlocked()) {
-				// Blocking also causes you to be blocked
-				getCharacter().setBlocked(true);
-			}
-			gameHandler.broadcast(character.getGameObject().getName(),"Blocks the "+rc.getGameObject().getName());
-		}
-	}
-
 	// TBD(1): While a character is non-phasing (another character is currently taking their turn),
 	// many character window controls allow state changes that should not be permitted mid-phase
 	// (e.g. rearranging inventory, trading, activating items). When the interphase dialog system
