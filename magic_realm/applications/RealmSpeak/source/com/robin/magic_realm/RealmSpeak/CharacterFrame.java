@@ -2805,8 +2805,12 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		showPrePhaseDialogButton = new SingleButton("Show Phase-Start Dialog", false) {
 			public boolean needsShow() {
 				boolean isLocal = gameHandler.getClient().getClientName().equals(getCharacter().getPlayerName());
+				// Match the auto-show path's guard (see updatePanel dispatch): don't offer the button to a
+				// non-phasing character until the phasing character has resolved any pending pre-phase
+				// decision for their next action, otherwise the button appears prematurely.
 				return !getCharacter().isPlayingTurn() && getCharacter().getNeedsPrePhaseActivityDecision()
-					&& !getCharacter().getNeedsPostPhaseActivityDecision() && isLocal;
+					&& !getCharacter().getNeedsPostPhaseActivityDecision() && isLocal
+					&& !phasingCharPendingPrePhase();
 			}
 		};
 		showPrePhaseDialogButton.setBorder(BorderFactory.createLineBorder(MagicRealmColor.GOLD, 2));
