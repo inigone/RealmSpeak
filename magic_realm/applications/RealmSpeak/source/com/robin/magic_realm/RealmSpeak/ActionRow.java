@@ -618,14 +618,11 @@ public class ActionRow {
 			splitMultiPhaseAction();
 		}
 
-		// TBD(3): Followers need an additional interphase window that fires DURING certain guide
-		// actions (e.g. while the guide is alerting, a follower may need to choose whether to alert
-		// a weapon, rest, etc.). This mid-action dialog is distinct
-		// from the pre-phase dialog: it fires after the guide's action dispatch begins but before
-		// it resolves. The dispatch block below is the natural injection point — a new
-		// handleMidActionFollowerPhase() method would gate execution here and defer via a flag,
-		// similar to handlePrePhase(). Each follower ActionRow would need its own continuation
-		// path once the guide's action completes.
+		// In-phase dialog: followers of a guide doing Rest or Alert (or Hide/Spell when the matching
+		// host option is on) get a reaction window before the guide's action executes. handleInPhase()
+		// flags eligible followers and returns true while any of their decisions are still pending,
+		// which parks this row until they finish.
+		if (handleInPhase()) return;
 
 		// FORESIGHT SNAPSHOT + ACTION DISPATCH
 		//
@@ -1050,6 +1047,65 @@ public class ActionRow {
 		}
 		System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
 			+ " stamp=" + stamp + " perf=" + perf + " -> false (no one flagged)");
+		return false;
+	}
+
+	/**
+	 * In-phase dialog gate. When the phasing character (a guide) performs Rest or Alert — or Hide/Spell
+	 * with the matching host option enabled — its reacting followers may perform a simultaneous matching
+	 * action. This flags each eligible follower once (idempotent via InPhaseActivityActionCount) and
+	 * returns true while any follower decision is still pending, parking the guide's row until they finish.
+	 */
+	private boolean handleInPhase() {
+		if (character.isMinion()) return false;
+		TileLocation loc = character.getCurrentLocation();
+		if (loc == null || !loc.isInClearing()) return false;
+
+		ActionId actionId = getActionId();
+		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
+		boolean hideAllowed = actionId == ActionId.Hide && hostPrefs.hasPref(Constants.OPT_FOLLOWERS_SEARCH_DURING_GUIDE_HIDE);
+		boolean spellAllowed = actionId == ActionId.Spell && hostPrefs.hasPref(Constants.SR_FOLLOWERS_ENCHANTING_ACTION);
+		if (actionId != ActionId.Rest && actionId != ActionId.Alert && !hideAllowed && !spellAllowed) return false;
+
+		int actionPhasesPerformed = character.getNumberOfPerformedActionPhasesToday();
+		boolean alreadyOccurred = character.getInPhaseActivityActionCount() == actionPhasesPerformed;
+
+		if (!alreadyOccurred) {
+			boolean[] anySet = {false};
+			flagInPhaseFollowers(character, actionId, anySet);
+			if (anySet[0]) {
+				System.out.println("[IPD] handleInPhase guide=" + character.getGameObject().getName()
+					+ " action=" + actionId + " flagged followers, phasesPerformed=" + actionPhasesPerformed);
+				character.setInPhaseActivityActionCount(actionPhasesPerformed);
+				gameHandler.updateCharacterFramesWithoutMap();
+			}
+		}
+
+		return anyInPhaseDecisionPending(character);
+	}
+
+	private void flagInPhaseFollowers(CharacterWrapper guide, ActionId actionId, boolean[] anySet) {
+		// Hide uses only direct followers; Rest/Alert recurse through the full follower tree.
+		Iterable<CharacterWrapper> followers = (actionId == ActionId.Hide)
+				? guide.getDirectActionFollowers()
+				: guide.getActionFollowers();
+		for (CharacterWrapper follower : followers) {
+			if (!follower.isReacting()) continue;
+			if (actionId == ActionId.Rest && follower.getFatiguedChits().isEmpty() && follower.getWoundedChits().isEmpty()) continue;
+			follower.setNeedsInPhaseActivityDecision(true);
+			follower.setInPhaseActionType(actionId.name());
+			anySet[0] = true;
+			if (actionId != ActionId.Hide) {
+				flagInPhaseFollowers(follower, actionId, anySet);
+			}
+		}
+	}
+
+	private boolean anyInPhaseDecisionPending(CharacterWrapper guide) {
+		for (CharacterWrapper follower : guide.getActionFollowers()) {
+			if (follower.getNeedsInPhaseActivityDecision()) return true;
+			if (anyInPhaseDecisionPending(follower)) return true;
+		}
 		return false;
 	}
 
@@ -2933,14 +2989,6 @@ public class ActionRow {
 				}
 			}
 		}
-		// Make sure followers get a rest too!
-		for (CharacterWrapper follower : character.getActionFollowers()) {
-			if (!follower.hasCurse(Constants.ILL_HEALTH)
-					&& !follower.isTransmorphed()
-					&& !follower.getRestableChits().isEmpty()) {
-				follower.setFollowRests(count);
-			}
-		}
 	}
 
 	private void doHealAction() {
@@ -3054,23 +3102,26 @@ public class ActionRow {
 		return rc;
 	}
 
-	private void doAlertAction() {
+	/**
+	 * Performs a Peer-only search for the given follower reacting to a guide's HIDE action.
+	 * Always returns a non-null result string (either the table result or an error message).
+	 */
+	public static String doPeerSearchFor(CharacterWrapper character, RealmGameHandler gameHandler) {
+		if (character.hasCurse(Constants.EYEMIST)) return "Cannot PEER with EYEMIST curse.";
+		if (!character.canPeer()) return "Cannot PEER.";
+		RealmCalendar cal = RealmCalendar.getCalendar(gameHandler.getClient().getGameData());
+		if (cal.isPeerDisabled(character.getCurrentMonth())) return "Peer is disabled this month.";
 		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
-		// Make sure followers get an alert too!
-		if (hostPrefs.hasPref(Constants.OPT_FOLLOWERS_ACTIONS_DURING_GUIDES_PHASE)) {
-			// Make sure followers get a alert too!
-			for (CharacterWrapper follower : character.getActionFollowers()) {
-				if (!follower.hasMesmerizeEffect(Constants.TIRED)) {
-					follower.setFollowAlerts(follower.getFollowAlerts()+1);
-				}
-			}
-		} else {
-			for (CharacterWrapper follower : character.getActionFollowers()) {
-				follower.addCurrentAction(DayAction.ALERT_ACTION.getCode());
-				follower.addCurrentActionTypeCode(actionTypeCode);
-				follower.addCurrentActionValid(true);
-			}
-		}
+		RealmTable peerTable = hostPrefs.hasPref(Constants.FE_SEARCH_TABLES)
+				? RealmTable.peer1ed(gameHandler.getMainFrame(), null)
+				: RealmTable.peer(gameHandler.getMainFrame(), null);
+		character.markAllInventoryNotNew();
+		DieRoller roller = DieRollBuilder.getDieRollBuilder(gameHandler.getMainFrame(), character).createRoller(peerTable);
+		String message = peerTable.apply(character, roller);
+		return peerTable.getTableName(false) + (message != null ? " - " + message : "");
+	}
+
+	private void doAlertAction() {
 		if (character.hasMesmerizeEffect(Constants.TIRED)) {
 			result = "Cannot ALERT while tired.";
 			return;
@@ -3334,23 +3385,6 @@ public class ActionRow {
 	}
 
 	private void doSpellAction() {
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
-		if (hostPrefs.hasPref(Constants.SR_FOLLOWERS_ENCHANTING_ACTION)) {
-			if (hostPrefs.hasPref(Constants.OPT_FOLLOWERS_ACTIONS_DURING_GUIDES_PHASE)) {
-				// Make sure followers get a alert too!
-				for (CharacterWrapper follower : character.getActionFollowers()) {
-					if (!character.hasMesmerizeEffect(Constants.SAPPED)) {
-						follower.setFollowSpellActions(follower.getFollowSpellActions()+1);
-					}
-				}
-			} else {
-				for (CharacterWrapper follower : character.getActionFollowers()) {
-					follower.addCurrentAction(DayAction.SPELL_ACTION.getCode());
-					follower.addCurrentActionTypeCode(actionTypeCode);
-					follower.addCurrentActionValid(true);
-				}
-			}
-		}
 		if (character.hasMesmerizeEffect(Constants.SAPPED)) {
 			result = "Cannot ENCHANT while sapped.";
 			return;
