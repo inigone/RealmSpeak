@@ -66,6 +66,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	private boolean isFollowing;
 	
 	private ArrayList<CharacterWrapper> actionFollowers;
+	// TEMP-DEBUG: last-logged state of the release-batch gate below, so the polling loop only logs
+	// on an actual change instead of every updateControls() tick.
+	private Boolean lastLoggedBatchGateOpen = null;
 	
 	private PhaseManager phaseManager;
 	private JLabel blockWarningLabel;
@@ -86,25 +89,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			activatePlayNextTimer.stop();
 			activatePlayNextTimer.removeActionListener(activatePlayNextListener);
 			activatePlayNextTimer = null;
-		}
-	};
-
-	// Auto-completes a follower's turn 5 seconds after their last action row is resolved —
-	// a follower's Done click carries no decision (Follow has nothing left to decide once its
-	// action rows are done), so requiring it is pure friction. The brief pause and the Done
-	// button's existing flash-when-enabled give the player a moment to notice and react (e.g. if
-	// they wanted to do something else via this panel) before the turn closes on its own.
-	private Timer autoFollowerDoneTimer = null;
-	private ActionListener autoFollowerDoneListener = new ActionListener() {
-		public void actionPerformed(ActionEvent ev) {
-			autoFollowerDoneTimer = (Timer)ev.getSource();
-			autoFollowerDoneTimer.stop();
-			autoFollowerDoneTimer.removeActionListener(autoFollowerDoneListener);
-			autoFollowerDoneTimer = null;
-			// Re-check at fire time — conditions may have changed during the pause.
-			if (isFollowing && finishedPlayButton.isEnabled()) {
-				turnDone();
-			}
 		}
 	};
 
@@ -362,14 +346,19 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	// is still unresolved. When all flags clear, the falling-edge fires playNext() for the next action.
 	private boolean isAwaitingPostPhaseDecision() {
 		if (!getCharacter().isPlayingTurn()) return false;
-		TileLocation current = getCharacter().getCurrentLocation();
-		if (current == null || !current.isInClearing()) return false;
-		for (RealmComponent rc : current.clearing.getClearingComponents()) {
-			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
-				return true;
-			}
+		// PCT-Flow: step 7 hasn't even run yet for the phase currently reflected by
+		// getNumberOfPerformedActionPhasesToday() — treat that the same as "still awaiting" so a
+		// released-follower batch (step 9-10) can't race ahead of this phase's own post-phase
+		// distribution. Without this, a re-entrant updateControls() call triggered mid-process() (before
+		// ActionRow.triggerPostPhaseFor() has run for this phase) would see nobody flagged yet and
+		// wrongly conclude post-phase was already clear. See Phasing_Character_Turn_Flow.txt.
+		// isMinion() excluded: ActionRow.triggerPostPhaseFor() bails out before stamping for minions
+		// (they have no independent post-phase activity), so they'd never satisfy this check otherwise.
+		if (!getCharacter().isMinion()
+				&& getCharacter().getPostPhaseActivityActionCount() != getCharacter().getNumberOfPerformedActionPhasesToday()) {
+			return true;
 		}
-		return false;
+		return ActionRow.isAnyoneAwaitingPostPhaseDecisionAt(getCharacter().getCurrentLocation());
 	}
 
 	public boolean hasPendingActionsAfterCurrent() {
@@ -430,7 +419,12 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	
 	public void updateControls() {
 		TileLocation current = getCharacter().getCurrentLocation();
-		
+		// Re-sync from the shared, network-synced CharacterWrapper on every tick: a follower's voluntary
+		// stop-following (or a remote ditch) is set on THEIR own client, not this guide's, so the cached
+		// actionFollowers field (only refreshed at construction and after doAbandonActionFollowers()) can
+		// go stale and keep showing an already-departed follower as a Ditch Follower candidate.
+		actionFollowers = getCharacter().getActionFollowers();
+
 		boolean waitingForSingleButton = getCharacterFrame().isWaitingForSingleButton();
 		// isAwaitingInterruptionDecision() is pre-evaluated (not short-circuited by ||) so that blockWarningLabel
 		// is always refreshed on every updateControls() call. If left inside the || expression, a true
@@ -510,6 +504,34 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// immediately triggered the next action without user intent. The pending check at the top of
 		// ActionRow.process() already blocks the next action until post-phase is cleared.
 
+		// PCT-Flow: batchGateOpen implements the step 8 -> step 9 gate for Batch-NLF-1 (mid-day
+		// ditch/voluntary-stop/mechanical-drop batches) — processReleasedFollowerBatch() below may only
+		// proceed once the PC's own post-phase (step 7-8) has genuinely settled. This does NOT handle
+		// Batch-NLF-End (step 15) — that must wait for the PC to actually click Done (step 13), not just
+		// for actionsLeft to go false (which happens as soon as the last row is exhausted, possibly
+		// before the human clicks anything) — see turnDone() for that trigger instead.
+		// RELEASED-FOLLOWER BATCH TRIGGER: unlike the auto-advance above, this does NOT advance to the
+		// next action — it only performs silent background bookkeeping (processing any released-follower
+		// batch's shared summon check), so it is safe as a LEVEL check (re-checked every tick), not an
+		// edge-triggered one. A falling edge would miss the case where post-phase was never triggered at
+		// all for this phase (no one ever became "awaiting"), which must still process immediately.
+		// processReleasedFollowerBatch() is self-guarding (idempotent once already run for a given
+		// phase), so calling it on every qualifying tick is safe, and must run regardless of whether the
+		// guide has more actions left today — a mid-day voluntary-stop/ditch batch has to resolve as soon
+		// as ITS phase's post-phase clears, not wait for the guide's whole day to finish.
+		boolean isPlaying = getCharacter().isPlayingTurn();
+		boolean awaitingPostPhase = isAwaitingPostPhaseDecision();
+		boolean batchGateOpen = isPlaying && !awaitingPostPhase;
+		if (lastLoggedBatchGateOpen == null || lastLoggedBatchGateOpen.booleanValue() != batchGateOpen) {
+			System.out.println("[IPD] updateControls batch-gate char=" + getCharacter().getGameObject().getName()
+				+ " isPlaying=" + isPlaying + " awaitingPostPhase=" + awaitingPostPhase
+				+ " -> gateOpen=" + batchGateOpen);
+			lastLoggedBatchGateOpen = batchGateOpen;
+		}
+		if (batchGateOpen) {
+			ActionRow.processReleasedFollowerBatch(getCharacter(), getGameHandler(), "Batch-NLF-1");
+		}
+
 		playNextButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue);
 		playNextButton.setFlashing(playNextButton.isEnabled());
 		// Play All re-enabled: it runs the same playNext(true) loop as before, but the loop's
@@ -519,23 +541,14 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// and stopped there. Disabled here (like Play Next) whenever an interrupt is already pending,
 		// so a click can't silently no-op.
 		playAllButton.setEnabled(actionsLeft && !waitingForSingleButton && activatePlayNextTimer==null && !haveFollowersThatHaveWeatherFatigue && !awaitingInterruption);
-		finishedPlayButton.setEnabled(!controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
+		// A character who followed today (still following, ditched, or voluntarily stopped) never gets
+		// manual access to Done — getCharacterImFollowing() stays non-null all day once the single Follow
+		// action is recorded (the record is never cleared), so this excludes ex-followers too. Their turn
+		// close is entirely automatic via ActionRow.processReleasedFollowerBatch()/turnDone(false); allowing
+		// a manual click here raced with that automatic completion and caused a double EOCTMS (Bug 6).
+		boolean isFollowerToday = getCharacter().getCharacterImFollowing()!=null;
+		finishedPlayButton.setEnabled(!isFollowerToday && !controlsLocked && !actionsLeft && (current==null || (!current.isBetweenClearings() && !current.isBetweenTiles())));
 		finishedPlayButton.setFlashing(finishedPlayButton.isEnabled());
-
-		if (isFollowing) {
-			if (finishedPlayButton.isEnabled()) {
-				if (autoFollowerDoneTimer == null) {
-					autoFollowerDoneTimer = new Timer(5000, autoFollowerDoneListener);
-					autoFollowerDoneTimer.setRepeats(false);
-					autoFollowerDoneTimer.start();
-				}
-			} else if (autoFollowerDoneTimer != null) {
-				// Conditions changed before the timer fired (e.g. a new action row appeared) — cancel it.
-				autoFollowerDoneTimer.stop();
-				autoFollowerDoneTimer.removeActionListener(autoFollowerDoneListener);
-				autoFollowerDoneTimer = null;
-			}
-		}
 
 		if (playNextButton.isEnabled()) makeDefault(playNextButton);
 		if (finishedPlayButton.isEnabled()) makeDefault(finishedPlayButton);
@@ -1038,11 +1051,14 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		
 		actionTable.repaint();
 		if (!ar.isPending()) {
-			// Summon monsters for any action followers who stopped following!
-			DieRoller monsterDieRoller = game.getMonsterDie();
-			DieRoller nativeDieRoller = game.getNativeDie();
+			// Detach any action followers who stopped following during this phase's pre-phase window.
+			// Their release-batch markers (guideId + phase) were already stamped at decision time in
+			// CharacterFrame.submitPrePhaseActivities()/cascadeStopFollowing() — suppress
+			// removeActionFollower()'s own internal per-follower summon check (pass null dice) since
+			// ActionRow.processReleasedFollowerBatch() performs ONE shared summon check for the whole batch.
 			for (CharacterWrapper follower:getCharacter().getStoppedActionFollowers()) {
-				getCharacter().removeActionFollower(follower,monsterDieRoller,nativeDieRoller);
+				System.out.println("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName());
+				getCharacter().removeActionFollower(follower,null,null);
 			}
 		
 			// Collect any newActions that may have spawned (ie., Curse as the result of a search).
@@ -1120,12 +1136,17 @@ public class RealmTurnPanel extends CharacterFramePanel {
 						int ponyMovesAfter = phaseManager.getPonyMoves();
 						
 						if (ponyMovesBefore>ponyMovesAfter) {
+							// PCT-Flow: step 6.iv-vi (Batch-NLF-In) — the Pony-extra-move case named
+							// explicitly in the spec. See Phasing_Character_Turn_Flow.txt.
 							// Need to "ditch" all pony-less followers
 							for (CharacterWrapper follower : getCharacter().getActionFollowers()) {
 								BattleHorse horse = follower.getActiveSteed();
 								if (horse==null || horse.isDead() || !horse.doublesMove()) {
 									ClearingUtility.moveToLocation(follower.getGameObject(), locationBeforeAction);
-									getCharacter().removeActionFollower(follower, game.getMonsterDie(),game.getNativeDie());
+									// Runs after ar.process() returned for this phase (addActionPhasePerformedToday()
+									// already incremented), so no +1 adjustment — same timing as releaseLastPhaseFollowers().
+									follower.markReleasedFromGuide(getCharacter(), getCharacter().getNumberOfPerformedActionPhasesToday());
+									getCharacter().removeActionFollower(follower, null, null);
 									getGameHandler().broadcast(follower.getGameObject().getName(),"Unable to follow Guide:  Guide is on a Pony");
 								}
 							}
@@ -1233,6 +1254,27 @@ public class RealmTurnPanel extends CharacterFramePanel {
 	}
 	
 	private void turnDone() {
+		turnDone(true);
+	}
+	// PCT-Flow: steps 13-14 — the PC's own final Done click and EOCTMS (includeSummonCheck=true path).
+	// The includeSummonCheck=false path is instead Batch-NLF-1/End's own per-character Done bookkeeping,
+	// called from ActionRow.completeFollowerTurnDataOnly() rather than through here. See
+	// Phasing_Character_Turn_Flow.txt.
+	// includeSummonCheck: false when this character's turn is being force-completed as part of a
+	// released-follower batch (ActionRow.processReleasedFollowerBatch()) — the batch processor performs
+	// a single shared monster-summoning check for the whole batch instead of one per character.
+	void turnDone(boolean includeSummonCheck) {
+		// TEMP-EOCTMS-DEBUG: unconditional entry trace (the later gate on getsTurn/current/isMinion/
+		// isSleep silently skips the chit-flip+summon block and its own logging below, so without this
+		// there's no visible evidence turnDone() was entered at all when that gate is false).
+		System.out.println("[IPD] turnDone ENTRY char=" + getCharacter().getGameObject().getName()
+			+ " includeSummonCheck=" + includeSummonCheck
+			+ " getsTurn=" + getsTurn
+			+ " current=" + getCharacter().getCurrentLocation()
+			+ " isMinion=" + getCharacter().isMinion()
+			+ " isSleep=" + getCharacter().isSleep()
+			+ " playOrder=" + getCharacter().getPlayOrder()
+			+ " isPlayingTurn=" + getCharacter().isPlayingTurn());
 		// Assign combat order here
 		getCharacter().setCombatPlayOrder(game.getNextDayTurnCount());
 		
@@ -1341,21 +1383,45 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					getGameHandler().broadcast(getCharacter().getGameObject().getName(),"Reveals: "+chit.getGameObject().getName());
 				}
 			}
-			DieRoller monsterDieRoller = game.getMonsterDie();
-			DieRoller nativeDieRoller = game.getNativeDie();
-			ArrayList<GameObject> summoned = new ArrayList<>();
-			if (!hostPrefs.hasPref(Constants.SR_NO_SUMMONING_FOR_FOLLOWERS) || getCharacter().getCharacterImFollowing()==null || getCharacter().isStopFollowing()) {
-				SetupCardUtility.summonMonsters(hostPrefs,summoned,getCharacter(),monsterDieRoller,nativeDieRoller);
-			}
-			
-			if (getGameHandler().isOption(RealmSpeakOptions.TURN_END_RESULTS)) {
-				if (!summoned.isEmpty()) {
-					RealmObjectPanel panel = new RealmObjectPanel();
-					panel.addObjects(summoned);
-					JScrollPane sp = new JScrollPane(panel);
-					ComponentTools.lockComponentSize(sp,400,300);
-					JOptionPane.showMessageDialog(getGameHandler().getMainFrame(),sp,"Summoned this turn",JOptionPane.PLAIN_MESSAGE,null);
+			System.out.println("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
+				+ " includeSummonCheck=" + includeSummonCheck);
+			if (includeSummonCheck) {
+				DieRoller monsterDieRoller = game.getMonsterDie();
+				DieRoller nativeDieRoller = game.getNativeDie();
+				ArrayList<GameObject> summoned = new ArrayList<>();
+				boolean isFollowerChar = getCharacter().getCharacterImFollowing()!=null;
+				boolean summonGatePassed = !hostPrefs.hasPref(Constants.SR_NO_SUMMONING_FOR_FOLLOWERS) || !isFollowerChar || getCharacter().isStopFollowing();
+				if (summonGatePassed) {
+					SetupCardUtility.summonMonsters(hostPrefs,summoned,getCharacter(),monsterDieRoller,nativeDieRoller);
 				}
+
+				// TEMP-EOCTMS-DEBUG: diagnostic dialog for observing monster-summoning order/timing.
+				// Remove once this testing pass is complete — grep TEMP-EOCTMS-DEBUG to find all pieces.
+				StringBuilder eoctms = new StringBuilder();
+				eoctms.append("Character: ").append(getCharacter().getGameObject().getName()).append("\n");
+				eoctms.append("Location: ").append(current).append("\n");
+				eoctms.append("Monster die: ").append(monsterDieRoller.getValue(0)).append("\n");
+				eoctms.append("Native die: ").append(nativeDieRoller!=null ? String.valueOf(nativeDieRoller.getValue(0)) : "(n/a)").append("\n");
+				eoctms.append("Is follower: ").append(isFollowerChar).append("\n");
+				eoctms.append("SR_NO_SUMMONING_FOR_FOLLOWERS: ").append(hostPrefs.hasPref(Constants.SR_NO_SUMMONING_FOR_FOLLOWERS)).append("\n");
+				eoctms.append("isStopFollowing: ").append(getCharacter().isStopFollowing()).append("\n");
+				eoctms.append("Summon check ran: ").append(summonGatePassed).append("\n");
+				eoctms.append("Summoned: ").append(summoned.isEmpty() ? "(none)" : summoned.stream().map(GameObject::getName).collect(java.util.stream.Collectors.joining(", ")));
+				System.out.println("[IPD] turnDone EOCTMS " + eoctms.toString().replace("\n", " | "));
+				JOptionPane.showMessageDialog(getGameHandler().getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic", JOptionPane.INFORMATION_MESSAGE);
+
+				if (getGameHandler().isOption(RealmSpeakOptions.TURN_END_RESULTS)) {
+					if (!summoned.isEmpty()) {
+						RealmObjectPanel panel = new RealmObjectPanel();
+						panel.addObjects(summoned);
+						JScrollPane sp = new JScrollPane(panel);
+						ComponentTools.lockComponentSize(sp,400,300);
+						JOptionPane.showMessageDialog(getGameHandler().getMainFrame(),sp,"Summoned this turn",JOptionPane.PLAIN_MESSAGE,null);
+					}
+				}
+			} else {
+				System.out.println("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
+					+ " -> SKIP summon check (batch-released; shared batch summon handles this)");
 			}
 
 			ArrayList<GameObject> list = getCharacter().getAllActiveInventoryThisKeyAndValue(Constants.DWELLING_GOLD,null);
@@ -1373,7 +1439,18 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				}
 			}
 		}
-		
+
+		// PCT-Flow: step 15 — release any remaining followers now that step 14 (the PC's own EOCTMS,
+		// above) is done. Deliberately outside the getsTurn-gated block above: the guide's day ends
+		// (and followers must be freed) even if the guide themselves was asleep/blocked/a minion and so
+		// never got their own summon check. Placed here (not in updateControls()'s polling loop) so
+		// this waits for the PC's actual Done click instead of firing the moment actionsLeft goes false,
+		// which could be well before the human clicks anything. See Phasing_Character_Turn_Flow.txt.
+		if (currentActionRow >= 0 && currentActionRow < actionRows.size()) {
+			actionRows.get(currentActionRow).releaseLastPhaseFollowers();
+		}
+		ActionRow.processReleasedFollowerBatch(getCharacter(), getGameHandler(), "Batch-NLF-End");
+
 		// Test requirements one more time (in case any are dependent on start of evening)
 		params.timeOfCall = GamePhaseType.StartOfEvening; // technically not evening until all players are done with their turn, but this is good enough I think
 		if(getCharacter().testQuestRequirements(getMainFrame(),params)) {
@@ -1384,6 +1461,8 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		
 		// cleanup and notify host
 		getCharacterFrame().hideYourTurn();
+		System.out.println("[IPD] OFFICIAL TURN END char=" + getCharacter().getGameObject().getName()
+			+ " via turnDone(includeSummonCheck=" + includeSummonCheck + ")");
 		getCharacter().setPlayOrder(0);
 		getCharacter().setLastPlayer(false);
 		getCharacter().setLastPreemptivePlayer(false);
@@ -1460,6 +1539,8 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		doAbandonActionFollowers();
 		updateControls();
 	}
+	// PCT-Flow: step 2.i.a — guide ditches follower(s) during PC's own phase-start activities, forming
+	// Batch-NLF-PC-Pre. See Phasing_Character_Turn_Flow.txt.
 	public void doAbandonActionFollowers() {
 		TileLocation guideLoc = getCharacter().getCurrentLocation();
 		ArrayList<CharacterWrapper> inClearingFollowers = new ArrayList<>();
@@ -1488,8 +1569,6 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				}
 			}
 		}
-		DieRoller monsterDieRoller = game.getMonsterDie();
-		DieRoller nativeDieRoller = game.getNativeDie();
 		String myId = getCharacter().getGameObject().getStringId();
 		for (CharacterWrapper aFollower : toRemove) {
 			// Only DIRECT followers (those whose immediate guide is this character) can be ditched.
@@ -1512,8 +1591,16 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				continue;
 			}
 			if (!aFollower.hasActiveInventoryThisKey(Constants.LINKS)) {
-				getCharacter().removeActionFollower(aFollower,monsterDieRoller,nativeDieRoller);
-				abandonFollowerChain(getCharacter(), aFollower, monsterDieRoller, nativeDieRoller);
+				// Ditching happens during the pre-phase window, BEFORE this phase's dispatch increments
+				// getNumberOfPerformedActionPhasesToday() (see ActionRow.java's addActionPhasePerformedToday()
+				// call) — stamp with +1 to predict the value processReleasedFollowerBatch() will query
+				// against once this phase's dispatch completes.
+				int batchPhase = getCharacter().getNumberOfPerformedActionPhasesToday() + 1;
+				aFollower.markReleasedFromGuide(getCharacter(), batchPhase);
+				// Suppress removeActionFollower()'s own internal per-follower summon check (pass null dice) —
+				// ActionRow.processReleasedFollowerBatch() performs ONE shared summon check for the whole batch.
+				getCharacter().removeActionFollower(aFollower,null,null);
+				abandonFollowerChain(getCharacter(), aFollower, myId, batchPhase);
 			}
 		}
 
@@ -1521,7 +1608,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		actionFollowers = getCharacter().getActionFollowers();
 	}
 
-	private void abandonFollowerChain(CharacterWrapper topGuide, CharacterWrapper dropped, DieRoller monsterDieRoller, DieRoller nativeDieRoller) {
+	// PCT-Flow: step 2.i.a cascade — sub-followers of a ditched follower join the same Batch-NLF-PC-Pre.
+	// See Phasing_Character_Turn_Flow.txt.
+	private void abandonFollowerChain(CharacterWrapper topGuide, CharacterWrapper dropped, String batchGuideId, int batchPhase) {
 		// RealmHostPanel flattens the entire follow-chain into the TOP guide's ACTION_FOLLOWER list;
 		// intermediate guides (a ditched mid-chain follower like Captain) have an EMPTY list, so
 		// dropped.getActionFollowers() would find nothing. Instead scan the top guide's flat list for
@@ -1538,11 +1627,12 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		for (CharacterWrapper subFollower : subFollowers) {
 			System.out.println("[IPD] abandonFollowerChain: " + subFollower.getGameObject().getName()
 				+ " stops following (its guide " + dropped.getGameObject().getName() + " was ditched)");
-			topGuide.removeActionFollower(subFollower, monsterDieRoller, nativeDieRoller);
-			subFollower.setStopFollowing(true);
+			// Same batch as the character that triggered this cascade — same guide, same phase.
+			subFollower.markReleasedFromGuide(topGuide, batchPhase);
+			topGuide.removeActionFollower(subFollower, null, null);
 			RealmLogging.logMessage(subFollower.getGameObject().getName(),
 				"Stops following (guide " + dropped.getGameObject().getName() + " was left behind).");
-			abandonFollowerChain(topGuide, subFollower, monsterDieRoller, nativeDieRoller);
+			abandonFollowerChain(topGuide, subFollower, batchGuideId, batchPhase);
 		}
 	}
 	public void updatePanel() {
