@@ -320,6 +320,13 @@ public class TransmorphEffect implements ISpellEffect {
 			if (followers!=null) {
 				for (CharacterWrapper follower : followers) {
 					if (!follower.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) {
+						// TBD: this most commonly fires as part of the target's own spell-cast action
+						// dispatch, before that phase's addActionPhasePerformedToday() increment (hence
+						// +1), same as ActionRow's per-phase mist-like fallback check. If Transmorph can
+						// also apply from a reactive/out-of-turn context this guess may be off by one
+						// phase for that case — the ActionRow fallback only self-corrects if this stamp
+						// hasn't already removed the follower from getActionFollowers() first.
+						follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
 						character.removeActionFollower(follower,null,null);
 					}
 				}
