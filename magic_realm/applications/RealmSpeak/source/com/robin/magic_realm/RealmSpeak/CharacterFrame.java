@@ -321,6 +321,9 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		}
 	}
 
+	// PCT-Flow: implements step 3 (PC presses Pre-phase done, signaling NPCs to proceed) via the
+	// isPlayingTurn() branch below, and steps 4-5's dialog distribution/show via the non-phasing branch.
+	// See Phasing_Character_Turn_Flow.txt.
 	private void doPrePhaseActivities() {
 		System.out.println("[IPD] doPrePhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " playing=" + getCharacter().isPlayingTurn() + (getCharacter().isPlayingTurn() ? " (PHASING clearing-walk)" : " (NON-PHASING show dialog)"));
@@ -965,8 +968,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				RealmUtility.reportChitFatigue(getCharacter(), sel.chit, "Fatigued color chit: ");
 			}
 		}
+		// PCT-Flow: step 5.i/iii-v — an NPC's phase-start dialog submission choosing to stop following
+		// forms (part of) Batch-NLF-NPC-Pre. Marked NLF immediately via markReleasedFromGuide() below
+		// (step 5.iv), but NOT marked Done here — that's deferred to ActionRow.processReleasedFollowerBatch()
+		// once step 8 (phase-end) settles. See Phasing_Character_Turn_Flow.txt.
 		if (stopFollowingCheckbox != null && stopFollowingCheckbox.isSelected()) {
-			getCharacter().setStopFollowing(true);
 			RealmLogging.logMessage(getCharacter().getGameObject().getName(), "Stops following.");
 			// Cascade: any characters whose follow chain passes through the stopping character
 			// also stop. The chain is flattened in the phasing char's actionFollowers list, so
@@ -977,7 +983,14 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				if (cw.isPlayingTurn()) { phasingChar = cw; break; }
 			}
 			if (phasingChar != null) {
-				cascadeStopFollowing(getCharacter(), phasingChar);
+				// This decision resolves during the phasing char's pre-phase window, BEFORE that phase's
+				// dispatch increments getNumberOfPerformedActionPhasesToday() — stamp +1 to predict the
+				// value ActionRow.processReleasedFollowerBatch() will query against once dispatch completes
+				// (this runs on THIS character's own client; phasingChar's phase count is a shared, synced
+				// GameObject attribute, safe to read cross-client).
+				int batchPhase = phasingChar.getNumberOfPerformedActionPhasesToday() + 1;
+				getCharacter().markReleasedFromGuide(phasingChar, batchPhase);
+				cascadeStopFollowing(getCharacter(), phasingChar, batchPhase);
 			}
 		}
 		stopFollowingCheckbox = null;
@@ -1002,16 +1015,19 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	 * own clients don't get a pre-phase dialog to decide for themselves. The correct behaviour is
 	 * TBD from a rules/design standpoint: auto-cascade (current), or give sub-followers their own
 	 * choice (requires them to receive NeedsPrePhaseActivityDecision after their guide resolves).
+	 * PCT-Flow: step 5.iii-iv cascade — sub-followers of a stopping follower join the same
+	 * Batch-NLF-NPC-Pre. See Phasing_Character_Turn_Flow.txt.
 	 */
-	private void cascadeStopFollowing(CharacterWrapper stopped, CharacterWrapper phasingChar) {
+	private void cascadeStopFollowing(CharacterWrapper stopped, CharacterWrapper phasingChar, int batchPhase) {
 		for (CharacterWrapper follower : phasingChar.getActionFollowers()) {
 			if (follower.isStopFollowing()) continue;
 			CharacterWrapper guide = follower.getCharacterImFollowing();
 			if (guide != null && guide.getGameObject().equals(stopped.getGameObject())) {
-				follower.setStopFollowing(true);
+				// Same batch as the character that triggered this cascade — same guide, same phase.
+				follower.markReleasedFromGuide(phasingChar, batchPhase);
 				RealmLogging.logMessage(follower.getGameObject().getName(),
 					"Stops following (guide " + stopped.getGameObject().getName() + " stopped following).");
-				cascadeStopFollowing(follower, phasingChar);
+				cascadeStopFollowing(follower, phasingChar, batchPhase);
 			}
 		}
 	}
@@ -1024,6 +1040,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		return false;
 	}
 
+	// PCT-Flow: step 7 (phase-end dialog shown to this participant) / step 8 (auto-submit path when
+	// there's nothing to decide). See Phasing_Character_Turn_Flow.txt.
 	private void doPostPhaseActivities() {
 		// Auto-submit if skip filters reduce block candidates to none — no dialog needed.
 		int candCount = getPostPhaseBlockCandidates().size();
@@ -1183,10 +1201,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				if (rc.isPlayerControlledLeader()) {
 					if (skipChars) continue;
 					CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
-					// Just released as my follower this same action (releaseLastPhaseFollowers ran
-					// before this dialog built, so ownFollowers above no longer lists them) — a guide
-					// never blocks their own follower; they count as followers until the turn ends.
-					if (cw.getJustReleasedFollowerActionCount() == blocker.getNumberOfPerformedActionPhasesToday()) continue;
+					// PCT-Flow: no JUST_RELEASED_FOLLOWER_ACTION_COUNT exclusion here (removed) — per the
+					// spec, a char released this same phase (Batch-NLF-PC-Pre/NPC-Pre/In/Post/End) "can
+					// now block or be blocked" immediately, not deferred until the guide's turn ends. That
+					// exclusion also disagreed with ActionRow.getPostPhaseParticipants() (which has no such
+					// check and already treats a just-released ex-follower as an ordinary non-follower
+					// candidate once they're off ownFollowers) — the mismatch meant triggerPostPhaseFor()
+					// would correctly flag the guide as a participant, but this method would then find zero
+					// actual candidates and auto-submit with no dialog ever shown. See
+					// Phasing_Character_Turn_Flow.txt.
 					if (!isValidBlockTarget(rc, blockerIgnoresMist)) continue;
 					if (!cw.isHidden() || blocker.foundHiddenEnemy(rc.getGameObject())) {
 						candidates.add(rc);
@@ -1331,6 +1354,10 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		RealmLogging.logMessage(getCharacter().getGameObject().getName(), "Blocks " + rc.getGameObject().getName());
 	}
 
+	// PCT-Flow: step 8 — this participant's phase-end dialog is submitted here. Once every participant's
+	// NeedsPostPhaseActivityDecision flag is clear (ActionRow.isAnyoneAwaitingPostPhaseDecisionAt()),
+	// RealmTurnPanel.updateControls()'s gate opens and Batch-NLF-1 (steps 9-10) can proceed. See
+	// Phasing_Character_Turn_Flow.txt.
 	private void submitPostPhaseActivities() {
 		System.out.println("[IPD] submitPostPhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " blockCheckboxSelected=" + (blockCheckbox != null && blockCheckbox.isSelected()));
@@ -1354,6 +1381,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		bringPhasingCharacterToFront();
 	}
 
+	// PCT-Flow: step 6.i-ii — in-phase dialog shown to a still-following NPC before the PC's action
+	// executes. See Phasing_Character_Turn_Flow.txt.
 	protected void doInPhaseActivities() {
 		boolean isLocalCharacter = gameHandler.getClient().getClientName().equals(getCharacter().getPlayerName());
 		if (!isLocalCharacter || !getCharacter().getNeedsInPhaseActivityDecision()) {
@@ -1540,7 +1569,8 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		System.out.println("[IPD] doInPhasePeerSearch char=" + getCharacter().getGameObject().getName()
 			+ " guide=" + (guide != null ? guide.getGameObject().getName() : "none")
 			+ " result=[" + result + "] foundHiddenEnemies=" + getCharacter().foundHiddenEnemies()
-			+ " foundGuideAsHidden=" + foundGuide + " (guide can no longer ditch this follower)");
+			+ " foundGuideAsHidden=" + foundGuide
+			+ (foundGuide ? " (guide can no longer ditch this follower)" : " (guide can still ditch this follower)"));
 		if (result != null) {
 			String charName = getCharacter().getGameObject().getName();
 			RealmLogging.logMessage(charName, result);
