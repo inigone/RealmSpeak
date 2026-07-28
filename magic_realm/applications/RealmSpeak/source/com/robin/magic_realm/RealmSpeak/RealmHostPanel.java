@@ -56,6 +56,9 @@ public class RealmHostPanel extends JPanel {
 
 	private boolean listen;
 	private boolean doAutoSave = false;
+	// TEMP-DEBUG: last-logged snapshot of updateGameStatePlaying()'s active-chars/playOrder state, so
+	// the polling loop only logs on an actual change instead of every tick.
+	private String lastLoggedPlayOrderState = null;
 
 	/* It seems to me, the driving force of the game progression is in the updateCharaters method.  Each time a change is detected
 	 * in the host (via the GameHostListener) the characters are polled, and the gamestate is checked.  Here's a summary of the
@@ -723,9 +726,44 @@ public class RealmHostPanel extends JPanel {
 		if (postponedChar!=null) {
 			chars.removeAll(postponedChar.getActionFollowers());
 		}
-		
+
+		// TEMP-DEBUG: log the active-chars/playOrder snapshot only when it actually changes, so
+		// stuck/premature/duplicate turn-rotation bugs are visible without flooding the log on every
+		// poll tick. Sorted by playOrder so the printed sequence reads as the actual turn order.
+		{
+			ArrayList<CharacterWrapper> sorted = new ArrayList<>(chars);
+			Collections.sort(sorted, new Comparator<CharacterWrapper>() {
+				public int compare(CharacterWrapper c1, CharacterWrapper c2) {
+					return c1.getPlayOrder() - c2.getPlayOrder();
+				}
+			});
+			StringBuilder snapshot = new StringBuilder();
+			for (CharacterWrapper c : sorted) {
+				snapshot.append(c.getGameObject().getName()).append("=").append(c.getPlayOrder()).append(",");
+			}
+			String state = snapshot + "|min=" + (min==Integer.MAX_VALUE ? "none" : min)
+				+ "|postponed=" + (postponedChar!=null ? postponedChar.getGameObject().getName() : "none");
+			if (!state.equals(lastLoggedPlayOrderState)) {
+				System.out.println("[IPD] updateGameStatePlaying chars=" + state);
+				lastLoggedPlayOrderState = state;
+			}
+		}
+
 		if (chars.size() > 0) {
-			if (min == 2) {
+			// PCT-Flow: this renumbering must stay correct across Batch-NLF-1/End completions
+			// (ActionRow.completeFollowerTurnDataOnly() zeroing playOrder directly), not just normal
+			// single-character turn completion. See Phasing_Character_Turn_Flow.txt.
+			// Was "min == 2" (the exact value left behind when a single character at playOrder==1
+			// finishes and nobody else has moved). That assumed characters always finish strictly one
+			// at a time in sequence. The released-follower batch system breaks that assumption: it can
+			// zero multiple followers' playOrder simultaneously and out of sequence (e.g. releasing
+			// playOrder 3 and 4 while playOrder 1 is still mid-turn), which can leave a gap so the
+			// minimum jumps straight from 1 to some value > 2 once 1 finishes — "min == 2" then never
+			// fires again, permanently stranding whoever holds that now-orphaned higher playOrder (their
+			// turn can never begin, since isPlayingTurn() requires playOrder==1). "min > 1" is a strict
+			// superset that still fires in the original single-completion case (min transitions 1 -> 2)
+			// but also closes any gap left by an out-of-order batch completion.
+			if (min > 1) {
 				// Autosave anytime a new player is taking their turn
 				autoSaveNow();
 				
@@ -785,8 +823,10 @@ public class RealmHostPanel extends JPanel {
 				// renumber
 				int n=1;
 				CharacterWrapper last = null;
+				StringBuilder renumbered = new StringBuilder();
 				for (CharacterWrapper character : chars) {
 					character.setPlayOrder(n);
+					renumbered.append(character.getGameObject().getName()).append("=").append(n).append(",");
 					if (n==1) {
 						sendEmail("It is the "+character.getGameObject().getName()+"'s turn to play.",character.getPlayerName());
 					}
@@ -796,6 +836,8 @@ public class RealmHostPanel extends JPanel {
 					}
 					n++;
 				}
+				System.out.println("[IPD] updateGameStatePlaying RENUMBERED -> " + renumbered
+					+ " (now playing: " + (chars.isEmpty() ? "none" : chars.get(0).getGameObject().getName()) + ")");
 				if (last!=null) {
 					last.setLastPlayer(true);
 				}

@@ -135,6 +135,11 @@ public class CharacterWrapper extends GameObjectWrapper {
 	// still recognize "you were my follower this very action" and exclude them (a guide never blocks
 	// their own follower, and followers count as followers until the guide's turn truly ends).
 	public static final String JUST_RELEASED_FOLLOWER_ACTION_COUNT = "_jrfac_";
+	// Companion to JUST_RELEASED_FOLLOWER_ACTION_COUNT: the top guide's id at the moment of release.
+	// Needed because an indirect/cascaded sub-follower's own recorded Follow action points at their
+	// immediate guide, not the top guide whose phase actually drives the release batch — this stamp
+	// lets processReleasedFollowerBatch() correctly scope a batch to one specific guide's phase.
+	public static final String RELEASE_BATCH_GUIDE_ID = "_rbgid_";
 	// In-phase activity flags: NEEDS_IN_PHASE_ACTIVITY_DECISION marks that a follower must resolve
 	// their in-phase dialog before the phasing character's current action executes.
 	// IN_PHASE_ACTIVITY_ACTION_COUNT is the stamp that prevents re-triggering within the same phase.
@@ -2164,6 +2169,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		removePrePhaseActivityActionCount();
 		removePostPhaseActivityActionCount();
 		removeAttribute(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+		removeAttribute(RELEASE_BATCH_GUIDE_ID);
 		removeInPhaseActivityActionCount();
 		setNeedsInPhaseActivityDecision(false);
 		setInPhaseActionType(null);
@@ -4219,12 +4225,53 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void removePostPhaseActivityActionCount() {
 		removeAttribute(POST_PHASE_ACTIVITY_ACTION_COUNT);
 	}
-	public int getJustReleasedFollowerActionCount() {
-		if (getBoolean(JUST_RELEASED_FOLLOWER_ACTION_COUNT) == false) return -1;
-		return getInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
-	}
 	public void setJustReleasedFollowerActionCount(int val) {
 		setInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT, val);
+	}
+	// Low-level attribute removal — see clearReleaseBatchStamp() below for the actual consume step
+	// callers should use.
+	public void removeJustReleasedFollowerActionCount() {
+		removeAttribute(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+	}
+	public String getReleaseBatchGuideId() {
+		return getString(RELEASE_BATCH_GUIDE_ID);
+	}
+	public void setReleaseBatchGuideId(String guideId) {
+		if (guideId == null) removeAttribute(RELEASE_BATCH_GUIDE_ID);
+		else setString(RELEASE_BATCH_GUIDE_ID, guideId);
+	}
+	// PCT-Flow: the single stamping point behind Batch-NLF-PC-Pre (step 2.i.a), Batch-NLF-NPC-Pre
+	// (step 5.iii-iv), Batch-NLF-In (step 6.iv-v), and Batch-NLF-End (step 15) — every place a follower
+	// becomes NO LONGER FOLLOWING calls this. See Phasing_Character_Turn_Flow.txt.
+	// THE single stamping point for every way a follower can leave a guide's chain — ditch, voluntary
+	// stop, day's-end release, and every mechanical auto-drop (move-encumbered, can't-follow-terrain,
+	// pony-mismatch, mist-like, sleep, can't-fly, transmorph, table-loot transport). Every one of those
+	// call sites must call this rather than writing the stamp pair inline: it's the only thing binding
+	// them to ActionRow.processReleasedFollowerBatch()'s query, and hand-duplicating it is exactly how
+	// several timing bugs happened before this was consolidated.
+	// batchPhase must be pre-adjusted by the caller for whether it runs before or after THIS phase's
+	// addActionPhasePerformedToday() increment (in ActionRow.process(), called after dispatch):
+	// anything running during pre-phase or during an action's own dispatch (ditch, voluntary stop,
+	// a move/fly action, mist-like, most mechanical drops) runs BEFORE that increment and must pass
+	// getNumberOfPerformedActionPhasesToday()+1 to predict the value the batch query will use;
+	// anything running after process() has returned for the phase (releaseLastPhaseFollowers(), the
+	// post-row pony-mismatch cleanup in RealmTurnPanel.playNext()) runs AFTER it and passes the count
+	// unadjusted. When in doubt, check whether addActionPhasePerformedToday() has run yet for this phase.
+	public void markReleasedFromGuide(CharacterWrapper topGuide, int batchPhase) {
+		setStopFollowing(true);
+		setJustReleasedFollowerActionCount(batchPhase);
+		setReleaseBatchGuideId(topGuide.getGameObject().getStringId());
+		System.out.println("[IPD] markReleasedFromGuide " + getGameObject().getName()
+			+ " guideId=" + topGuide.getGameObject().getStringId() + " phase=" + batchPhase);
+	}
+	// Consumes this follower's release stamp once ActionRow.processReleasedFollowerBatch() has
+	// completed them, so a later batch stamped with the SAME action-phase count (e.g. a day's-end
+	// release sharing the day's final phase number with an earlier pre-phase-stop batch) still finds
+	// and processes them instead of being masked by a coarse guide-level "already handled this phase
+	// number" guard.
+	public void clearReleaseBatchStamp() {
+		removeJustReleasedFollowerActionCount();
+		setReleaseBatchGuideId(null);
 	}
 	public boolean getNeedsInPhaseActivityDecision() {
 		return getBoolean(NEEDS_IN_PHASE_ACTIVITY_DECISION);
