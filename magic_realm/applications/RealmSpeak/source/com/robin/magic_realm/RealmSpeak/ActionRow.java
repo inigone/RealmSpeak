@@ -548,16 +548,21 @@ public class ActionRow {
 		// must settle before pre-phase reactions for the coming action are evaluated.
 		if (!isFollowing) {
 			if (character.isMistLike()) {
+				// PCT-Flow: step 6.iv-vi (Batch-NLF-In family) — guide becomes unfollowable due to
+				// mist-like status. See Phasing_Character_Turn_Flow.txt.
 				// Auto-release lingering followers whenever the phasing char is mist-like.
 				// TransmorphEffect doesn't re-fire when a permanent spell is re-energized
 				// (e.g. a follower plays a color chit to re-activate the guide's Melt into Mist),
 				// so followers can persist past the point where they should have been released.
-				// Passing null dice skips monster summoning (same as the sleep/mist path).
+				// Runs at the top of process(), before this phase's addActionPhasePerformedToday()
+				// increment, so stamp with +1 (same reasoning as the ditch/voluntary-stop sites).
+				// Suppress removeActionFollower()'s own internal summon (null dice) — the batch performs
+				// ONE shared summon check instead.
 				for (CharacterWrapper follower : character.getActionFollowers()) {
 					if (!follower.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) {
 						RealmLogging.logMessage(character.getGameObject().getName(),
 							follower.getGameObject().getName() + " can no longer follow (guide is mist-like).");
-						follower.setStopFollowing(true);
+						follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
 						character.removeActionFollower(follower, null, null);
 					}
 				}
@@ -668,6 +673,8 @@ public class ActionRow {
 		// action, there is nothing left to post-process.
 		completed = true; // the default - can be modified if there are problems
 
+		// PCT-Flow: step 6.iii — the phase action itself executes here (dispatch switch below). See
+		// Phasing_Character_Turn_Flow.txt.
 		if (isExecutableAction && !isActionNeedsFurtherPhases) {
 			// Foresight snapshot: before the action mutates anything, save the character's current
 			// state so it can be rolled back if the player exercises Foresight to cancel the action.
@@ -818,6 +825,8 @@ public class ActionRow {
 		// completed defaults to true (set above). doXxxAction() methods set it false if the action
 		// needs further resolution (e.g. blocked mid-move, native refused hire, awaiting input).
 		// Only run storm/blocking/logging when the action actually finished this process() call.
+		System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+			+ " completed=" + completed + " (post-action block " + (completed ? "WILL run" : "SKIPPED — not yet completed") + ")");
 		if (completed) {
 			// Check for Violent Storm
 			if (willBeAffectedByStorm()) {
@@ -841,6 +850,15 @@ public class ActionRow {
 			// This block evaluates who qualifies and defers block evaluation until they resolve.
 			// NOTE: triggerPostPhase() (below) handles the interphase-dialogs post-phase system and runs
 			// for both editions. These two mechanisms are parallel paths, not duplicates.
+			// TBD (deferred, see Phasing_Character_Turn_Flow.txt step 8.i / Batch-NLF-Post): a guide can
+			// become unfollowable to some followers as a RESULT of color chits played here at phase-end —
+			// those newly-freed followers ("Batch-NLF-Post") are not currently wired into
+			// ActionRow.markReleasedFromGuide()/processReleasedFollowerBatch() at all. Deliberately
+			// deferred: this path is 1st-edition-only and untouched by any 3rd-edition testing this
+			// session. If ever built, it must stay a SEPARATE batch from Batch-NLF-1 (its membership
+			// isn't known until this block runs, i.e. mid phase-end) with its own EOCTMS, deduplicated
+			// against Batch-NLF-1's per the spec's step 11.a: only fire in the PC's clearing if
+			// Batch-NLF-1 didn't already cause one there.
 			boolean blockEvaluation = true;
 			if (hostPrefs.hasPref(Constants.FE_PHASE_END_PLAYING_COLOR_CHIT)) {
 				TileLocation current = character.getCurrentLocation();
@@ -883,14 +901,19 @@ public class ActionRow {
 			// non-follower phase, including blank/invalid no-op phases — the action did nothing, but
 			// the phase still happened and other characters in the clearing can still react to it.
 			// (Only follower rows are skipped; they are handled via their guide.)
-			// triggerPostPhase() runs first so followers are still in getActionFollowers() when the
-			// clearing is scanned; releaseLastPhaseFollowers() then removes them immediately after.
+			// triggerPostPhase() only SETS flags here — it does not wait for them to be resolved.
+			// releaseLastPhaseFollowers()/processReleasedFollowerBatch() must NOT run immediately after:
+			// followers still with the guide at day's end may only be released once post-phase for
+			// THIS phase (which can include the guide's own blocking decision) has actually been
+			// resolved by whoever needs to decide — otherwise the batch's shared EOCTMS can appear
+			// before the guide's own phase-end dialog is even dismissed. Both are instead deferred to
+			// RealmTurnPanel.updateControls()'s level-check on !isAwaitingPostPhaseDecision(), which
+			// fires once post-phase has genuinely settled (or immediately, if nobody ever needed to react).
 			System.out.println("[IPD] post-action char=" + character.getGameObject().getName() + " action=" + action
 				+ " isFollowing=" + isFollowing + " isExecutableAction=" + isExecutableAction
-				+ (!isFollowing ? " -> triggerPostPhase+releaseFollowers" : " -> SKIP (follower row)"));
+				+ (!isFollowing ? " -> triggerPostPhase (release+batch deferred to post-phase resolution)" : " -> SKIP (follower row)"));
 			if (!isFollowing) {
 				triggerPostPhase();
-				releaseLastPhaseFollowers();
 			}
 		}
 	}
@@ -968,6 +991,9 @@ public class ActionRow {
 	 * performed-count) the gate was already opened for. Using the performed-count rather than a
 	 * plain boolean means it auto-distinguishes each successive action with no manual reset.
 	 */
+	// PCT-Flow: step 4 — flags eligible NPCs so their phase-start dialogs auto-show (steps 4-5's gate:
+	// PC's action dispatch is deferred, per the return value below, until every flagged NPC submits).
+	// See Phasing_Character_Turn_Flow.txt.
 	private boolean handlePrePhase(HostPrefWrapper hostPrefs) {
 		if (character.isMinion()) return false; // minions have no independent pre-phase activity
 
@@ -1054,6 +1080,7 @@ public class ActionRow {
 	 * with the matching host option enabled — its reacting followers may perform a simultaneous matching
 	 * action. This flags each eligible follower once (idempotent via InPhaseActivityActionCount) and
 	 * returns true while any follower decision is still pending, parking the guide's row until they finish.
+	 * PCT-Flow: step 6.i-ii. See Phasing_Character_Turn_Flow.txt.
 	 */
 	private boolean handleInPhase() {
 		if (character.isMinion()) return false;
@@ -1140,18 +1167,28 @@ public class ActionRow {
 	 * {@link CharacterWrapper#getActionFollowers()} is safe to iterate while the underlying list
 	 * is mutated by each {@code removeActionFollower} call.
 	 */
-	private void releaseLastPhaseFollowers() {
+	// PCT-Flow: step 15 — forms Batch-NLF-End (remaining followers released at the guide's day's end).
+	// See Phasing_Character_Turn_Flow.txt.
+	// Package-visible: called from RealmTurnPanel.updateControls()'s post-phase-resolution watcher,
+	// not just from process() — see the comment at the process() call site for why this is deferred.
+	void releaseLastPhaseFollowers() {
 		if (newAction != null) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (continuation pending)"); return; }
 		if (turnPanel.hasPendingActionsAfterCurrent()) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (more actions pending)"); return; }
+		// actionPhasesPerformedNow is already post-increment here (addActionPhasePerformedToday() ran
+		// earlier in this same process() call, before triggerPostPhase()/this method) — this is the SAME
+		// value processReleasedFollowerBatch() will use moments later in this same call, no adjustment
+		// needed (contrast with the ditch/voluntary-stop stamp sites, which run during the pre-phase
+		// window BEFORE that increment and must stamp with +1 to predict it).
 		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		for (CharacterWrapper follower : character.getActionFollowers()) {
 			System.out.println("[IPD] releaseLastPhaseFollowers releasing " + follower.getGameObject().getName() + " from " + character.getGameObject().getName());
-			follower.setStopFollowing(true);
-			// Stamp so the guide's post-phase block dialog (built after this release, when
-			// getActionFollowers() is already empty) still recognizes this char as a just-released
-			// follower for this action and excludes them from the guide's block candidates.
-			follower.setJustReleasedFollowerActionCount(actionPhasesPerformedNow);
-			character.removeActionFollower(follower, gameHandler.getGame().getMonsterDie(), gameHandler.getGame().getNativeDie());
+			// Stamp also lets the guide's post-phase block dialog (built after this release, when
+			// getActionFollowers() is already empty) still recognize this char as a just-released
+			// follower for this action and exclude them from the guide's block candidates.
+			follower.markReleasedFromGuide(character, actionPhasesPerformedNow);
+			// Suppress removeActionFollower()'s own internal per-follower summon check (pass null dice) —
+			// processReleasedFollowerBatch() performs ONE shared summon check for the whole batch instead.
+			character.removeActionFollower(follower, null, null);
 		}
 	}
 
@@ -1195,6 +1232,30 @@ public class ActionRow {
 	 * auto-shows the dialog via {@code SwingUtilities.invokeLater}.
 	 */
 	private void triggerPostPhase() {
+		triggerPostPhaseFor(character, gameHandler);
+	}
+	// Single definition of "is anyone still awaiting a post-phase decision in this clearing" — used by
+	// RealmTurnPanel.isAwaitingPostPhaseDecision(), the gate that must clear before
+	// processReleasedFollowerBatch() may mark any released follower Done. Scoped to one clearing
+	// because getPostPhaseParticipants() (which sets this flag) only ever flags characters physically
+	// sharing the phasing character's own clearing — there is exactly one phasing character at a time,
+	// so this is the complete set of pending decisions relevant to that phase.
+	static boolean isAnyoneAwaitingPostPhaseDecisionAt(TileLocation loc) {
+		if (loc == null || !loc.isInClearing()) return false;
+		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
+			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
+				return true;
+			}
+		}
+		return false;
+	}
+	// PCT-Flow: step 7 — distributes phase-end dialogs to all qualifying PC/NPC participants sharing
+	// the phasing character's clearing. See Phasing_Character_Turn_Flow.txt.
+	// Extracted so it can be invoked for a character outside their own ActionRow's normal
+	// process() flow — e.g. a follower force-completed immediately upon release (ditch, voluntary
+	// stop, or the guide's end-of-day release), via ActionRow.processReleasedFollowerBatch().
+	// Reads only the two parameters — no other ActionRow instance state.
+	static void triggerPostPhaseFor(CharacterWrapper character, RealmGameHandler gameHandler) {
 		if (character.isMinion()) return;
 
 		TileLocation loc = character.getCurrentLocation();
@@ -1203,7 +1264,7 @@ public class ActionRow {
 		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		if (character.getPostPhaseActivityActionCount() == actionPhasesPerformedNow) return;
 
-		ArrayList<CharacterWrapper> postPhaseParticipants = getPostPhaseParticipants(loc);
+		ArrayList<CharacterWrapper> postPhaseParticipants = getPostPhaseParticipants(character, gameHandler, loc);
 
 		StringBuilder dbg = new StringBuilder();
 		for (CharacterWrapper cw : postPhaseParticipants) dbg.append(cw.getGameObject().getName()).append(",");
@@ -1211,13 +1272,162 @@ public class ActionRow {
 			+ " loc=" + (loc.clearing != null ? loc.clearing.getDescription() : "?")
 			+ " participants=[" + dbg + "]");
 
+		// PCT-Flow: stamp UNCONDITIONALLY (not just when participants is non-empty) — this is the only
+		// signal RealmTurnPanel.isAwaitingPostPhaseDecision() has for "has step 7 (distribute) even run
+		// yet for this phase," as distinct from "it ran and nobody qualified." An intermediate
+		// gameHandler.updateCharacterFramesWithoutMap() call earlier in ActionRow.process()'s
+		// post-dispatch bookkeeping (before this method is reached) can trigger a synchronous
+		// re-entrant updateControls() call — if the stamp were only set on the non-empty branch, that
+		// re-entrant call would see nobody flagged (because this method genuinely hasn't run yet for
+		// this phase) and wrongly conclude post-phase was already clear, letting a released-follower
+		// batch's EOCTMS fire before this phase's own post-phase distribution ever happened. See
+		// Phasing_Character_Turn_Flow.txt.
+		character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
 		if (!postPhaseParticipants.isEmpty()) {
-			character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
 			for (CharacterWrapper cw : postPhaseParticipants) {
 				cw.setNeedsPostPhaseActivityDecision(true);
 			}
 			gameHandler.updateCharacterFramesWithoutMap();
 		}
+	}
+
+	/**
+	 * Performs the subset of {@code RealmTurnPanel.turnDone()}'s end-of-turn bookkeeping that is pure
+	 * shared-GameData and doesn't require that character's own UI (mainFrame/CharacterFrame), so it's
+	 * safe to run from any client — specifically the guide's, inside {@link #processReleasedFollowerBatch}.
+	 * A released follower recorded exactly one action (Follow) all day, so the UI-dependent parts of
+	 * turnDone() (rebuilding actionRows into current actions, heavy-inventory warnings, the EOCTMS
+	 * dialog — already handled once for the whole batch by the caller) don't apply; zeroing playOrder
+	 * is the one step that matters, since it's what takes this character out of turn rotation for good.
+	 */
+	private static void completeFollowerTurnDataOnly(CharacterWrapper follower, RealmGameHandler gameHandler) {
+		follower.setCombatPlayOrder(gameHandler.getGame().getNextDayTurnCount());
+		follower.resetClearingPlot();
+		TileLocation loc = follower.getCurrentLocation();
+		if (loc != null) {
+			loc.energizeItems();
+		}
+		follower.expireTemporaryPotions();
+		follower.distributeMonsterControlInCurrentClearing();
+		System.out.println("[IPD] OFFICIAL TURN END char=" + follower.getGameObject().getName()
+			+ " via completeFollowerTurnDataOnly (batch release)");
+		follower.setPlayOrder(0);
+		follower.setLastPlayer(false);
+		follower.setLastPreemptivePlayer(false);
+	}
+
+	/**
+	 * Processes followers released (ditched, voluntarily stopped, or released at the guide's day's
+	 * end) during THIS specific action phase of {@code guide}. Called every phase, alongside
+	 * {@link #triggerPostPhase()}. Per the Magic Realm rule confirmed by the user: everyone released
+	 * during ONE guide phase's pre-phase window (or released together at the guide's day's end) forms
+	 * ONE set — each is individually completed, but the whole set shares exactly ONE monster-summoning
+	 * check, not one per character.
+	 * <p>
+	 * Batch membership is found via the {@code RELEASE_BATCH_GUIDE_ID}/{@code JUST_RELEASED_FOLLOWER_ACTION_COUNT}
+	 * stamp pair set by the three release call sites (ditch: {@code RealmTurnPanel.doAbandonActionFollowers}/
+	 * {@code abandonFollowerChain}; voluntary stop: the {@code stopFollowingCheckbox} cleanup in
+	 * {@code RealmTurnPanel.playNext()}/{@code CharacterFrame.cascadeStopFollowing}; day's end:
+	 * {@link #releaseLastPhaseFollowers()}).
+	 * <p>
+	 * This method runs on the GUIDE's own client (inside their {@code ActionRow.process()}), so it
+	 * only performs pure shared-GameData operations — the single summon check,
+	 * {@link #triggerPostPhaseFor}, and {@link #completeFollowerTurnDataOnly}. It cannot safely call
+	 * the UI-touching parts of {@code RealmTurnPanel.turnDone()} (dialogs, action-row rebuilding) for a
+	 * released follower controlled by a different player, since those reference that character's OWN
+	 * {@code CharacterFrame}. It doesn't need to: a released follower has recorded exactly one action
+	 * (Follow) all day, so the only bookkeeping that matters is the data-only subset — critically,
+	 * zeroing {@code playOrder} — which {@link #completeFollowerTurnDataOnly} performs directly here.
+	 * Zeroing playOrder immediately also means the follower's own {@code RealmTurnPanel}/"Your Turn"
+	 * tab is never created for them at all ({@code isPlayingTurn()} requires playOrder==1), which is
+	 * both the correct UX (no manual interaction needed) and avoids an earlier bug where deferring this
+	 * to a flag polled by the follower's own client raced their tab's construction: the flag could fire
+	 * (and get consumed) before {@code turnPanel} existed, permanently stranding them.
+	 * <p>
+	 * Each released follower's own release stamp ({@code JUST_RELEASED_FOLLOWER_ACTION_COUNT} +
+	 * {@code RELEASE_BATCH_GUIDE_ID}) is cleared once processed here, rather than relying on a
+	 * guide-level "already handled this phase number" guard — the guide's day's-end release and a
+	 * mid-day pre-phase-stop batch can both legitimately stamp the SAME phase number (the day's-end
+	 * release always uses the day's final phase count, which a stop-following batch during that same
+	 * final phase's pre-phase window also predicts), and a coarse per-phase guard would silently skip
+	 * the second, later batch as "already processed" even though its members were never queried.
+	 * <p>
+	 * Deliberately does NOT run its own separate post-phase eligibility check per released follower.
+	 * {@link #getPostPhaseParticipants} already excludes only CURRENT followers of any guide — once a
+	 * batch member's follower status is updated (which happens during phase-start, before dispatch),
+	 * they simply fall out of that exclusion set and become an ordinary non-follower candidate in the
+	 * guide's own, single, already-existing post-phase check. A separate per-follower trigger call
+	 * would ask a different, spec-uncalled-for question ("can others block THIS follower, as if they
+	 * themselves had just acted") and races the guide's own check instead of being part of it — this
+	 * is what caused an early version of this method to fire a follower's EOCTMS while the guide's own
+	 * block decision about that very follower was still an open, unresolved dialog. The caller
+	 * (RealmTurnPanel.updateControls()) already gates this whole method behind
+	 * {@code !isAwaitingPostPhaseDecision()} — the guide's own post-phase settling — which is
+	 * sufficient on its own.
+	 * <p>
+	 * PCT-Flow: steps 9-10 — merges Batch-NLF-PC-Pre + Batch-NLF-NPC-Pre + Batch-NLF-In into
+	 * Batch-NLF-1 (via the shared guide+phase stamp query below), marks each Done, and fires ONE
+	 * shared EOCTMS. Also reused for Batch-NLF-End (steps 15-17) via releaseLastPhaseFollowers()'s
+	 * stamp. See Phasing_Character_Turn_Flow.txt.
+	 * @param batchLabel the PCT-Flow batch name for this call site — "Batch-NLF-1" when called from
+	 * RealmTurnPanel.updateControls()'s mid-day polling gate, "Batch-NLF-End" when called from
+	 * turnDone() right after releaseLastPhaseFollowers(). Purely cosmetic (logging/diagnostic dialog
+	 * text) — the query/merge logic itself doesn't need to know which one it is.
+	 */
+	static void processReleasedFollowerBatch(CharacterWrapper guide, RealmGameHandler gameHandler, String batchLabel) {
+		int actionPhasesPerformedNow = guide.getNumberOfPerformedActionPhasesToday();
+
+		GamePool pool = new GamePool(guide.getGameObject().getGameData().getGameObjects());
+		ArrayList<String> keyVals = new ArrayList<>();
+		keyVals.add(CharacterWrapper.RELEASE_BATCH_GUIDE_ID + "=" + guide.getGameObject().getStringId());
+		keyVals.add(CharacterWrapper.JUST_RELEASED_FOLLOWER_ACTION_COUNT + "=" + actionPhasesPerformedNow);
+		ArrayList<GameObject> batchGameObjects = pool.find(keyVals);
+
+		if (batchGameObjects.isEmpty()) {
+			System.out.println("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
+				+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + " -> no released followers this phase");
+			return;
+		}
+
+		StringBuilder names = new StringBuilder();
+		for (GameObject go : batchGameObjects) names.append(go.getName()).append(",");
+		System.out.println("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
+			+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + "=[" + names + "] size=" + batchGameObjects.size());
+
+		CharacterWrapper representative = null;
+		for (GameObject go : batchGameObjects) {
+			CharacterWrapper released = new CharacterWrapper(go);
+			if (representative == null) representative = released;
+			System.out.println("[IPD] processReleasedFollowerBatch completing " + released.getGameObject().getName()
+				+ " loc=" + released.getCurrentLocation());
+			completeFollowerTurnDataOnly(released, gameHandler);
+			// Consume this follower's release stamp now that they're fully processed, so a later batch
+			// stamped with the same phase number (see class-level note above) isn't masked by them.
+			released.clearReleaseBatchStamp();
+		}
+
+		// Single shared summon check for the whole batch — pure shared-data operation, safe cross-client.
+		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
+		DieRoller monsterDieRoller = gameHandler.getGame().getMonsterDie();
+		DieRoller nativeDieRoller = gameHandler.getGame().getNativeDie();
+		ArrayList<GameObject> summoned = new ArrayList<>();
+		SetupCardUtility.summonMonsters(hostPrefs, summoned, representative, monsterDieRoller, nativeDieRoller);
+
+		// TEMP-EOCTMS-DEBUG: batched diagnostic dialog — fires ONCE for the whole released-follower
+		// batch (not once per character), confirming the rule "collectively trigger just one EOCTMS."
+		// Remove once this testing pass is complete — grep TEMP-EOCTMS-DEBUG to find all pieces.
+		StringBuilder eoctms = new StringBuilder();
+		eoctms.append("Guide: ").append(guide.getGameObject().getName()).append("\n");
+		eoctms.append(batchLabel).append(" (").append(batchGameObjects.size()).append("): ").append(names).append("\n");
+		eoctms.append("Representative for summon: ").append(representative.getGameObject().getName()).append("\n");
+		eoctms.append("Location: ").append(representative.getCurrentLocation()).append("\n");
+		eoctms.append("Monster die: ").append(monsterDieRoller.getValue(0)).append("\n");
+		eoctms.append("Native die: ").append(nativeDieRoller != null ? String.valueOf(nativeDieRoller.getValue(0)) : "(n/a)").append("\n");
+		eoctms.append("Summoned: ").append(summoned.isEmpty() ? "(none)" : summoned.stream().map(GameObject::getName).collect(java.util.stream.Collectors.joining(", ")));
+		System.out.println("[IPD] processReleasedFollowerBatch SHARED SUMMON " + eoctms.toString().replace("\n", " | "));
+		JOptionPane.showMessageDialog(gameHandler.getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic (" + batchLabel + ")", JOptionPane.INFORMATION_MESSAGE);
+
+		gameHandler.updateCharacterFramesWithoutMap();
 	}
 
 	/**
@@ -1230,8 +1440,15 @@ public class ActionRow {
 	 * {@code RealmTurnPanel.initActionRow()}) must be resolved one phase at a time — pausing after
 	 * each individual rest so a qualifying reactor gets their post-phase decision before the next
 	 * rest proceeds — instead of resolving the whole stack in one {@code ChitRestManager} dialog.
+	 * <p>
+	 * PCT-Flow: this is why steps 2.i.a.I / 5.a / 6.iv-vi's "can now block or be blocked" note requires
+	 * no separate code — the exclusion set below only ever contains CURRENT followers (via
+	 * getActionFollowers()), so a Batch-NLF-* member who's already had markReleasedFromGuide() +
+	 * removeActionFollower() applied simply isn't excluded here anymore, and is picked up as an
+	 * ordinary non-follower candidate in the guide's own single step-7 check. See
+	 * Phasing_Character_Turn_Flow.txt.
 	 */
-	private ArrayList<CharacterWrapper> getPostPhaseParticipants(TileLocation loc) {
+	private static ArrayList<CharacterWrapper> getPostPhaseParticipants(CharacterWrapper character, RealmGameHandler gameHandler, TileLocation loc) {
 		// Build the follower exclusion set.
 		//
 		// In 3rd-edition case (FE_PHASE_END_PLAYING_COLOR_CHIT OFF), followers of ANY guide are
@@ -1547,6 +1764,12 @@ public class ActionRow {
 				}
 				testCharacter.setSleep(true);
 				if (testCharacter.isFollowingCharacterPlayingTurn()) {
+					// PCT-Flow: step 6.iv-vi (Batch-NLF-In family) — sleep-induced unfollowing. See
+					// Phasing_Character_Turn_Flow.txt.
+					// checkSleep() is only ever called from within process(), before this phase's
+					// addActionPhasePerformedToday() increment — stamp with +1 (same reasoning as the
+					// ditch/voluntary-stop sites).
+					testCharacter.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
 					character.removeActionFollower(testCharacter,null,null);
 					JOptionPane.showMessageDialog(
 							gameHandler.getMainFrame(),
@@ -2036,13 +2259,21 @@ public class ActionRow {
 								}
 							}
 							else {
+								// PCT-Flow: step 6.iv-vi (Batch-NLF-In) — encumbered follower left behind
+								// mid-move. See Phasing_Character_Turn_Flow.txt.
 								// Oops, follower was likely encumbered!  Take 'em off the list!
-								character.removeActionFollower(follower,gameHandler.getGame().getMonsterDie(),gameHandler.getGame().getNativeDie());
+								// Runs during dispatch, before this phase's addActionPhasePerformedToday()
+								// increment, so stamp with +1 (same reasoning as the ditch/voluntary-stop sites).
+								follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
+								character.removeActionFollower(follower,null,null);
 							}
 						}
 						else {
+							// PCT-Flow: step 6.iv-vi (Batch-NLF-In) — follower can't walk the woods with the
+							// guide. See Phasing_Character_Turn_Flow.txt.
 							// Oops, follower can't follow character because he is walking woods
-							character.removeActionFollower(follower,gameHandler.getGame().getMonsterDie(),gameHandler.getGame().getNativeDie());
+							follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
+							character.removeActionFollower(follower,null,null);
 						}
 					}
 					
@@ -2931,7 +3162,7 @@ public class ActionRow {
 				TileLocation current = character.getCurrentLocation();
 				if (!character.isMinion() && current != null && current.isInClearing()) {
 					// Post-phase: a reacting character needs a decision after each rest.
-					boolean postPhaseNeeded = !getPostPhaseParticipants(current).isEmpty();
+					boolean postPhaseNeeded = !getPostPhaseParticipants(character, gameHandler, current).isEmpty();
 					// Pre-phase: an active follower with Reactions ON must get the stop-following
 					// opportunity before each rest phase.
 					boolean followerPrePhaseNeeded = character.getActionFollowers().stream()
@@ -3756,7 +3987,12 @@ public class ActionRow {
 					}
 				}
 				else {
-					character.removeActionFollower(follower,gameHandler.getGame().getMonsterDie(),gameHandler.getGame().getNativeDie());
+					// PCT-Flow: step 6.iv-vi (Batch-NLF-In) — follower can't fly with the guide. See
+					// Phasing_Character_Turn_Flow.txt.
+					// Runs during dispatch, before this phase's addActionPhasePerformedToday() increment,
+					// so stamp with +1 (same reasoning as the doMoveAction() encumbered/walking-woods sites).
+					follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
+					character.removeActionFollower(follower,null,null);
 				}
 			}
 		}
