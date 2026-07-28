@@ -1,0 +1,46 @@
+Phasing Character Turn and End-of-Character-Turn-Monster-Summoning (EOCTMS) Events
+
+1. Phasing Character's (PC's) next phase begins.
+2. PC alone does phase-start activities.
+    i. If PC is a guide, these activities may include ditching follower(s), or making herself unfollowable by some or all followers.
+        a. Ditched/unable-to-follow (UTF) followers are immediately processed to be NO LONGER FOLLOWING (NLF), and these ditched/UTF chars are tracked as Batch-NLF-PC-Pre.
+           I. Note that Batch-NLF-PC-Pre NPCs can now block or be blocked.
+        b. The TURNs of chars in Batch-NLF-PC-Pre are NOT set to done yet.  (And so no associated EOCTMS event yet.)
+3. PC presses Pre-phase done button, signaling all non-phasing-chars (NPCs) in clearing can proceed with their phase-start activities (if any).
+4. ALL phase-start dialogs are distributed as needed to any NPCs in the PC's clearing (regardless of follower status.)
+5. ALL NPC phase-start dialogs are submitted, and then processed in random order.
+    i. If PC is a guide, this includes the choices made to stop following (or not) by any NPCs who are still following the guide.
+    ii. It is possible that a guide becomes unfollowable by some or all followers due to choices made by NPCs during phase-start.
+    iii. The PC guide's followers who choose to stop-following plus any now UTF followers are tracked as Batch-NLF-NPC-Pre.
+    iv. Each NPC in Batch-NLF-NPC-Pre is immediately processed to be NO LONGER FOLLOWING.
+        a. Note that Batch-NLF-NPC-Pre NPCs can now block or be blocked.
+    v. The TURNs of chars in Batch-NLF-NPC-Pre are NOT set to done yet.  (And so no associated EOCTMS event yet.)
+6. PC starts actual action phase execution (aka in-phase segment).
+    i. In-phase dialogs are distributed as needed to NPCs in the PC's clearing.
+    ii. All in-phase dialogs are submitted, and then processed in random order.
+    iii. Phase action executed, e.g., MOVE, ALERT, etc. (possibly deferred if part of a multi-phase action).
+    iv. It is possible that a guide becomes unfollowable by some or all followers due to the action being taken (e.g., Pony extra MOVE), and these left-behind followers are tracked as Batch-NLF-In.
+        a. Note that Batch-NLF-In NPCs can now block or be blocked.
+    v. Each NPC in Batch-NLF-In is immediately processed to be NO LONGER FOLLOWING.
+    vi. The TURNs of chars in Batch-NLF-In are NOT set to done yet.  (And so no associated EOCTMS event yet.)
+7. ALL PC and NPC phase-end dialogs are distributed as needed to all chars currently sharing the PC's clearing.
+    i. Beware that ex-followers in Batch-NLF-PC-Pre, Batch-NLF-NPC-Pre, or Batch-NLF-In may no longer be in the same clearing as the PC guide.
+8. ALL phase-end dialogs are submitted, and then processed in random order.
+    i. It is possible that a guide becomes unfollowable by some or all followers due to choices made by the PC or NPCs during phase-end and these left-behind followers are tracked as Batch-NLF-Post.
+        a. Note this generally is only possible when color-chits are played at phase-end in 1st Edition MR, and not in 3rd Edition MR.
+        b. Each character in Batch-NLF-Post is immediately processed to be NO LONGER FOLLOWING.
+            I. Note that Batch-NLF-Post characters can now block or be blocked.
+9. All characters in Batch-NLF-PC-Pre + Batch-NLF-NPC-Pre + Batch-NLF-In are now tracked in a single Batch-NLF-1 for further processing.  Batch-NLF-1 can be empty.
+10. Each character in Batch-NLF-1 (if any) has their TURN marked Done.  (Happens even if in a different clearing than PC.)
+    a. Immediately afterwards, one single EOCTMS event occurs if Batch-NLF-1 contains 1 or more chars.
+        i. This EOCTMS occurs in the clearing the Batch-NLF-1 char(s) are in, even if different than the PC's current clearing.
+11. Each character in Batch-NLF-Post (if any) has their TURN marked Done.
+    a. Immediately afterwards, if ((Batch-NLF-Post is not empty) AND (Batch-NLF-1 chars did not cause an EOCTMS event in the PC's clearing)) then an EOCTMS event is triggered in the PC's clearing.
+12. If this is not the PC’s final phase, then repeat steps 1 through 12 again.
+
+13. If it is the PC’s final phase, wait for the PC to click Done.
+14. The PC’s turn is over.  Perform an EOCTMS event for the PC.
+15. If the PC is a guide, any remaining followers are released from following the PC guide.  All such released NPCs will be referred to as Batch-NLF-End.
+    a. Each character in Batch-NLF-End (if any) has their TURN set to Done.
+    b. Immediately afterwards, one single EOCTMS event occurs if Batch-NLF-End contains 1 or more chars.
+

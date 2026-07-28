@@ -432,7 +432,12 @@ public class TableLoot extends Loot {
 		}
 
 		// Followers should stay behind!
+		// TBD: assumes this fires during transportVictim's own action dispatch, before that phase's
+		// addActionPhasePerformedToday() increment (hence +1) — if a Transport result can ever resolve
+		// outside the victim's own dispatch this guess may be off by one phase.
+		int batchPhase = transportVictim.getNumberOfPerformedActionPhasesToday()+1;
 		for (CharacterWrapper follower:transportVictim.getActionFollowers()) {
+			follower.markReleasedFromGuide(transportVictim, batchPhase);
 			transportVictim.removeActionFollower(follower,null,null);
 		}
 		for (RealmComponent hireling:transportVictim.getFollowingHirelings()) {
