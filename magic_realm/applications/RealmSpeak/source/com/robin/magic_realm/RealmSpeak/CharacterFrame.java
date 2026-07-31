@@ -1763,6 +1763,13 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		super.toFront();
 		updateControls();
 		if (character.isDoRecord()) {
+			// A plot left over from a previous day (see CharacterWrapper.getPlannedLocation) would
+			// otherwise be drawn on the map as this day's planned path.  Nothing recorded means
+			// there is no path to draw.
+			Collection<String> recorded = getCharacter().getCurrentActions();
+			if (recorded==null || recorded.isEmpty()) {
+				getCharacter().resetClearingPlot();
+			}
 			ArrayList<TileLocation> clearingPlot = getCharacter().getClearingPlot();
 			if (clearingPlot!=null) {
 				gameHandler.getInspector().getMap().setClearingPlot(new ArrayList<TileLocation>(clearingPlot));
