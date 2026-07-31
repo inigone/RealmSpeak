@@ -1302,6 +1302,11 @@ public class ActionRow {
 	 */
 	private static void completeFollowerTurnDataOnly(CharacterWrapper follower, RealmGameHandler gameHandler) {
 		follower.setCombatPlayOrder(gameHandler.getGame().getNextDayTurnCount());
+		// NOTE: this is a no-op and cannot be made to work here.  clearingPlot is a transient field,
+		// so it only exists on the instance that built it - the follower's own CharacterFrame wrapper,
+		// on the follower's own client.  We are on the guide's client holding a throwaway wrapper.
+		// The invariant is enforced instead in CharacterWrapper.getPlannedLocation() and
+		// CharacterFrame.toFront(); left here because it documents the intent.
 		follower.resetClearingPlot();
 		TileLocation loc = follower.getCurrentLocation();
 		if (loc != null) {

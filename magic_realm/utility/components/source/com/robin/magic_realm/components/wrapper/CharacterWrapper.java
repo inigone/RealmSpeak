@@ -1970,6 +1970,22 @@ public class CharacterWrapper extends GameObjectWrapper {
 	 */
 	public TileLocation getPlannedLocation() {
 		TileLocation ret = null;
+		/*
+		 * clearingPlot is a transient in-memory field - it is never written to gameData and never
+		 * syncs between clients, so it can only be cleared on the very CharacterWrapper instance
+		 * that built it.  A character who spent the day FOLLOWING ends their turn through
+		 * ActionRow.completeFollowerTurnDataOnly(), which runs on the GUIDE's client against a
+		 * throwaway "new CharacterWrapper(go)" - so its resetClearingPlot() call is a no-op and the
+		 * follower's own CharacterFrame wrapper keeps yesterday's plot.  The stale endpoint then
+		 * became the origin for the next day's first move, flagging legal moves as invalid.
+		 *
+		 * The recorded action list IS synced game state, so it is the reliable source of truth:
+		 * with nothing recorded, the planned location is by definition the current location.
+		 */
+		Collection<String> recorded = getCurrentActions();
+		if (recorded==null || recorded.isEmpty()) {
+			return getCurrentLocation();
+		}
 		if (clearingPlot!=null && !clearingPlot.isEmpty()) {
 			ret = clearingPlot.get(clearingPlot.size()-1);
 		}
