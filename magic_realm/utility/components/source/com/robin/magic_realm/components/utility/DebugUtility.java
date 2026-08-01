@@ -17,6 +17,15 @@ public class DebugUtility {
 	public static boolean DISABLE_ERROR_LOGGING = false;
 	public static boolean DISABLE_FAMILIAR = false; // allows the game to work WITHOUT the cat
 	public static boolean SUMMON_MULTIPLE = false; // allows chits to summon many times
+	/**
+	 * Master switch for ALL developer diagnostics - every diag() console trace and the modal
+	 * EOCTMS diagnostic dialogs alike.  Driven by the "Enable Diagnostics" host option
+	 * (Constants.OPT_ENABLE_DIAGNOSTICS), which HostPrefWrapper.findHostPrefs() syncs in here as
+	 * soon as host prefs exist.  Launch with the DIAGNOSTICS argument to force it on regardless -
+	 * useful for tracing startup, before any game (and therefore any host pref) exists.
+	 */
+	public static boolean DIAGNOSTICS = false;
+	private static boolean diagnosticsForced = false;
 	
 	private static PrintStream errorStream = null;
 	private static File errorFile = null;
@@ -64,6 +73,11 @@ public class DebugUtility {
 					SUMMON_MULTIPLE = true;
 					System.out.println("SUMMON_MULTIPLE is ON");
 				}
+				else if ("DIAGNOSTICS".equals(args[i].toUpperCase())) {
+					DIAGNOSTICS = true;
+					diagnosticsForced = true;
+					System.out.println("DIAGNOSTICS is ON (forced - the host option cannot turn it off)");
+				}
 				else if (args[i].toUpperCase().endsWith(".RSGAME")) {
 					System.setProperty(LAUNCH_GAME,args[i]);
 				}
@@ -87,6 +101,28 @@ public class DebugUtility {
 	}
 	public static boolean isNoSummon() {
 		return NO_SUMMON;
+	}
+	public static boolean isDiagnostics() {
+		return DIAGNOSTICS;
+	}
+	/**
+	 * Applies the "Enable Diagnostics" host option.  Ignored if the DIAGNOSTICS launch argument
+	 * forced diagnostics on.
+	 */
+	public static void setDiagnosticsFromHostPrefs(boolean enabled) {
+		if (!diagnosticsForced) {
+			DIAGNOSTICS = enabled;
+		}
+	}
+	/**
+	 * Emits a developer diagnostic line, but only while diagnostics are enabled.  Callers should
+	 * keep building the message inline - the string concatenation is the cheap part next to the
+	 * synchronized PrintStream write this skips.
+	 */
+	public static void diag(String message) {
+		if (DIAGNOSTICS) {
+			System.out.println(message);
+		}
 	}
 	public static boolean isSmallFrame() {
 		return SMALL_FRAME;

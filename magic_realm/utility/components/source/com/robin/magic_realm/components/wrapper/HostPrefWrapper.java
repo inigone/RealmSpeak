@@ -4,6 +4,7 @@ import java.util.*;
 
 import com.robin.game.objects.*;
 import com.robin.magic_realm.components.utility.Constants;
+import com.robin.magic_realm.components.utility.DebugUtility;
 
 public class HostPrefWrapper extends GameObjectWrapper {
 
@@ -64,6 +65,16 @@ public class HostPrefWrapper extends GameObjectWrapper {
 		if (on!=hasPref(val)) {
 			setBoolean(val,on);
 		}
+	}
+	/**
+	 * Forced monster die value for diagnostics, or null/blank to leave the rolls alone.  A string
+	 * rather than an int so that "not set" stays distinguishable from a legal die value.
+	 */
+	public String getDiagnosticMonsterDie() {
+		return getString(Constants.OPT_DIAGNOSTIC_MONSTER_DIE);
+	}
+	public void setDiagnosticMonsterDie(String val) {
+		setString(Constants.OPT_DIAGNOSTIC_MONSTER_DIE,val==null?"":val.trim());
 	}
 	public boolean hasPref(String val) {
 		return getBoolean(val);
@@ -353,6 +364,15 @@ public class HostPrefWrapper extends GameObjectWrapper {
 	 * Identifies and returns the host preference object, or null if not found.
 	 */
 	public static HostPrefWrapper findHostPrefs(GameData data) {
+		HostPrefWrapper prefs = locateHostPrefs(data);
+		if (prefs!=null) {
+			// Single sync point for the diagnostics master switch: essentially all game code reaches
+			// host prefs through here, so the flag is current wherever DebugUtility.diag() is called.
+			DebugUtility.setDiagnosticsFromHostPrefs(prefs.hasPref(Constants.OPT_ENABLE_DIAGNOSTICS));
+		}
+		return prefs;
+	}
+	private static HostPrefWrapper locateHostPrefs(GameData data) {
 		if (HOST_PREF_ID==null) {
 			GamePool pool = new GamePool(data.getGameObjects());
 			Collection<GameObject> c = pool.extract(HostPrefWrapper.getKeyVals());
@@ -367,7 +387,7 @@ public class HostPrefWrapper extends GameObjectWrapper {
 			if (go==null || !go.hasAttributeBlock(HOST_PREF_BLOCK)) {
 				// Not sure why/how this happens, but this will guarantee it works
 				HOST_PREF_ID = null;
-				return findHostPrefs(data);
+				return locateHostPrefs(data);
 			}
 			return new HostPrefWrapper(data.getGameObject(HOST_PREF_ID));
 		}
