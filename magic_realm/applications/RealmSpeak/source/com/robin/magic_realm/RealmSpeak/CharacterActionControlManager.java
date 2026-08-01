@@ -17,6 +17,7 @@ import com.robin.magic_realm.components.attribute.DayAction.ActionId;
 import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
 import com.robin.magic_realm.components.utility.ClearingUtility;
 import com.robin.magic_realm.components.utility.Constants;
+import com.robin.magic_realm.components.utility.DebugUtility;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 import com.robin.magic_realm.components.wrapper.HostPrefWrapper;
 
@@ -361,7 +362,15 @@ public class CharacterActionControlManager {
 				if (DayAction.FLY_ACTION.getCode().equals(theAction)) {
 					tl.setFlying(true);
 				}
+				// getPlannedLocation() now falls back to the actual location whenever nothing is
+				// recorded yet, so a stale clearingPlot can no longer be used as the move's origin.
 				TileLocation current = getCharacter().getPlannedLocation();
+				DebugUtility.diag("[REC] move validate char="+getCharacter().getGameObject().getName()
+					+" actual="+getCharacter().getCurrentLocation()
+					+" usingStart="+current
+					+" target="+tl
+					+" recorded="+getCharacter().getCurrentActions()
+					+" plot="+getCharacter().getClearingPlot());
 				int cost = tl.hasClearing()?tl.clearing.moveCost(getCharacter(),current):1;
 				boolean continueWithRecord = true;
 				if (current.isBetweenClearings() && tl.hasClearing() && !(current.contains(tl.clearing) && getCharacter().canMoveToClearing(tl.clearing))) {
@@ -422,6 +431,12 @@ public class CharacterActionControlManager {
 						overridePath = true;
 					}
 					if (path==null && !overridePath) {
+						DebugUtility.diag("[REC] INVALID MOVE WARNING from="+current+" to="+tl
+							+" path=null overridePath=false"
+							+" (canWalkWoods="+character.canWalkWoods(current.tile,current.clearing,tl.clearing)
+							+" sameTile="+(current.tile==tl.tile)
+							+" betweenClearings="+current.isBetweenClearings()
+							+" gates="+ClearingUtility.canUseGates(character,tl.clearing)+")");
 						int ret = JOptionPane.showConfirmDialog(
 								getGameHandler().getMainFrame(),
 								"You are planning an invalid move action.  Continue?",
