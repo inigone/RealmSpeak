@@ -510,6 +510,24 @@ public class RealmHostPanel extends JPanel {
 			}
 			
 			monsterDieRoller.rollDice("Monster Roll");
+			/*
+			 * DIAGNOSTICS: force the monster die to the configured value every other day, so a chosen
+			 * row can be exercised on demand instead of waiting on a 1-in-6 roll.  Alternating days
+			 * keeps the "nothing matches today" path covered too.  Blank field = leave rolls alone.
+			 */
+			String forcedDie = hostPrefs.getDiagnosticMonsterDie();
+			if (DebugUtility.isDiagnostics() && forcedDie!=null && forcedDie.trim().length()>0 && (game.getDay()%2)==1) {
+				int forced = -1;
+				try { forced = Integer.parseInt(forcedDie.trim()); } catch(NumberFormatException ex) { /* leave rolls alone */ }
+				if (forced>=1 && forced<=6) {
+					for (int i=0;i<monsterDieRoller.getNumberOfDice();i++) {
+						monsterDieRoller.setValue(i,forced);
+					}
+					DebugUtility.diag("[DIAG] forced Monster Die to "+forced+" for day "+game.getDay()
+						+" ("+monsterDieRoller.getNumberOfDice()+" die/dice)");
+					host.broadcast("host","DIAGNOSTICS: Monster Die forced to "+forced+" for testing.");
+				}
+			}
 			game.setMonsterDie(monsterDieRoller);
 			host.broadcast("host","Monster Die roll is "+monsterDieRoller.getDescription(false));
 			if (hostPrefs.usesSuperRealm()) {
@@ -743,7 +761,7 @@ public class RealmHostPanel extends JPanel {
 			String state = snapshot + "|min=" + (min==Integer.MAX_VALUE ? "none" : min)
 				+ "|postponed=" + (postponedChar!=null ? postponedChar.getGameObject().getName() : "none");
 			if (!state.equals(lastLoggedPlayOrderState)) {
-				System.out.println("[IPD] updateGameStatePlaying chars=" + state);
+				DebugUtility.diag("[IPD] updateGameStatePlaying chars=" + state);
 				lastLoggedPlayOrderState = state;
 			}
 		}
@@ -835,7 +853,7 @@ public class RealmHostPanel extends JPanel {
 					}
 					n++;
 				}
-				System.out.println("[IPD] updateGameStatePlaying RENUMBERED -> " + renumbered
+				DebugUtility.diag("[IPD] updateGameStatePlaying RENUMBERED -> " + renumbered
 					+ " (now playing: " + (chars.isEmpty() ? "none" : chars.get(0).getGameObject().getName()) + ")");
 				if (last!=null) {
 					last.setLastPlayer(true);
