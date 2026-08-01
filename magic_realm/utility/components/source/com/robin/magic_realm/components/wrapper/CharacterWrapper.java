@@ -1992,7 +1992,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		else {
 			ret = getCurrentLocation();
 		}
-		
+
 		return ret;
 	}
 	/**
@@ -4277,7 +4277,7 @@ public class CharacterWrapper extends GameObjectWrapper {
 		setStopFollowing(true);
 		setJustReleasedFollowerActionCount(batchPhase);
 		setReleaseBatchGuideId(topGuide.getGameObject().getStringId());
-		System.out.println("[IPD] markReleasedFromGuide " + getGameObject().getName()
+		DebugUtility.diag("[IPD] markReleasedFromGuide " + getGameObject().getName()
 			+ " guideId=" + topGuide.getGameObject().getStringId() + " phase=" + batchPhase);
 	}
 	// Consumes this follower's release stamp once ActionRow.processReleasedFollowerBatch() has

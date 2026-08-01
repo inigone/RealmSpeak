@@ -91,6 +91,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 	protected JLabel disableCombatWarning;
 	protected JCheckBox disableSummoning;
 	protected JLabel disableSummoningWarning;
+	protected JCheckBox enableDiagnostics;
+	protected IntegerField diagnosticMonsterDie;
 	protected JCheckBox autosaveEnabled;
 	protected JCheckBox alternativeTilesEnabled;
 	protected JCheckBox mixExpansionTilesEnabled;
@@ -133,6 +135,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		questCards.setText(String.valueOf(hostPrefs.getQuestCardsHandSize()));
 		disableBattles.setSelected(!hostPrefs.getEnableBattles());
 		disableSummoning.setSelected(hostPrefs.getDisableSummoning());
+		enableDiagnostics.setSelected(hostPrefs.hasPref(Constants.OPT_ENABLE_DIAGNOSTICS));
+		diagnosticMonsterDie.setText(hostPrefs.getDiagnosticMonsterDie());
 		autosaveEnabled.setSelected(hostPrefs.getAutosaveEnabled());
 		boardAutoSetup.setSelected(hostPrefs.getBoardAutoSetup());
 		boardPlayerSetup.setSelected(hostPrefs.getBoardPlayerSetup());
@@ -213,6 +217,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		questCards.setText(prefMan.get("quest_card_hand_size"));
 		disableBattles.setSelected(!prefMan.getBoolean("battlesEnabled"));
 		disableSummoning.setSelected(prefMan.getBoolean("summoningDisabled"));
+		enableDiagnostics.setSelected(prefMan.getBoolean("enableDiagnostics"));
+		diagnosticMonsterDie.setText(prefMan.get("diagnosticMonsterDie"));
 		autosaveEnabled.setSelected(prefMan.getBoolean("autosaveEnabled"));
 		boardAutoSetup.setSelected(prefMan.getBoolean("boardAutoSetup"));
 		boardPlayerSetup.setSelected(prefMan.getBoolean("boardPlayerSetup"));
@@ -277,6 +283,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		prefMan.set("quest_card_hand_size",questCards.getText());
 		prefMan.set("battlesEnabled",!disableBattles.isSelected());
 		prefMan.set("summoningDisabled",disableSummoning.isSelected());
+		prefMan.set("enableDiagnostics",enableDiagnostics.isSelected());
+		prefMan.set("diagnosticMonsterDie",diagnosticMonsterDie.getText());
 		prefMan.set("autosaveEnabled",autosaveEnabled.isSelected());
 		prefMan.set("boardAutoSetup",boardAutoSetup.isSelected());
 		prefMan.set("boardPlayerSetup",boardPlayerSetup.isSelected());
@@ -393,6 +401,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		
 		disableBattles.setEnabled(editMode);
 		disableSummoning.setEnabled(editMode);
+		enableDiagnostics.setEnabled(editMode);
+		updateDiagnosticControls();
 		autosaveEnabled.setEnabled(editMode);
 		boardAutoSetup.setEnabled(editMode);
 		boardPlayerSetup.setEnabled(editMode);
@@ -514,6 +524,24 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		
 		JPanel mainPanel = new JPanel(new BorderLayout());
 		mainPanel.add(mainBox,"Center");
+			// Master switch for developer diagnostics - centered along the very bottom of the Game tab.
+			enableDiagnostics = notifier.getCheckBox("Enable Diagnostics");
+			enableDiagnostics.setToolTipText("Turns on developer diagnostic logging and dialogs.  Leave off for normal play.");
+			enableDiagnostics.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ev) {
+					updateDiagnosticControls();
+				}
+			});
+			diagnosticMonsterDie = notifier.getIntegerField();
+			diagnosticMonsterDie.setToolTipText("Force the monster die to this value every other day, for reproducible testing.  Leave BLANK to roll normally.");
+			ComponentTools.lockComponentSize(diagnosticMonsterDie,30,20);
+			JLabel diagnosticMonsterDieLabel = new JLabel(" Force monster die:");
+			diagnosticMonsterDieLabel.setToolTipText(diagnosticMonsterDie.getToolTipText());
+			JPanel diagnosticsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+			diagnosticsPanel.add(enableDiagnostics);
+			diagnosticsPanel.add(diagnosticMonsterDieLabel);
+			diagnosticsPanel.add(diagnosticMonsterDie);
+		mainPanel.add(diagnosticsPanel,"South");
 			
 		optionPane = createOptionPane(mainPanel);
 		
@@ -1004,6 +1032,14 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		gamePlayBox.setBorder(BorderFactory.createTitledBorder("Game Play Options"));
 		return gamePlayBox;
 	}
+	/**
+	 * The forced-die field is only meaningful while diagnostics are on, so it follows the checkbox.
+	 */
+	private void updateDiagnosticControls() {
+		if (diagnosticMonsterDie!=null && enableDiagnostics!=null) {
+			diagnosticMonsterDie.setEnabled(editMode && enableDiagnostics.isSelected());
+		}
+	}
 	private void madeChanges() {
 		optionSetControl.showNoSet();
 	}
@@ -1317,6 +1353,8 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		numberMonthsToPlay.setText("1");
 		disableBattles.setSelected(false);
 		disableSummoning.setSelected(false);
+		enableDiagnostics.setSelected(false);
+		diagnosticMonsterDie.setText("");
 		autosaveEnabled.setSelected(true);
 		boardAutoSetup.setSelected(true);
 		alternativeTilesEnabled.setSelected(false);
@@ -1492,7 +1530,18 @@ public class HostGameSetupDialog extends AggressiveDialog {
 			JOptionPane.showMessageDialog(null,"You must enter a value in every field");
 			return false;
 		}
-		
+
+		// The forced monster die is optional - blank means "roll normally" - but if one IS given it
+		// has to be a value the die can actually show, or it would never match anything.
+		String forcedDie = diagnosticMonsterDie.getText().trim();
+		if (forcedDie.length()>0) {
+			int val = readInt(forcedDie);
+			if (val<1 || val>6) {
+				JOptionPane.showMessageDialog(null,"The forced monster die must be 1-6, or blank to roll normally.");
+				return false;
+			}
+		}
+
 		// Some fields require a number
 		if (readInt(gamePort.getText())<1000) {
 			JOptionPane.showMessageDialog(null,"Game Port must be greater than 1000");
@@ -1527,6 +1576,9 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		hostPrefs.setQuestCardsHandSize(questCards.getText());
 		hostPrefs.setEnableBattles(!disableBattles.isSelected());
 		hostPrefs.setDisableSummoning(disableSummoning.isSelected());
+		hostPrefs.setPref(Constants.OPT_ENABLE_DIAGNOSTICS,enableDiagnostics.isSelected());
+		hostPrefs.setDiagnosticMonsterDie(diagnosticMonsterDie.getText());
+		DebugUtility.setDiagnosticsFromHostPrefs(enableDiagnostics.isSelected()); // take effect immediately for the host
 		hostPrefs.setAutosaveEnabled(autosaveEnabled.isSelected());
 		hostPrefs.setBoardAutoSetup(boardAutoSetup.isSelected());
 		hostPrefs.setBoardPlayerSetup(boardPlayerSetup.isSelected());

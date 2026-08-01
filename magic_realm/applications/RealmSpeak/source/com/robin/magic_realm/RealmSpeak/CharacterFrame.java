@@ -320,7 +320,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	// isPlayingTurn() branch below, and steps 4-5's dialog distribution/show via the non-phasing branch.
 	// See Phasing_Character_Turn_Flow.txt.
 	private void doPrePhaseActivities() {
-		System.out.println("[IPD] doPrePhaseActivities char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doPrePhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " playing=" + getCharacter().isPlayingTurn() + (getCharacter().isPlayingTurn() ? " (PHASING clearing-walk)" : " (NON-PHASING show dialog)"));
 		if (!getCharacter().isPlayingTurn()) {
 			// Non-phasing character: show the non-modal dialog and return. Resolution
@@ -339,15 +339,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				skipColorChits = !hasTargetableSpell;
 			}
 			boolean skipStopFollowing = naturalStopFollowing && getCharacter().skipsStopFollowingBeforeMove();
-			System.out.println("[IPD]   pre-dialog char=" + getCharacter().getGameObject().getName()
+			DebugUtility.diag("[IPD]   pre-dialog char=" + getCharacter().getGameObject().getName()
 				+ " naturalColorChits=" + naturalColorChits + " skipColorChits=" + skipColorChits
 				+ " naturalStopFollowing=" + naturalStopFollowing + " skipStopFollowing=" + skipStopFollowing);
 			if ((!naturalColorChits || skipColorChits) && (!naturalStopFollowing || skipStopFollowing)) {
-				System.out.println("[IPD]   -> AUTO-SUBMIT pre-phase (no applicable sections)");
+				DebugUtility.diag("[IPD]   -> AUTO-SUBMIT pre-phase (no applicable sections)");
 				submitPrePhaseActivities();
 				return;
 			}
-			System.out.println("[IPD]   -> SHOW pre-phase dialog");
+			DebugUtility.diag("[IPD]   -> SHOW pre-phase dialog");
 			showPrePhaseActivityDialog();
 			return;
 		}
@@ -362,7 +362,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				if (!rc.isPlayerControlledLeader()) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 				if (ActionRow.isEligiblePrePhaseReactor(getCharacter(), cw, hostPrefs)) {
-					System.out.println("[IPD]   clearing-walk -> SET pre-phase flag on " + cw.getGameObject().getName());
+					DebugUtility.diag("[IPD]   clearing-walk -> SET pre-phase flag on " + cw.getGameObject().getName());
 					cw.setNeedsPrePhaseActivityDecision(true);
 				}
 			}
@@ -927,7 +927,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void submitPrePhaseActivities() {
-		System.out.println("[IPD] submitPrePhaseActivities char=" + getCharacter().getGameObject().getName());
+		DebugUtility.diag("[IPD] submitPrePhaseActivities char=" + getCharacter().getGameObject().getName());
 		if (prePhaseActivityDialog != null) prePhaseActivityDialog.setVisible(false);
 		// Clear state immediately so the dialog cannot reappear even if later processing throws.
 		getCharacter().setNeedsPrePhaseActivityDecision(false);
@@ -1040,7 +1040,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	private void doPostPhaseActivities() {
 		// Auto-submit if skip filters reduce block candidates to none — no dialog needed.
 		int candCount = getPostPhaseBlockCandidates().size();
-		System.out.println("[IPD] doPostPhaseActivities char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doPostPhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " blockCandidates=" + candCount + (candCount == 0 ? " -> AUTO-SUBMIT (no dialog)" : " -> SHOW DIALOG"));
 		if (getPostPhaseBlockCandidates().isEmpty()) {
 			submitPostPhaseActivities();
@@ -1163,7 +1163,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				|| blocker.getGameObject().hasThisAttribute(Constants.MEDITATE_NO_BLOCKING)
 				|| blocker.isMinion()
 				|| (blocker.isSmall() && smallHouseRule)) {
-			System.out.println("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName()
+			DebugUtility.diag("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName()
 				+ " -> EMPTY (blocker guard: mist=" + blocker.isMistLike() + " sleep=" + blocker.isSleep()
 				+ " minion=" + blocker.isMinion() + " small=" + blocker.isSmall() + ")");
 			return candidates;
@@ -1221,11 +1221,11 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			// and the phasing char passes all blockee guards.
 			// Followers of the phasing char cannot block anyone — return empty.
 			if (isFollowerOfPhasingChar()) {
-				System.out.println("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName() + " -> EMPTY (is follower of phasing char)");
+				DebugUtility.diag("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName() + " -> EMPTY (is follower of phasing char)");
 				return candidates;
 			}
 			if (blocker.isHidden() && blocker.skipsCharacterBlockingWhenHidden()) {
-				System.out.println("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName() + " -> EMPTY (hidden + skipsCharacterBlockingWhenHidden)");
+				DebugUtility.diag("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName() + " -> EMPTY (hidden + skipsCharacterBlockingWhenHidden)");
 				return candidates;
 			}
 			for (GameObject go : RealmUtility.getLivingCharacters(gameHandler.getClient().getGameData())) {
@@ -1242,7 +1242,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		}
 		StringBuilder names = new StringBuilder();
 		for (RealmComponent rc : candidates) names.append(rc.getGameObject().getName()).append(",");
-		System.out.println("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName()
+		DebugUtility.diag("[IPD] getPostPhaseBlockCandidates " + blocker.getGameObject().getName()
 			+ " playing=" + blocker.isPlayingTurn() + " -> " + candidates.size() + " candidates=[" + names + "]");
 		return candidates;
 	}
@@ -1333,7 +1333,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void applyBlock(RealmComponent rc) {
-		System.out.println("[IPD] applyBlock " + getCharacter().getGameObject().getName() + " blocks " + rc.getGameObject().getName());
+		DebugUtility.diag("[IPD] applyBlock " + getCharacter().getGameObject().getName() + " blocks " + rc.getGameObject().getName());
 		getCharacter().addReactDecision(rc.getGameObject());
 		if (rc.isPlayerControlledLeader()) {
 			CharacterWrapper target = new CharacterWrapper(rc.getGameObject());
@@ -1354,7 +1354,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	// RealmTurnPanel.updateControls()'s gate opens and Batch-NLF-1 (steps 9-10) can proceed. See
 	// Phasing_Character_Turn_Flow.txt.
 	private void submitPostPhaseActivities() {
-		System.out.println("[IPD] submitPostPhaseActivities char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] submitPostPhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " blockCheckboxSelected=" + (blockCheckbox != null && blockCheckbox.isSelected()));
 		if (postPhaseActivityDialog != null) postPhaseActivityDialog.setVisible(false);
 		if (blockCheckbox != null && blockCheckbox.isSelected()) {
@@ -1381,7 +1381,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	protected void doInPhaseActivities() {
 		boolean isLocalCharacter = gameHandler.getClient().getClientName().equals(getCharacter().getPlayerName());
 		if (!isLocalCharacter || !getCharacter().getNeedsInPhaseActivityDecision()) {
-			System.out.println("[IPD] doInPhaseActivities char=" + getCharacter().getGameObject().getName()
+			DebugUtility.diag("[IPD] doInPhaseActivities char=" + getCharacter().getGameObject().getName()
 				+ " isLocal=" + isLocalCharacter + " needsDecision=" + getCharacter().getNeedsInPhaseActivityDecision()
 				+ " -> SKIP (flag cleared or not local before runnable fired)");
 			inPhaseDialogShowing = false;
@@ -1464,7 +1464,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		if (actionButton != null) actionButton.addActionListener(buttonAction);
 		content.add(buildSouthArea(inPhaseActivityDialog, e -> showAboutDialog(inPhaseActivityDialog, ABOUT_IN_PHASE, IN_PHASE_COLOR), e -> submitInPhaseActivities(), submitRef, actionButton), BorderLayout.SOUTH);
 
-		System.out.println("[IPD] showInPhaseActivityDialog char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] showInPhaseActivityDialog char=" + getCharacter().getGameObject().getName()
 			+ " actionType=" + actionType + " guide=" + guideName + " -> SHOW DIALOG");
 		inPhaseActivityDialog.setContentPane(content);
 		inPhaseActivityDialog.pack();
@@ -1495,7 +1495,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void doInPhaseRestAction() {
-		System.out.println("[IPD] doInPhaseRestAction char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doInPhaseRestAction char=" + getCharacter().getGameObject().getName()
 			+ " illHealth=" + getCharacter().hasCurse(Constants.ILL_HEALTH) + " transmorphed=" + getCharacter().isTransmorphed());
 		if (getCharacter().hasCurse(Constants.ILL_HEALTH) || getCharacter().isTransmorphed()) {
 			submitInPhaseActivities();
@@ -1509,7 +1509,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void doInPhaseAlertAction() {
-		System.out.println("[IPD] doInPhaseAlertAction char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doInPhaseAlertAction char=" + getCharacter().getGameObject().getName()
 			+ " tired=" + getCharacter().hasMesmerizeEffect(Constants.TIRED));
 		if (getCharacter().hasMesmerizeEffect(Constants.TIRED)) {
 			submitInPhaseActivities();
@@ -1534,7 +1534,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void doInPhaseSpellAction() {
-		System.out.println("[IPD] doInPhaseSpellAction char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doInPhaseSpellAction char=" + getCharacter().getGameObject().getName()
 			+ " sapped=" + getCharacter().hasMesmerizeEffect(Constants.SAPPED));
 		if (inPhaseActivityDialog != null) inPhaseActivityDialog.setVisible(false);
 		if (!getCharacter().hasMesmerizeEffect(Constants.SAPPED)) {
@@ -1561,7 +1561,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		CharacterWrapper guide = getCharacter().getCharacterImFollowing();
 		String result = ActionRow.doPeerSearchFor(getCharacter(), gameHandler);
 		boolean foundGuide = guide != null && getCharacter().foundHiddenEnemy(guide.getGameObject());
-		System.out.println("[IPD] doInPhasePeerSearch char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] doInPhasePeerSearch char=" + getCharacter().getGameObject().getName()
 			+ " guide=" + (guide != null ? guide.getGameObject().getName() : "none")
 			+ " result=[" + result + "] foundHiddenEnemies=" + getCharacter().foundHiddenEnemies()
 			+ " foundGuideAsHidden=" + foundGuide
@@ -1577,7 +1577,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	private void submitInPhaseActivities() {
-		System.out.println("[IPD] submitInPhaseActivities char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] submitInPhaseActivities char=" + getCharacter().getGameObject().getName()
 			+ " -> clear in-phase decision flag");
 		if (inPhaseActivityDialog != null) inPhaseActivityDialog.setVisible(false);
 		getCharacter().setNeedsInPhaseActivityDecision(false);
@@ -1737,7 +1737,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		// once — post-phase is always fully resolved before pre-phase flags are set), so these two
 		// branches fire mutually-exclusively, each as its own dialog at its natural time.
 		if ((getCharacter().getNeedsPrePhaseActivityDecision() || getCharacter().getNeedsPostPhaseActivityDecision()) && isLocalCharacter) {
-			System.out.println("[IPD] dispatch char=" + getCharacter().getGameObject().getName()
+			DebugUtility.diag("[IPD] dispatch char=" + getCharacter().getGameObject().getName()
 				+ " playing=" + getCharacter().isPlayingTurn()
 				+ " preFlag=" + getCharacter().getNeedsPrePhaseActivityDecision()
 				+ " postFlag=" + getCharacter().getNeedsPostPhaseActivityDecision()
@@ -1745,15 +1745,15 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 				+ " phasingCharPendingPrePhase=" + phasingCharPendingPrePhase());
 		}
 		if (getCharacter().getNeedsPrePhaseActivityDecision() && !getCharacter().isPlayingTurn() && isLocalCharacter && !prePhaseDialogShowing && !phasingCharPendingPrePhase()) {
-			System.out.println("[IPD]   -> PRE branch for " + getCharacter().getGameObject().getName());
+			DebugUtility.diag("[IPD]   -> PRE branch for " + getCharacter().getGameObject().getName());
 			prePhaseDialogShowing = true;
 			SwingUtilities.invokeLater(() -> doPrePhaseActivities());
 		} else if (getCharacter().getNeedsPostPhaseActivityDecision() && isLocalCharacter && !postPhaseDialogShowing) {
-			System.out.println("[IPD]   -> POST branch for " + getCharacter().getGameObject().getName());
+			DebugUtility.diag("[IPD]   -> POST branch for " + getCharacter().getGameObject().getName());
 			postPhaseDialogShowing = true;
 			SwingUtilities.invokeLater(() -> doPostPhaseActivities());
 		} else if (getCharacter().getNeedsInPhaseActivityDecision() && isLocalCharacter && !inPhaseDialogShowing) {
-			System.out.println("[IPD]   -> IN-PHASE branch for " + getCharacter().getGameObject().getName());
+			DebugUtility.diag("[IPD]   -> IN-PHASE branch for " + getCharacter().getGameObject().getName());
 			inPhaseDialogShowing = true;
 			SwingUtilities.invokeLater(() -> doInPhaseActivities());
 		}
