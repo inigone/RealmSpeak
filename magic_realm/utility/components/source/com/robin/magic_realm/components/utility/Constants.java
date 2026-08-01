@@ -898,6 +898,7 @@ public class Constants {
 	public static final String EXP_OFFROAD_TRAVEL = "OffroadTravel";
 	public static final String EXP_OFFROAD_TRAVEL_NO_ROADWAYS = "OffroadTravelNoRoadways";
 	public static final String EXP_WALK_WOODS_NO_ROADWAYS = "WalkWoodsNoRoadways";
+	public static final String EXP_DAILY_GENERATED_PROPAGATION = "DailyGeneratedPropagation";
 	// Developer diagnostics master switch - see DebugUtility.DIAGNOSTICS
 	public static final String OPT_ENABLE_DIAGNOSTICS = "EnableDiagnostics";
 	// Optional forced monster die value used while diagnostics are on.  Stored as a string so that

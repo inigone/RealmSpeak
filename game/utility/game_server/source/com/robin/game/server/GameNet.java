@@ -5,6 +5,11 @@ import java.net.Socket;
 import java.util.ArrayList;
 
 public abstract class GameNet extends Thread {
+	/**
+	 * Server-side SO_TIMEOUT on accepted connections - how long before the host decides a client is
+	 * dead and tears its GameServer down.  Keep this short: a stale GameServer makes isNameUnique()
+	 * reject the same player reconnecting under their own name.
+	 */
 	public static int DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
 	/**
 	 * Client-side SO_TIMEOUT for the LOGIN SYNC ONLY.

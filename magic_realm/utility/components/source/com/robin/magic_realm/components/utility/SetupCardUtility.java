@@ -134,49 +134,77 @@ public class SetupCardUtility {
 			}
 		});
 		
-		// Expansion:  handle generated monsters
-		ArrayList<GameObject> nonCurrentTileProwlers = new ArrayList<>();
-		ArrayList<String> generatedQuery = new ArrayList<>();
-		generatedQuery.add(Constants.GENERATED);
-		generatedQuery.add("!"+Constants.DEAD);
-		for (GameObject go:pool.find(generatedQuery)) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			
-			if (!prowlingMonsters.contains(go)) {
-				nonCurrentTileProwlers.add(go);
+		/*
+		 * Expansion:  propagation (map movement) of generated monsters and visible travelers.
+		 *
+		 * With EXP_DAILY_GENERATED_PROPAGATION this does NOT happen here - it happens exactly once
+		 * per day at the start of Daylight instead (see propagateGeneratedMonsters).  Generated
+		 * monsters still take part in ordinary prowling within the triggering tile below, which is
+		 * a different thing from propagation.
+		 */
+		if (!hostPrefs.hasPref(Constants.EXP_DAILY_GENERATED_PROPAGATION)) {
+			// Expansion:  handle generated monsters
+			ArrayList<GameObject> nonCurrentTileProwlers = new ArrayList<>();
+			ArrayList<String> generatedQuery = new ArrayList<>();
+			generatedQuery.add(Constants.GENERATED);
+			generatedQuery.add("!"+Constants.DEAD);
+			// TEMP-GENMON-DEBUG: report every live generated monster and why it is/isn't a candidate.
+			for (GameObject go:pool.find(generatedQuery)) {
+				String why = null;
+				if (!matchesPropagationDie(go,monsterDie,nativeDie)) {
+					why = "die mismatch (has "+go.getThisInt("monster_die")+"/"+go.getThisInt("monster_die2")+", rolled "+monsterDie+")";
+				}
+				else if (!GameObjectMatchesBoardNumber(go,boardNumber)) {
+					why = "board mismatch (has "+go.getThisAttribute(Constants.BOARD_NUMBER)+", want "+boardNumber+")";
+				}
+				else if (prowlingMonsters.contains(go)) {
+					why = "on the triggering tile - handled by the ordinary prowl loop instead";
+				}
+				DebugUtility.diag("[GMP] candidate "+go.getName()+"#"+go.getStringId()
+					+" at="+ClearingUtility.getTileLocation(go)
+					+(why==null?" -> WILL PROPAGATE":" -> excluded: "+why));
+				if (why==null) {
+					nonCurrentTileProwlers.add(go);
+				}
 			}
-		}
-		
-		// Expansion:  handle visible travelers
-		ArrayList<GameObject> travelers = new ArrayList<>();
-		ArrayList<String> travelerQuery = new ArrayList<>();
-		travelerQuery.add(RealmComponent.TRAVELER);
-		travelerQuery.add(Constants.SPAWNED);
-		travelerQuery.add("!"+RealmComponent.OWNER_ID);
-		for (GameObject go:pool.find(travelerQuery)) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			travelers.add(go);
-		}
-		
-		// Now the process can begin
-		
-		// Expansion:  move the generated prowlers
-		for (GameObject prowler:nonCurrentTileProwlers) {
-			MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(prowler);
-			moveGeneratedMonster(monster);
-			if (monster.getCurrentLocation().isInClearing()) {
-				updateMonsterBlock(monster);
+			DebugUtility.diag("[GMP] EOCTMS propagation trigger="+tl+" monsterDie="+monsterDie+" nativeDie="+nativeDie
+				+" board="+boardNumber+" -> "+nonCurrentTileProwlers.size()+" generated monster(s) to move");
+
+			// Expansion:  handle visible travelers
+			ArrayList<GameObject> travelers = new ArrayList<>();
+			ArrayList<String> travelerQuery = new ArrayList<>();
+			travelerQuery.add(RealmComponent.TRAVELER);
+			travelerQuery.add(Constants.SPAWNED);
+			travelerQuery.add("!"+RealmComponent.OWNER_ID);
+			for (GameObject go:pool.find(travelerQuery)) {
+				if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+				if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+				travelers.add(go);
 			}
+
+			// Now the process can begin
+
+			// Expansion:  move the generated prowlers
+			long gmpStart = System.currentTimeMillis(); // TEMP-GENMON-DEBUG
+			for (GameObject prowler:nonCurrentTileProwlers) {
+				MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(prowler);
+				moveGeneratedMonster(monster);
+				if (monster.getCurrentLocation().isInClearing()) {
+					updateMonsterBlock(monster);
+				}
+			}
+
+			// Expansion:  move the travelers
+			for (GameObject go:travelers) {
+				TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
+				moveTraveler(traveler);
+			}
+			// TEMP-GENMON-DEBUG: propagation is the prime suspect for EOCTMS slowness - calculateClearingCount()
+			// is a breadth-first search run once per connected path per monster, per summonMonsters() call.
+			DebugUtility.diag("[GMP] propagation took "+(System.currentTimeMillis()-gmpStart)+"ms for "
+				+nonCurrentTileProwlers.size()+" monster(s) + "+travelers.size()+" traveler(s)");
 		}
-		
-		// Expansion:  move the travelers
-		for (GameObject go:travelers) {
-			TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
-			moveTraveler(traveler);
-		}
-		
+
 		// Before anything can be summoned, all prowling monsters on the tile need to be moved to the clearing,
 		for (GameObject prowler : prowlingMonsters) {
 			// Verify that the clearing changes, if not, then NO BLOCKING OCCURS!!
@@ -256,17 +284,27 @@ public class SetupCardUtility {
 		
 		ArrayList<GameObject> newMonsters = new ArrayList<>();
 		
-		// Expansion: Generate monsters from SEEN generators 
-		for (GameObject go:pool.find("seen,generator,!destroyed")) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			
-			StateChitComponent rc = (StateChitComponent)RealmComponent.getRealmComponent(go);
-			if (!rc.hasSummonedToday(monsterDie)) { // Even generators only summon once per day
-				TileLocation genTl = ClearingUtility.getTileLocation(go);
-				if (genTl!= null) {
-					newMonsters.addAll(generateMonsters(go,genTl.clearing));
-					rc.addSummonedToday(monsterDie);
+		// Expansion: Generate monsters from SEEN generators
+		// With EXP_DAILY_GENERATED_PROPAGATION this runs at the start of Daylight instead - see
+		// runDailyGeneratorPhase(), which spawns immediately AFTER propagation so the new monsters
+		// stay at their generator for the day rather than immediately wandering off.
+		if (!hostPrefs.hasPref(Constants.EXP_DAILY_GENERATED_PROPAGATION)) {
+			for (GameObject go:pool.find("seen,generator,!destroyed")) {
+				if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+				if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+
+				StateChitComponent rc = (StateChitComponent)RealmComponent.getRealmComponent(go);
+				if (!rc.hasSummonedToday(monsterDie)) { // Even generators only summon once per day
+					TileLocation genTl = ClearingUtility.getTileLocation(go);
+					if (genTl!= null) {
+						ArrayList<GameObject> spawned = generateMonsters(go,genTl.clearing); // TEMP-GENMON-DEBUG
+						// TEMP-GENMON-DEBUG: generators spawn into THEIR OWN clearing, which is not
+						// necessarily the clearing of the character whose turn triggered this.
+						DebugUtility.diag("[GMP] generator "+go.getName()+"#"+go.getStringId()+" at "+genTl
+							+" spawned "+spawned.size()+" (triggering character is at "+tl+")");
+						newMonsters.addAll(spawned);
+						rc.addSummonedToday(monsterDie);
+					}
 				}
 			}
 		}
@@ -521,27 +559,250 @@ public class SetupCardUtility {
 		}
 		return count;
 	}
+	/**
+	 * Does this generated monster/traveler match either of today's rolled die values?
+	 */
+	private static boolean matchesPropagationDie(GameObject go,int monsterDie,int nativeDie) {
+		if (go.getThisInt("monster_die")==monsterDie || go.getThisInt("monster_die2")==monsterDie) return true;
+		if (nativeDie==-1) return false;
+		return go.getThisInt("native_die")==nativeDie || go.getThisInt("native_die2")==nativeDie;
+	}
+	/**
+	 * EXP_DAILY_GENERATED_PROPAGATION:  propagate (move on the map) every generated monster and
+	 * visible traveler matching today's die roll, exactly ONCE for the whole day.  Called by the
+	 * host at the start of Daylight, in place of the per-EOCTMS movement inside summonMonsters().
+	 *
+	 * A chit matching two rolled die values still propagates only once - the alreadyMoved list is
+	 * carried across every die/board pass.
+	 */
+	public static String runDailyGeneratorPhase(HostPrefWrapper hostPrefs,GameData data,DieRoller monsterDieRoller,DieRoller nativeDieRoller) {
+		if (!hostPrefs.hasPref(Constants.EXP_DAILY_GENERATED_PROPAGATION)) return null;
+		if (hostPrefs.getDisableSummoning() || DebugUtility.isNoSummon()) return null;
+		if (monsterDieRoller==null || monsterDieRoller.getNumberOfDice()==0) return null;
+		if (nativeDieRoller!=null && nativeDieRoller.getNumberOfDice()==0) {
+			nativeDieRoller = null; // not a Super Realm game - the caller's roller was never rolled
+		}
+
+		/*
+		 * Resolve the (monsterDie, nativeDie, boardNumber) set ONCE, so propagation can run to
+		 * completion across every die before any generator spawns.  Interleaving them per-die would
+		 * let a monster spawned for die A propagate on die B in the same daylight.
+		 */
+		ArrayList<int[]> dice = new ArrayList<>();
+		ArrayList<String> boards = new ArrayList<>();
+		if (!hostPrefs.getMultiBoardEnabled() || !hostPrefs.hasPref(Constants.EXP_MONSTER_DIE_PER_SET)) {
+			dice.add(new int[]{monsterDieRoller.getValue(0),nativeDieRoller==null?-1:nativeDieRoller.getValue(0)});
+			boards.add(null);
+			if (hostPrefs.hasPref(Constants.EXP_DOUBLE_MONSTER_DIE) && monsterDieRoller.getNumberOfDice()>1) {
+				dice.add(new int[]{monsterDieRoller.getValue(1),nativeDieRoller==null||nativeDieRoller.getNumberOfDice()<2?-1:nativeDieRoller.getValue(1)});
+				boards.add(null);
+			}
+		}
+		else {
+			int diceRolled = monsterDieRoller.getNumberOfDice();
+			int dicePerBoard = hostPrefs.hasPref(Constants.EXP_DOUBLE_MONSTER_DIE)?2:1;
+			for (int i=0;i<diceRolled/dicePerBoard;i++) {
+				String boardNumber = i>0?Constants.MULTI_BOARD_APPENDS.substring(i-1,i):"";
+				for (int n=0;n<dicePerBoard;n++) {
+					int die = dicePerBoard*i+n;
+					dice.add(new int[]{monsterDieRoller.getValue(die),nativeDieRoller==null||nativeDieRoller.getNumberOfDice()<=die?-1:nativeDieRoller.getValue(die)});
+					boards.add(boardNumber);
+				}
+			}
+		}
+
+		// PASS 1 - propagate everything already on the board.  A chit matching two rolled die values
+		// still moves only once: alreadyMoved is carried across every die/board pass.
+		ArrayList<GameObject> alreadyMoved = new ArrayList<>();
+		ArrayList<String> propagated = new ArrayList<>();
+		for (int i=0;i<dice.size();i++) {
+			propagateGeneratedMonsters(data,alreadyMoved,propagated,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
+		}
+
+		// PASS 2 - THEN the generators spawn.  Everything created here appears after propagation is
+		// finished, so a newly spawned monster sits at its generator for the rest of the day.
+		ArrayList<GameObject> alreadyGenerated = new ArrayList<>();
+		ArrayList<String> spawned = new ArrayList<>();
+		for (int i=0;i<dice.size();i++) {
+			generateFromGenerators(data,alreadyGenerated,spawned,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
+		}
+
+		return buildDailyGeneratorReport(propagated,spawned);
+	}
+	/**
+	 * Player-facing summary of what the daylight phase actually did.  Null when nothing happened, so
+	 * the caller can stay silent rather than popping an empty dialog on a quiet day.
+	 */
+	private static String buildDailyGeneratorReport(ArrayList<String> propagated,ArrayList<String> spawned) {
+		if (propagated.isEmpty() && spawned.isEmpty()) return null;
+		StringBuilder sb = new StringBuilder();
+		if (propagated.isEmpty()) {
+			sb.append("No generated monsters moved.\n");
+		}
+		else {
+			sb.append(propagated.size()).append(propagated.size()==1?" generated monster propagated:\n":" generated monsters propagated:\n");
+			appendCapped(sb,propagated);
+		}
+		if (!spawned.isEmpty()) {
+			sb.append("\nGenerators spawned:\n");
+			appendCapped(sb,spawned);
+			sb.append("\nNewly spawned monsters stay at their generator today.");
+		}
+		return sb.toString();
+	}
+	/** Keeps the dialog a sane size when a big pod is on the move. */
+	private static void appendCapped(StringBuilder sb,ArrayList<String> lines) {
+		int max = 15;
+		for (int i=0;i<lines.size() && i<max;i++) {
+			sb.append("    ").append(lines.get(i)).append("\n");
+		}
+		if (lines.size()>max) {
+			sb.append("    ...and ").append(lines.size()-max).append(" more\n");
+		}
+	}
+	/**
+	 * EXP_DAILY_GENERATED_PROPAGATION:  the generator (Pond/Hive/Tomb) spawn step, lifted out of
+	 * summonMonsters() so it can run at the start of Daylight immediately after propagation.
+	 *
+	 * Deliberately does NOT touch SUMMONED_TODAY.  A generator chit is also a treasure_location, and
+	 * both roles share that one flag - stamping it here would make the chit look "already summoned"
+	 * to the treasure-location gate in summonMonsters(), so an EOCTMS later in the day in the
+	 * generator's own tile would silently skip summoning the site's own contents (the Lich, Queen,
+	 * etc. sitting in its box).  Running once per Daylight is guaranteed by the caller, and
+	 * alreadyGenerated stops a generator matching two rolled die values from spawning twice.
+	 */
+	private static void generateFromGenerators(GameData data,ArrayList<GameObject> alreadyGenerated,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
+		GamePool pool = new GamePool(data.getGameObjects());
+		ArrayList<GameObject> newMonsters = new ArrayList<>();
+		for (GameObject go:pool.find("seen,generator,!destroyed")) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyGenerated.contains(go)) continue;
+			alreadyGenerated.add(go);
+
+			TileLocation genTl = ClearingUtility.getTileLocation(go);
+			if (genTl!=null) {
+				ArrayList<GameObject> spawned = generateMonsters(go,genTl.clearing);
+				DebugUtility.diag("[GMP] generator "+go.getName()+"#"+go.getStringId()+" at "+genTl
+					+" spawned "+spawned.size()+" at start of Daylight (these do NOT propagate today)");
+				if (!spawned.isEmpty()) {
+					report.add(go.getName()+" at "+genTl+" spawned "+spawned.size()+" "+spawned.get(0).getName()
+						+(spawned.size()==1?"":"s"));
+				}
+				newMonsters.addAll(spawned);
+			}
+		}
+		for (GameObject added:newMonsters) {
+			RealmComponent rc = RealmComponent.getRealmComponent(added);
+			if (rc.isMonster()) {
+				updateMonsterBlock((MonsterChitComponent)rc);
+			}
+		}
+	}
+	private static void propagateGeneratedMonsters(GameData data,ArrayList<GameObject> alreadyMoved,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
+		GamePool pool = new GamePool(data.getGameObjects());
+
+		ArrayList<String> generatedQuery = new ArrayList<>();
+		generatedQuery.add(Constants.GENERATED);
+		generatedQuery.add("!"+Constants.DEAD);
+		for (GameObject go:pool.find(generatedQuery)) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyMoved.contains(go)) continue;
+			alreadyMoved.add(go);
+
+			MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
+			TileLocation before = monster.getCurrentLocation();
+			/*
+			 * This pass runs on the HOST, inside GameServer.processNextRequest -> GameHost.applyChanges.
+			 * An exception escaping here kills the GameServer thread outright: every client then sees
+			 * EOFException, their GameClient thread dies, and the whole game hangs with no error shown.
+			 * One misbehaving chit must not be able to do that, so failures are contained per monster.
+			 */
+			try {
+				moveGeneratedMonster(monster);
+			}
+			catch(Exception ex) {
+				RealmLogging.logMessage("host","Daily Propagation: could not move "
+					+go.getName()+"#"+go.getStringId()+" ("+ex+") - it stays put.");
+				DebugUtility.diag("[GMP]   ERROR moving "+go.getName()+"#"+go.getStringId()+": "+ex);
+				ex.printStackTrace();
+				continue;
+			}
+			TileLocation current = monster.getCurrentLocation();
+			// Only report chits that actually went somewhere - blocked ones return without moving.
+			if (go.hasThisAttribute(Constants.DEAD)) {
+				report.add(monster.getGameObject().getName()+" left the map from "+before);
+			}
+			else if (before!=null && current!=null && !before.equals(current)) {
+				report.add(monster.getGameObject().getName()+": "+before+" -> "+current);
+			}
+			if (current!=null && current.isInClearing()) { // null when the monster walked off a map edge
+				updateMonsterBlock(monster);
+			}
+		}
+
+		ArrayList<String> travelerQuery = new ArrayList<>();
+		travelerQuery.add(RealmComponent.TRAVELER);
+		travelerQuery.add(Constants.SPAWNED);
+		travelerQuery.add("!"+RealmComponent.OWNER_ID);
+		for (GameObject go:pool.find(travelerQuery)) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyMoved.contains(go)) continue;
+			alreadyMoved.add(go);
+
+			TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
+			TileLocation before = traveler.getCurrentLocation();
+			moveTraveler(traveler);
+			TileLocation current = traveler.getCurrentLocation();
+			// Travelers still propagate, but deliberately stay OUT of the player-facing report -
+			// that dialog is about the generated monsters.  Traced here instead.
+			if (before!=null && current!=null && !before.equals(current)) {
+				DebugUtility.diag("[GMP]   MOVE(traveler) "+go.getName()+"#"+go.getStringId()+" "+before+" -> "+current);
+			}
+		}
+	}
 	private static void moveGeneratedMonster(MonsterChitComponent monster) {
 		GameObject generator = monster.getGameObject().getGameData().getGameObject(monster.getGameObject().getThisInt(Constants.GENERATOR_ID));
 		TileLocation home = ClearingUtility.getTileLocation(generator);
 		TileLocation current = monster.getCurrentLocation();
-		if (monster.isBlocked() || current==null) return;
+		// TEMP-GENMON-DEBUG: grep TEMP-GENMON-DEBUG to find every piece of this instrumentation.
+		String who = monster.getGameObject().getName()+"#"+monster.getGameObject().getStringId();
+		DebugUtility.diag("[GMP] move? "+who
+			+" at="+current
+			+" home="+home+(generator==null?" (NO GENERATOR - generatorid="+monster.getGameObject().getThisInt(Constants.GENERATOR_ID)+")":" ["+generator.getName()+"]")
+			+" blocked="+monster.isBlocked()
+			+" flies="+monster.flies()
+			+" monster_die="+monster.getGameObject().getThisInt("monster_die")
+			+" die2="+monster.getGameObject().getThisInt("monster_die2"));
+		if (monster.isBlocked() || current==null) {
+			DebugUtility.diag("[GMP]   SKIP "+who+" reason="+(monster.isBlocked()?"isBlocked (cleared only at day end)":"no current location"));
+			return;
+		}
+		if (home==null) {
+			DebugUtility.diag("[GMP]   SKIP "+who+" reason=home is null (generator missing/off-map) - would NPE below");
+			return;
+		}
 		int furthest = Integer.MIN_VALUE;
 		if (monster.flies()) {
 			// Find tiles to move to
 			HashLists<Integer,TileComponent> choices = new HashLists<>();
 			for (TileComponent adj:current.tile.getAllAdjacentTiles()) {
 				int distanceFromHome = ClearingUtility.getDistanceBetweenTiles(adj,home.tile);
-				
+
 				// if tile has characters in it, make it MORE interesting
 				int interest = calculateIncentive(adj.getAllClearingComponents(),-1,20);
 				distanceFromHome += interest*2; // this makes character tiles MUCH more interesting than leaving the generator
-				
+
 				furthest = Math.max(furthest,distanceFromHome);
 				choices.put(distanceFromHome,adj);
+				DebugUtility.diag("[GMP]   cand(tile) "+adj.getTileName()+" score="+distanceFromHome+" interest="+interest);
 			}
-			
+
 			if (choices.isEmpty()) {
+				DebugUtility.diag("[GMP]   SKIP "+who+" reason=NO ADJACENT TILES from "+current
+					+" (tile is not on the map grid - this should not happen)");
 				return;
 			}
 
@@ -550,7 +811,8 @@ public class SetupCardUtility {
 			int r = RandomNumber.getRandom(finalChoices.size());
 			TileComponent finalTile = finalChoices.get(r);
 			TileLocation tl = new TileLocation(finalTile,true);
-			
+
+			DebugUtility.diag("[GMP]   MOVE(fly) "+who+" "+current+" -> "+tl+" (best="+furthest+", tied="+finalChoices.size()+")");
 			ClearingUtility.moveToLocation(monster.getGameObject(),tl);
 		}
 		else {
@@ -566,17 +828,24 @@ public class SetupCardUtility {
 				
 				furthest = Math.max(furthest,distanceFromHome);
 				choices.put(distanceFromHome,other);
+				DebugUtility.diag("[GMP]   cand(clearing) "+other.getTileLocation()+" score="+distanceFromHome+" interest="+interest+" edge="+other.isEdge());
 			}
-			
+			if (choices.isEmpty()) {
+				DebugUtility.diag("[GMP]   SKIP "+who+" reason=no connected paths from "+current);
+				return;
+			}
+
 			// Randomly choose from furthest locations
 			ArrayList<ClearingDetail> finalChoices = choices.getList(furthest);
 			int r = RandomNumber.getRandom(finalChoices.size());
 			ClearingDetail finalClearing = finalChoices.get(r);
 			if (finalClearing.isEdge()) {
+				DebugUtility.diag("[GMP]   DIES(edge) "+who+" walked off the map at "+finalClearing.getTileLocation());
 				RealmUtility.makeDead(monster); // the monster leaves the board
 			}
 			else {
 				TileLocation tl = finalClearing.getTileLocation();
+				DebugUtility.diag("[GMP]   MOVE(walk) "+who+" "+current+" -> "+tl+" (best="+furthest+", tied="+finalChoices.size()+")");
 				ClearingUtility.moveToLocation(monster.getGameObject(),tl);
 				if (monster.getGameObject().hasThisAttribute(Constants.GM_GROW)) {
 					MonsterGrow table = new MonsterGrow(null,null,monster);

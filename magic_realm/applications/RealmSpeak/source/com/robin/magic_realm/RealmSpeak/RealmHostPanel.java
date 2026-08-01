@@ -573,6 +573,22 @@ public class RealmHostPanel extends JPanel {
 				}
 			}
 
+			// Expansion:  at the start of Daylight, generated monsters/travelers propagate once, and
+			// THEN the generators spawn - so newly spawned monsters do not also propagate today.
+			// Both replace the per-character-turn behaviour.  No-op unless the host pref is on.
+			String dailyGeneratorReport = SetupCardUtility.runDailyGeneratorPhase(hostPrefs,host.getGameData(),monsterDieRoller,nativeDieRoller);
+			if (dailyGeneratorReport!=null) {
+				// Broadcast first: this is the permanent record, and it survives the dialog being
+				// dismissed (or never arriving, if a client is mid-reconnect).
+				host.broadcast("host","--- Daily Propagation ---");
+				for (String line : dailyGeneratorReport.split("\n")) {
+					if (line.trim().length()>0) {
+						host.broadcast("host",line);
+					}
+				}
+				popupToAllPlayers("Daily Propagation",dailyGeneratorReport);
+			}
+
 			// Figure out who is following who, and determine which characters actually get to move here
 			ArrayList<GameObject> allChars = new ArrayList<>(getLivingCharacters());
 			HashMap<String,String> followHash = new HashMap<>(); // to identify follow cycles
@@ -1177,6 +1193,33 @@ public class RealmHostPanel extends JPanel {
 			QuestRequirementParams params = new QuestRequirementParams();
 			params.timeOfCall = GamePhaseType.Midnight;
 			character.testQuestRequirements(new JFrame(), params);
+		}
+	}
+	/**
+	 * Pushes a plain informational popup to every connected player (the host player included - the
+	 * host runs a client of its own and so has a GameServer in the list).  Uses the standard
+	 * RealmDirectInfoHolder POPUP_MESSAGE channel, arriving via RESPOND_DIRECT_INFO and handled by
+	 * RealmGameHandler.handleDirectInfo().
+	 * <p>
+	 * SAFETY: this is only safe because that handler dispatches POPUP_MESSAGE to the EDT with
+	 * invokeLater.  handleDirectInfo() itself runs on the receiving client's GameClient networking
+	 * thread; showing a modal dialog directly on that thread stops the client polling, and the
+	 * server's 10s SO_TIMEOUT then kills the connection ("Broken pipe" / "This client is DEAD!",
+	 * every window torn down).  If that invokeLater is ever removed, this method becomes unsafe.
+	 * <p>
+	 * Sending is non-blocking either way - addInfoDirect only queues, so a player who leaves the
+	 * dialog sitting open cannot stall the host or anybody else.
+	 */
+	private void popupToAllPlayers(String title,String message) {
+		ArrayList<String> strings = new ArrayList<>();
+		strings.add(title);
+		strings.add(message);
+		strings.add(""); // no die roller image
+		for (GameServer server : host.getServers()) {
+			RealmDirectInfoHolder holder = new RealmDirectInfoHolder(host.getGameData());
+			holder.setCommand(RealmDirectInfoHolder.POPUP_MESSAGE);
+			holder.setStrings(strings);
+			server.addInfoDirect(new InfoObject(server.getClientName(),holder.getInfo()));
 		}
 	}
 	private void sendEmailAll(String message) {
