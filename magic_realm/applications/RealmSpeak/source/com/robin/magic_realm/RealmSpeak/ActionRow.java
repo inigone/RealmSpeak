@@ -591,9 +591,9 @@ public class ActionRow {
 			// is happening.)
 			{
 				boolean postPending = isPostPhasePending();
-				System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+				DebugUtility.diag("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
 					+ " isExecutableAction=" + isExecutableAction + " isPostPhasePending=" + postPending);
-				if (postPending) { System.out.println("[IPD]   -> DEFER (post-phase still pending)"); return; }
+				if (postPending) { DebugUtility.diag("[IPD]   -> DEFER (post-phase still pending)"); return; }
 				// Store total phase count and current sub-phase index before handlePrePhase fires so
 				// the dialog header can show ordinal info for multi-phase actions. Non-continuation
 				// rows start a new action (P=1, PTOT=phaseCount); continuation rows increment P.
@@ -607,7 +607,7 @@ public class ActionRow {
 					phaseIndexSet = true;
 				}
 				boolean prePending = handlePrePhase(hostPrefs);
-				System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+				DebugUtility.diag("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
 					+ " handlePrePhase deferred=" + prePending);
 				if (prePending) return;
 			}
@@ -825,7 +825,7 @@ public class ActionRow {
 		// completed defaults to true (set above). doXxxAction() methods set it false if the action
 		// needs further resolution (e.g. blocked mid-move, native refused hire, awaiting input).
 		// Only run storm/blocking/logging when the action actually finished this process() call.
-		System.out.println("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
+		DebugUtility.diag("[IPD] process() char=" + character.getGameObject().getName() + " action=" + action
 			+ " completed=" + completed + " (post-action block " + (completed ? "WILL run" : "SKIPPED — not yet completed") + ")");
 		if (completed) {
 			// Check for Violent Storm
@@ -909,7 +909,7 @@ public class ActionRow {
 			// before the guide's own phase-end dialog is even dismissed. Both are instead deferred to
 			// RealmTurnPanel.updateControls()'s level-check on !isAwaitingPostPhaseDecision(), which
 			// fires once post-phase has genuinely settled (or immediately, if nobody ever needed to react).
-			System.out.println("[IPD] post-action char=" + character.getGameObject().getName() + " action=" + action
+			DebugUtility.diag("[IPD] post-action char=" + character.getGameObject().getName() + " action=" + action
 				+ " isFollowing=" + isFollowing + " isExecutableAction=" + isExecutableAction
 				+ (!isFollowing ? " -> triggerPostPhase (release+batch deferred to post-phase resolution)" : " -> SKIP (follower row)"));
 			if (!isFollowing) {
@@ -1002,7 +1002,7 @@ public class ActionRow {
 
 		int perf = character.getNumberOfPerformedActionPhasesToday();
 		boolean alreadySetup = character.getPrePhaseActivityActionCount() == perf;
-		System.out.println("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " action=" + action
+		DebugUtility.diag("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " action=" + action
 			+ " loc=" + (loc.clearing != null ? loc.clearing.getDescription() : "?")
 			+ " perf=" + perf + " alreadySetup=" + alreadySetup);
 
@@ -1013,11 +1013,11 @@ public class ActionRow {
 				if (!rc.isPlayerControlledLeader()) continue;
 				CharacterWrapper cw = new CharacterWrapper(rc.getGameObject());
 				if (isEligiblePrePhaseReactor(character, cw, hostPrefs)) {
-					System.out.println("[IPD]   eligible reactor: " + cw.getGameObject().getName());
+					DebugUtility.diag("[IPD]   eligible reactor: " + cw.getGameObject().getName());
 					anyEligible = true;
 				}
 			}
-			System.out.println("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " anyEligible=" + anyEligible);
+			DebugUtility.diag("[IPD] handlePrePhase phasing=" + character.getGameObject().getName() + " anyEligible=" + anyEligible);
 			if (anyEligible) {
 				character.setPrePhaseActivityActionCount(perf);   // mark the gate opened for this action phase
 				character.setNeedsPrePhaseActivityDecision(true);  // show the "Done: Pre-Phase" button on the phasing char
@@ -1028,11 +1028,11 @@ public class ActionRow {
 		// GATE: defer while any player-controlled leader in the clearing still has a pending pre-phase decision.
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPrePhaseActivityDecision()) {
-				System.out.println("[IPD] handlePrePhase -> DEFER (pending: " + rc.getGameObject().getName() + ")");
+				DebugUtility.diag("[IPD] handlePrePhase -> DEFER (pending: " + rc.getGameObject().getName() + ")");
 				return true;
 			}
 		}
-		System.out.println("[IPD] handlePrePhase -> proceed (no pre-phase pending)");
+		DebugUtility.diag("[IPD] handlePrePhase -> proceed (no pre-phase pending)");
 		return false;
 	}
 
@@ -1059,18 +1059,18 @@ public class ActionRow {
 		int stamp = character.getPostPhaseActivityActionCount();
 		int perf = character.getNumberOfPerformedActionPhasesToday();
 		if (stamp != perf) {
-			System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+			DebugUtility.diag("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
 				+ " stamp=" + stamp + " perf=" + perf + " -> false (stamp mismatch)");
 			return false;
 		}
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isPlayerControlledLeader() && new CharacterWrapper(rc.getGameObject()).getNeedsPostPhaseActivityDecision()) {
-				System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+				DebugUtility.diag("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
 					+ " stamp=" + stamp + " perf=" + perf + " -> true (pending: " + rc.getGameObject().getName() + ")");
 				return true;
 			}
 		}
-		System.out.println("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
+		DebugUtility.diag("[IPD] isPostPhasePending char=" + character.getGameObject().getName()
 			+ " stamp=" + stamp + " perf=" + perf + " -> false (no one flagged)");
 		return false;
 	}
@@ -1100,7 +1100,7 @@ public class ActionRow {
 			boolean[] anySet = {false};
 			flagInPhaseFollowers(character, actionId, anySet);
 			if (anySet[0]) {
-				System.out.println("[IPD] handleInPhase guide=" + character.getGameObject().getName()
+				DebugUtility.diag("[IPD] handleInPhase guide=" + character.getGameObject().getName()
 					+ " action=" + actionId + " flagged followers, phasesPerformed=" + actionPhasesPerformed);
 				character.setInPhaseActivityActionCount(actionPhasesPerformed);
 				gameHandler.updateCharacterFramesWithoutMap();
@@ -1172,8 +1172,8 @@ public class ActionRow {
 	// Package-visible: called from RealmTurnPanel.updateControls()'s post-phase-resolution watcher,
 	// not just from process() — see the comment at the process() call site for why this is deferred.
 	void releaseLastPhaseFollowers() {
-		if (newAction != null) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (continuation pending)"); return; }
-		if (turnPanel.hasPendingActionsAfterCurrent()) { System.out.println("[IPD] releaseLastPhaseFollowers SKIP (more actions pending)"); return; }
+		if (newAction != null) { DebugUtility.diag("[IPD] releaseLastPhaseFollowers SKIP (continuation pending)"); return; }
+		if (turnPanel.hasPendingActionsAfterCurrent()) { DebugUtility.diag("[IPD] releaseLastPhaseFollowers SKIP (more actions pending)"); return; }
 		// actionPhasesPerformedNow is already post-increment here (addActionPhasePerformedToday() ran
 		// earlier in this same process() call, before triggerPostPhase()/this method) — this is the SAME
 		// value processReleasedFollowerBatch() will use moments later in this same call, no adjustment
@@ -1181,7 +1181,7 @@ public class ActionRow {
 		// window BEFORE that increment and must stamp with +1 to predict it).
 		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		for (CharacterWrapper follower : character.getActionFollowers()) {
-			System.out.println("[IPD] releaseLastPhaseFollowers releasing " + follower.getGameObject().getName() + " from " + character.getGameObject().getName());
+			DebugUtility.diag("[IPD] releaseLastPhaseFollowers releasing " + follower.getGameObject().getName() + " from " + character.getGameObject().getName());
 			// Stamp also lets the guide's post-phase block dialog (built after this release, when
 			// getActionFollowers() is already empty) still recognize this char as a just-released
 			// follower for this action and exclude them from the guide's block candidates.
@@ -1268,7 +1268,7 @@ public class ActionRow {
 
 		StringBuilder dbg = new StringBuilder();
 		for (CharacterWrapper cw : postPhaseParticipants) dbg.append(cw.getGameObject().getName()).append(",");
-		System.out.println("[IPD] triggerPostPhase phasing=" + character.getGameObject().getName()
+		DebugUtility.diag("[IPD] triggerPostPhase phasing=" + character.getGameObject().getName()
 			+ " loc=" + (loc.clearing != null ? loc.clearing.getDescription() : "?")
 			+ " participants=[" + dbg + "]");
 
@@ -1314,7 +1314,7 @@ public class ActionRow {
 		}
 		follower.expireTemporaryPotions();
 		follower.distributeMonsterControlInCurrentClearing();
-		System.out.println("[IPD] OFFICIAL TURN END char=" + follower.getGameObject().getName()
+		DebugUtility.diag("[IPD] OFFICIAL TURN END char=" + follower.getGameObject().getName()
 			+ " via completeFollowerTurnDataOnly (batch release)");
 		follower.setPlayOrder(0);
 		follower.setLastPlayer(false);
@@ -1389,21 +1389,21 @@ public class ActionRow {
 		ArrayList<GameObject> batchGameObjects = pool.find(keyVals);
 
 		if (batchGameObjects.isEmpty()) {
-			System.out.println("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
+			DebugUtility.diag("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
 				+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + " -> no released followers this phase");
 			return;
 		}
 
 		StringBuilder names = new StringBuilder();
 		for (GameObject go : batchGameObjects) names.append(go.getName()).append(",");
-		System.out.println("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
+		DebugUtility.diag("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
 			+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + "=[" + names + "] size=" + batchGameObjects.size());
 
 		CharacterWrapper representative = null;
 		for (GameObject go : batchGameObjects) {
 			CharacterWrapper released = new CharacterWrapper(go);
 			if (representative == null) representative = released;
-			System.out.println("[IPD] processReleasedFollowerBatch completing " + released.getGameObject().getName()
+			DebugUtility.diag("[IPD] processReleasedFollowerBatch completing " + released.getGameObject().getName()
 				+ " loc=" + released.getCurrentLocation());
 			completeFollowerTurnDataOnly(released, gameHandler);
 			// Consume this follower's release stamp now that they're fully processed, so a later batch
@@ -1418,8 +1418,10 @@ public class ActionRow {
 		ArrayList<GameObject> summoned = new ArrayList<>();
 		SetupCardUtility.summonMonsters(hostPrefs, summoned, representative, monsterDieRoller, nativeDieRoller);
 
-		// TEMP-EOCTMS-DEBUG: batched diagnostic dialog — fires ONCE for the whole released-follower
+		// TEMP-EOCTMS-DEBUG: batched diagnostic trace — fires ONCE for the whole released-follower
 		// batch (not once per character), confirming the rule "collectively trigger just one EOCTMS."
+		// Both the [IPD] line and the modal dialog are gated on the "Enable Diagnostics" host option
+		// (DebugUtility.DIAGNOSTICS).
 		// Remove once this testing pass is complete — grep TEMP-EOCTMS-DEBUG to find all pieces.
 		StringBuilder eoctms = new StringBuilder();
 		eoctms.append("Guide: ").append(guide.getGameObject().getName()).append("\n");
@@ -1429,8 +1431,10 @@ public class ActionRow {
 		eoctms.append("Monster die: ").append(monsterDieRoller.getValue(0)).append("\n");
 		eoctms.append("Native die: ").append(nativeDieRoller != null ? String.valueOf(nativeDieRoller.getValue(0)) : "(n/a)").append("\n");
 		eoctms.append("Summoned: ").append(summoned.isEmpty() ? "(none)" : summoned.stream().map(GameObject::getName).collect(java.util.stream.Collectors.joining(", ")));
-		System.out.println("[IPD] processReleasedFollowerBatch SHARED SUMMON " + eoctms.toString().replace("\n", " | "));
-		JOptionPane.showMessageDialog(gameHandler.getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic (" + batchLabel + ")", JOptionPane.INFORMATION_MESSAGE);
+		DebugUtility.diag("[IPD] processReleasedFollowerBatch SHARED SUMMON " + eoctms.toString().replace("\n", " | "));
+		if (DebugUtility.isDiagnostics()) {
+			JOptionPane.showMessageDialog(gameHandler.getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic (" + batchLabel + ")", JOptionPane.INFORMATION_MESSAGE);
+		}
 
 		gameHandler.updateCharacterFramesWithoutMap();
 	}
@@ -1481,10 +1485,10 @@ public class ActionRow {
 
 		// Collect player characters eligible for post-phase (not excluded as active followers)
 		// and note whether any unhired, non-mist-like monsters are present in the clearing.
-		System.out.println("[IPD] RAW clearing contents for " + character.getGameObject().getName() + " @ " + (loc.clearing != null ? loc.clearing.getDescription() : "?") + ":");
+		DebugUtility.diag("[IPD] RAW clearing contents for " + character.getGameObject().getName() + " @ " + (loc.clearing != null ? loc.clearing.getDescription() : "?") + ":");
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			boolean excl = excludedFollowers.contains(rc.getGameObject());
-			System.out.println("[IPD]   comp=" + rc.getGameObject().getName()
+			DebugUtility.diag("[IPD]   comp=" + rc.getGameObject().getName()
 				+ " playerLeader=" + rc.isPlayerControlledLeader()
 				+ " owner=" + (rc.getOwner() != null ? rc.getOwner().getGameObject().getName() : "null")
 				+ " hasNameKey=" + rc.getGameObject().hasAttribute(CharacterWrapper.PLAYER_BLOCK, CharacterWrapper.NAME_KEY)
@@ -1536,14 +1540,14 @@ public class ActionRow {
 		// Determine who participates in post-phase: the phasing char (if they can block detectable
 		// others or monsters) and non-followers who can block the phasing char or play color chits.
 		ArrayList<CharacterWrapper> phasingFollowers = character.getActionFollowers();
-		System.out.println("[IPD] getPostPhaseParticipants phasing=" + character.getGameObject().getName()
+		DebugUtility.diag("[IPD] getPostPhaseParticipants phasing=" + character.getGameObject().getName()
 			+ " phasingHidden=" + phasingCharHidden + " phasingBlockable=" + phasingCharBlockable
 			+ " detectableOthers=" + detectableOthers + " monstersPresent=" + monstersPresent
 			+ " nonFollowersInClearing=" + nonFollowers.size() + " excludedFollowers=" + excludedFollowers.size());
 		ArrayList<CharacterWrapper> postPhaseParticipants = new ArrayList<>();
 		for (CharacterWrapper cw : nonFollowers) {
 			if (!cw.isReacting()) {
-				System.out.println("[IPD]   " + cw.getGameObject().getName() + " SKIP (not reacting)");
+				DebugUtility.diag("[IPD]   " + cw.getGameObject().getName() + " SKIP (not reacting)");
 				continue;
 			}
 
@@ -1555,7 +1559,7 @@ public class ActionRow {
 					&& !cw.isMinion()
 					&& !(cw.isSmall() && smallHouseRule);
 				boolean qualifies = phasingCanBlock && (detectableOthers >= 1 || monstersPresent);
-				System.out.println("[IPD]   " + cw.getGameObject().getName() + " (PHASING) canBlock=" + phasingCanBlock
+				DebugUtility.diag("[IPD]   " + cw.getGameObject().getName() + " (PHASING) canBlock=" + phasingCanBlock
 					+ " detectableOthers=" + detectableOthers + " monsters=" + monstersPresent + " -> " + (qualifies ? "PARTICIPANT" : "no"));
 				if (qualifies) {
 					postPhaseParticipants.add(cw);
@@ -1574,7 +1578,7 @@ public class ActionRow {
 					&& (phasingCharBlockable || ignoreMist);
 				boolean hasColorChitsForPostPhase = colorChitPostPhase && !cw.getColorMagicChits().isEmpty();
 				boolean qualifies = canBlockPhasing || hasColorChitsForPostPhase;
-				System.out.println("[IPD]   " + cw.getGameObject().getName() + " isFollower=" + isFollower
+				DebugUtility.diag("[IPD]   " + cw.getGameObject().getName() + " isFollower=" + isFollower
 					+ " canDetectPhasing=" + canDetectPhasing + " blockerCanBlock=" + blockerCanBlock
 					+ " canBlockPhasing=" + canBlockPhasing + " colorChitsPost=" + hasColorChitsForPostPhase
 					+ " -> " + (qualifies ? "PARTICIPANT" : "no"));
