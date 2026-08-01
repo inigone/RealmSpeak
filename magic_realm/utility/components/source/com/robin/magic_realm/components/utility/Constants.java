@@ -902,6 +902,11 @@ public class Constants {
 	public static final String EXP_OFFROAD_TRAVEL = "OffroadTravel";
 	public static final String EXP_OFFROAD_TRAVEL_NO_ROADWAYS = "OffroadTravelNoRoadways";
 	public static final String EXP_WALK_WOODS_NO_ROADWAYS = "WalkWoodsNoRoadways";
+	// Developer diagnostics master switch - see DebugUtility.DIAGNOSTICS
+	public static final String OPT_ENABLE_DIAGNOSTICS = "EnableDiagnostics";
+	// Optional forced monster die value used while diagnostics are on.  Stored as a string so that
+	// "not set" is distinguishable from any legal die value - blank means leave the rolls alone.
+	public static final String OPT_DIAGNOSTIC_MONSTER_DIE = "DiagnosticMonsterDie";
 	// 3rd edition rules
 	public static final String TE_KNIGHT_ADJUSTMENT = "KnightAdjustment";
 	public static final String TE_WATCHFUL_NATIVES = "WatchfulNatives";
