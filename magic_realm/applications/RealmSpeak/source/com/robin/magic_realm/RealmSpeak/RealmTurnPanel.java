@@ -523,7 +523,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		boolean awaitingPostPhase = isAwaitingPostPhaseDecision();
 		boolean batchGateOpen = isPlaying && !awaitingPostPhase;
 		if (lastLoggedBatchGateOpen == null || lastLoggedBatchGateOpen.booleanValue() != batchGateOpen) {
-			System.out.println("[IPD] updateControls batch-gate char=" + getCharacter().getGameObject().getName()
+			DebugUtility.diag("[IPD] updateControls batch-gate char=" + getCharacter().getGameObject().getName()
 				+ " isPlaying=" + isPlaying + " awaitingPostPhase=" + awaitingPostPhase
 				+ " -> gateOpen=" + batchGateOpen);
 			lastLoggedBatchGateOpen = batchGateOpen;
@@ -1059,7 +1059,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			// removeActionFollower()'s own internal per-follower summon check (pass null dice) since
 			// ActionRow.processReleasedFollowerBatch() performs ONE shared summon check for the whole batch.
 			for (CharacterWrapper follower:getCharacter().getStoppedActionFollowers()) {
-				System.out.println("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName());
+				DebugUtility.diag("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName());
 				getCharacter().removeActionFollower(follower,null,null);
 			}
 		
@@ -1269,7 +1269,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// TEMP-EOCTMS-DEBUG: unconditional entry trace (the later gate on getsTurn/current/isMinion/
 		// isSleep silently skips the chit-flip+summon block and its own logging below, so without this
 		// there's no visible evidence turnDone() was entered at all when that gate is false).
-		System.out.println("[IPD] turnDone ENTRY char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] turnDone ENTRY char=" + getCharacter().getGameObject().getName()
 			+ " includeSummonCheck=" + includeSummonCheck
 			+ " getsTurn=" + getsTurn
 			+ " current=" + getCharacter().getCurrentLocation()
@@ -1386,7 +1386,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					getGameHandler().broadcast(getCharacter().getGameObject().getName(),"Reveals: "+chit.getGameObject().getName());
 				}
 			}
-			System.out.println("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
+			DebugUtility.diag("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
 				+ " includeSummonCheck=" + includeSummonCheck);
 			if (includeSummonCheck) {
 				DieRoller monsterDieRoller = game.getMonsterDie();
@@ -1398,7 +1398,9 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					SetupCardUtility.summonMonsters(hostPrefs,summoned,getCharacter(),monsterDieRoller,nativeDieRoller);
 				}
 
-				// TEMP-EOCTMS-DEBUG: diagnostic dialog for observing monster-summoning order/timing.
+				// TEMP-EOCTMS-DEBUG: diagnostic trace for observing monster-summoning order/timing.
+				// Both the [IPD] line and the modal dialog are gated on the "Enable Diagnostics"
+				// host option (DebugUtility.DIAGNOSTICS).
 				// Remove once this testing pass is complete — grep TEMP-EOCTMS-DEBUG to find all pieces.
 				StringBuilder eoctms = new StringBuilder();
 				eoctms.append("Character: ").append(getCharacter().getGameObject().getName()).append("\n");
@@ -1410,8 +1412,10 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				eoctms.append("isStopFollowing: ").append(getCharacter().isStopFollowing()).append("\n");
 				eoctms.append("Summon check ran: ").append(summonGatePassed).append("\n");
 				eoctms.append("Summoned: ").append(summoned.isEmpty() ? "(none)" : summoned.stream().map(GameObject::getName).collect(java.util.stream.Collectors.joining(", ")));
-				System.out.println("[IPD] turnDone EOCTMS " + eoctms.toString().replace("\n", " | "));
-				JOptionPane.showMessageDialog(getGameHandler().getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic", JOptionPane.INFORMATION_MESSAGE);
+				DebugUtility.diag("[IPD] turnDone EOCTMS " + eoctms.toString().replace("\n", " | "));
+				if (DebugUtility.isDiagnostics()) {
+					JOptionPane.showMessageDialog(getGameHandler().getMainFrame(), eoctms.toString(), "EOCTMS Diagnostic", JOptionPane.INFORMATION_MESSAGE);
+				}
 
 				if (getGameHandler().isOption(RealmSpeakOptions.TURN_END_RESULTS)) {
 					if (!summoned.isEmpty()) {
@@ -1423,7 +1427,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					}
 				}
 			} else {
-				System.out.println("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
+				DebugUtility.diag("[IPD] turnDone char=" + getCharacter().getGameObject().getName()
 					+ " -> SKIP summon check (batch-released; shared batch summon handles this)");
 			}
 
@@ -1464,7 +1468,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		
 		// cleanup and notify host
 		getCharacterFrame().hideYourTurn();
-		System.out.println("[IPD] OFFICIAL TURN END char=" + getCharacter().getGameObject().getName()
+		DebugUtility.diag("[IPD] OFFICIAL TURN END char=" + getCharacter().getGameObject().getName()
 			+ " via turnDone(includeSummonCheck=" + includeSummonCheck + ")");
 		getCharacter().setPlayOrder(0);
 		getCharacter().setLastPlayer(false);
@@ -1580,7 +1584,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			// sub-guide) has no effect — its direct guide is still following, so it stays in the chain.
 			CharacterWrapper theirGuide = aFollower.getCharacterImFollowing();
 			if (theirGuide == null || !myId.equals(theirGuide.getGameObject().getStringId())) {
-				System.out.println("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
+				DebugUtility.diag("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
 					+ " selected but is NOT a direct follower of " + getCharacter().getGameObject().getName()
 					+ " (follows " + (theirGuide != null ? theirGuide.getGameObject().getName() : "nobody")
 					+ ") -> no effect");
@@ -1589,7 +1593,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			// Silently skip followers who found the hidden guide — they're aware of the guide's
 			// position and cannot be ditched. The guide can't hide from someone who already sees them.
 			if (getCharacter().isHidden() && aFollower.foundHiddenEnemy(getCharacter().getGameObject())) {
-				System.out.println("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
+				DebugUtility.diag("[IPD] doAbandonActionFollowers: " + aFollower.getGameObject().getName()
 					+ " found hidden guide " + getCharacter().getGameObject().getName() + " -> cannot be ditched");
 				continue;
 			}
@@ -1628,7 +1632,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			}
 		}
 		for (CharacterWrapper subFollower : subFollowers) {
-			System.out.println("[IPD] abandonFollowerChain: " + subFollower.getGameObject().getName()
+			DebugUtility.diag("[IPD] abandonFollowerChain: " + subFollower.getGameObject().getName()
 				+ " stops following (its guide " + dropped.getGameObject().getName() + " was ditched)");
 			// Same batch as the character that triggered this cascade — same guide, same phase.
 			subFollower.markReleasedFromGuide(topGuide, batchPhase);
