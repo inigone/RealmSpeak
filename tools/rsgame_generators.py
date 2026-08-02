@@ -25,6 +25,8 @@ SPAWNS = {"blob": "Blob", "wasp": "Wasp", "zombie1": "Undead (zombie)"}
 DEAD = "_dead_"
 GENERATED = "generated"
 GENERATOR_ID = "generatorid"
+GENERATOR_DESTROYER = "generatordestroyer"  # Constants.GENERATOR_DESTROYER (REVENGE)
+DEFAULT_NAME = "GameObject"  # GameObject.revertNameToDefault() - a monster left with this was misnamed
 
 
 def this_attributes(game_object):
@@ -91,6 +93,13 @@ def report(path):
             f"  at={tile} clearing {clearing}"
             f"  [{', '.join(flags) if flags else 'not yet seen'}]"
         )
+        # REVENGE (EXP_GENERATED_MONSTER_BEHAVIOR): a destroyed generator remembers who killed it,
+        # and its surviving monsters hunt that character instead of dying with it.
+        destroyer = attributes.get(GENERATOR_DESTROYER)
+        if destroyer:
+            who = objects.get(destroyer, ("(missing character)", {}))[0]
+            where = locate(destroyer, objects, parent) if destroyer in objects else ("?", "?")
+            print(f"           REVENGE: hunting {who}#{destroyer}, currently at {where[0]} clearing {where[1]}")
 
     alive = [
         (oid, name, a)
@@ -98,15 +107,30 @@ def report(path):
         if GENERATED in a and DEAD not in a
     ]
     print(f"\n=== GENERATED MONSTERS on the board: {len(alive)} ===")
+    misnamed = []
     for oid, name, attributes in sorted(alive, key=by_id):
         tile, clearing = locate(oid, objects, parent)
         home = attributes.get(GENERATOR_ID)
         home_name = objects.get(home, ("?", {}))[0] if home else "?"
+        if name == DEFAULT_NAME:
+            misnamed.append(oid)
         print(
             f"  {name:<8} id={oid:<5} at={tile} clearing {clearing}"
             f"  from={home_name}#{home}  monster_die={attributes.get('monster_die')}"
             f"  blocked={'yes' if 'blocked' in attributes else 'no'}"
+            f"{'  <-- MISNAMED' if name == DEFAULT_NAME else ''}"
         )
+    if misnamed:
+        print(
+            f"\n  *** {len(misnamed)} monster(s) still carry the default name {DEFAULT_NAME!r}:"
+            f" {', '.join(misnamed)}\n"
+            "  A rename used to have no GameObjectChange of its own, so a run-time rename only\n"
+            "  reached other machines by riding along on the next unrelated change - and a replay\n"
+            "  that stopped short left the object misnamed.  Monsters spawned BEFORE that fix keep\n"
+            "  the bad name; only newly spawned ones should be clean."
+        )
+    elif alive:
+        print(f"\n  All {len(alive)} generated monsters are properly named.")
     if alive:
         print(
             "\n  Note: a blocked generated monster does NOT propagate - moveGeneratedMonster()\n"

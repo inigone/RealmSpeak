@@ -773,6 +773,11 @@ public class Constants {
 	public static final String GENERATOR_ID = "generatorid";
 	public static final String GM_GROW = "gm_grow";
 	public static final String GM_SCARE = "gm_scare";
+	// REVENGE (EXP_GENERATED_MONSTER_BEHAVIOR):  set on a generator when it is destroyed, holding the
+	// string id of the character responsible.  Its surviving monsters then hunt that character instead
+	// of dying with it.  Presence of this attribute IS the "revenge is active" flag - see
+	// SetupCardUtility.getRevengeTarget().
+	public static final String GENERATOR_DESTROYER = "generatordestroyer";
 	
 	// Quests
 	public static final String QUEST = "quest";
@@ -899,6 +904,10 @@ public class Constants {
 	public static final String EXP_OFFROAD_TRAVEL_NO_ROADWAYS = "OffroadTravelNoRoadways";
 	public static final String EXP_WALK_WOODS_NO_ROADWAYS = "WalkWoodsNoRoadways";
 	public static final String EXP_DAILY_GENERATED_PROPAGATION = "DailyGeneratedPropagation";
+	// Umbrella switch for improved generated-monster behaviour.  Pod movement is the first behaviour
+	// under it; add further small GM tweaks to this same key rather than minting a new host option for
+	// each one.  Grep EXP_GENERATED_MONSTER_BEHAVIOR to find everything it currently gates.
+	public static final String EXP_GENERATED_MONSTER_BEHAVIOR = "GeneratedMonsterBehavior";
 	// Developer diagnostics master switch - see DebugUtility.DIAGNOSTICS
 	public static final String OPT_ENABLE_DIAGNOSTICS = "EnableDiagnostics";
 	// Optional forced monster die value used while diagnostics are on.  Stored as a string so that

@@ -14,6 +14,8 @@ import com.robin.magic_realm.components.table.RaiseDead;
 import com.robin.magic_realm.components.wrapper.*;
 
 public class SetupCardUtility {
+	/** GameObject.revertNameToDefault() - a spawned monster still carrying this was never renamed. */
+	private static final String DEFAULT_OBJECT_NAME = "GameObject";
 	
 	private static int generatedMonsterCount = 0;
 	
@@ -186,12 +188,12 @@ public class SetupCardUtility {
 
 			// Expansion:  move the generated prowlers
 			long gmpStart = System.currentTimeMillis(); // TEMP-GENMON-DEBUG
-			for (GameObject prowler:nonCurrentTileProwlers) {
-				MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(prowler);
-				moveGeneratedMonster(monster);
-				if (monster.getCurrentLocation().isInClearing()) {
-					updateMonsterBlock(monster);
-				}
+			// With GENERATED MONSTER BEHAVIOR off every pod holds exactly one monster, so this is the old per-monster
+			// loop.  With it on, co-located monsters of one type move together.  Note the candidate list
+			// above already dropped anything on the triggering tile - those take the ordinary prowl path
+			// below instead, so they are simply not part of any pod here.
+			for (ArrayList<GameObject> pod:buildPropagationPods(hostPrefs,nonCurrentTileProwlers)) {
+				propagatePod(pod,null);
 			}
 
 			// Expansion:  move the travelers
@@ -549,6 +551,22 @@ public class SetupCardUtility {
 			}
 		}
 		list.addAll(mc.getMonstersCreated());
+		/*
+		 * TEMP-GENMON-DEBUG:  record the identity of everything just spawned, so a run can be correlated
+		 * against what the save file actually ends up holding (tools/rsgame_generators.py flags any
+		 * generated monster left with the default name).
+		 *
+		 * "GameObject" here means the rename never took.  createOrReuseMonster() either recycles a dead
+		 * monster - already correctly named - or makes a brand new one that starts out called
+		 * "GameObject" and relies on setupGameObject() renaming it, so only the NEW ones can show this.
+		 * Seeing it on the host means the spawn itself is broken; seeing it only on a client means the
+		 * rename did not survive the change stream.
+		 */
+		for (GameObject spawned:list) {
+			DebugUtility.diag("[GMP]   spawned "+spawned.getName()+"#"+spawned.getStringId()
+				+" from "+generator.getName()+"#"+generator.getStringId()
+				+(DEFAULT_OBJECT_NAME.equals(spawned.getName())?"   *** MISNAMED - rename did not take ***":""));
+		}
 		return list;
 	}
 	private static int calculateIncentive(ArrayList<RealmComponent> components,int monsterIncentive,int characterIncentive) {
@@ -616,7 +634,7 @@ public class SetupCardUtility {
 		ArrayList<GameObject> alreadyMoved = new ArrayList<>();
 		ArrayList<String> propagated = new ArrayList<>();
 		for (int i=0;i<dice.size();i++) {
-			propagateGeneratedMonsters(data,alreadyMoved,propagated,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
+			propagateGeneratedMonsters(hostPrefs,data,alreadyMoved,propagated,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
 		}
 
 		// PASS 2 - THEN the generators spawn.  Everything created here appears after propagation is
@@ -699,46 +717,38 @@ public class SetupCardUtility {
 			}
 		}
 	}
-	private static void propagateGeneratedMonsters(GameData data,ArrayList<GameObject> alreadyMoved,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
+	private static void propagateGeneratedMonsters(HostPrefWrapper hostPrefs,GameData data,ArrayList<GameObject> alreadyMoved,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
 		GamePool pool = new GamePool(data.getGameObjects());
 
 		ArrayList<String> generatedQuery = new ArrayList<>();
 		generatedQuery.add(Constants.GENERATED);
 		generatedQuery.add("!"+Constants.DEAD);
+		ArrayList<GameObject> candidates = new ArrayList<>();
 		for (GameObject go:pool.find(generatedQuery)) {
 			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
 			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
 			if (alreadyMoved.contains(go)) continue;
 			alreadyMoved.add(go);
-
-			MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
-			TileLocation before = monster.getCurrentLocation();
+			candidates.add(go);
+		}
+		// With GENERATED MONSTER BEHAVIOR off every pod holds exactly one monster, so this is the old per-monster loop.
+		for (ArrayList<GameObject> pod:buildPropagationPods(hostPrefs,candidates)) {
 			/*
 			 * This pass runs on the HOST, inside GameServer.processNextRequest -> GameHost.applyChanges.
 			 * An exception escaping here kills the GameServer thread outright: every client then sees
 			 * EOFException, their GameClient thread dies, and the whole game hangs with no error shown.
-			 * One misbehaving chit must not be able to do that, so failures are contained per monster.
+			 * One misbehaving chit must not be able to do that, so failures are contained per pod.
 			 */
 			try {
-				moveGeneratedMonster(monster);
+				propagatePod(pod,report);
 			}
 			catch(Exception ex) {
-				RealmLogging.logMessage("host","Daily Propagation: could not move "
-					+go.getName()+"#"+go.getStringId()+" ("+ex+") - it stays put.");
-				DebugUtility.diag("[GMP]   ERROR moving "+go.getName()+"#"+go.getStringId()+": "+ex);
+				String podName = getPodName(pod);
+				RealmLogging.logMessage("host","Daily Propagation: could not move "+podName
+					+" ("+ex+") - "+(pod.size()==1?"it stays":"they stay")+" put.");
+				DebugUtility.diag("[GMP]   ERROR moving "+podName+": "+ex);
 				ex.printStackTrace();
 				continue;
-			}
-			TileLocation current = monster.getCurrentLocation();
-			// Only report chits that actually went somewhere - blocked ones return without moving.
-			if (go.hasThisAttribute(Constants.DEAD)) {
-				report.add(monster.getGameObject().getName()+" left the map from "+before);
-			}
-			else if (before!=null && current!=null && !before.equals(current)) {
-				report.add(monster.getGameObject().getName()+": "+before+" -> "+current);
-			}
-			if (current!=null && current.isInClearing()) { // null when the monster walked off a map edge
-				updateMonsterBlock(monster);
 			}
 		}
 
@@ -763,47 +773,257 @@ public class SetupCardUtility {
 			}
 		}
 	}
-	private static void moveGeneratedMonster(MonsterChitComponent monster) {
+	/**
+	 * The outcome of ONE propagation decision.  Deciding and applying used to be a single method
+	 * (moveGeneratedMonster); they are split so a whole pod can be scored once and then have that same
+	 * destination applied to every member - see propagatePod().  A null PodMove means "no move at all".
+	 */
+	private static class PodMove {
+		TileLocation destination;	// where the mover ends up; null when it walks off a map edge
+		boolean offMapEdge;			// true when the chosen clearing was an edge, so the mover leaves the board
+		boolean flying;				// fliers land in the air over a tile, walkers land in a clearing
+		PodMove(TileLocation destination,boolean offMapEdge,boolean flying) {
+			this.destination = destination;
+			this.offMapEdge = offMapEdge;
+			this.flying = flying;
+		}
+	}
+	/**
+	 * The pod "type" of a generated monster:  the FLAVOUR OF GENERATOR that made it (wasp / blob /
+	 * zombie1), not the monster's own name.
+	 *
+	 * This distinction only matters for the Tomb.  RaiseDead.createUndead() picks randomly per monster,
+	 * so one Tomb spawn is a mix of Skeletons, Skeletal Archers, Skeletal Swordsmen and Zombies.  Keying
+	 * on the chit name would split that one spawn into four pods that then drift apart; keying on the
+	 * generator flavour keeps the whole undead band together, which is the intent.  Hives and Ponds each
+	 * spawn a single monster name, so for them the two keys are identical.
+	 *
+	 * Falls back to the monster's name when the generator is gone (destroyed or off-map).  Such a monster
+	 * is skipped by chooseGeneratedMonsterMove() anyway - home would be null - so the key only has to be
+	 * stable here, not meaningful.
+	 */
+	private static String getPodType(GameObject go) {
+		GameObject generator = go.getGameData().getGameObject(go.getThisInt(Constants.GENERATOR_ID));
+		String iconType = generator==null?null:generator.getThisAttribute("icon_type");
+		return iconType!=null?("gen:"+iconType):("name:"+go.getName());
+	}
+	/**
+	 * Group propagation candidates into pods.  A pod is every generated monster of ONE type sharing ONE
+	 * location, where "type" is the generator flavour - see getPodType().
+	 *
+	 * TileLocation.equals() already treats "in clearing 3 of tile X" and "in the air over tile X, in no
+	 * clearing" as different locations, so those are naturally two separate pods on the same tile until
+	 * something co-locates them - e.g. an EOCTMS pulling the fliers down into a clearing.
+	 *
+	 * With EXP_GENERATED_MONSTER_BEHAVIOR off every monster becomes its own one-member pod, so both callers
+	 * run exactly the per-monster behaviour they had before this option existed.
+	 */
+	private static ArrayList<ArrayList<GameObject>> buildPropagationPods(HostPrefWrapper hostPrefs,ArrayList<GameObject> candidates) {
+		ArrayList<ArrayList<GameObject>> pods = new ArrayList<>();
+		boolean podsEnabled = hostPrefs!=null && hostPrefs.hasPref(Constants.EXP_GENERATED_MONSTER_BEHAVIOR);
+		ArrayList<TileLocation> podLocations = new ArrayList<>(); // parallel to pods; null entries never match
+		ArrayList<String> podTypes = new ArrayList<>();           // parallel to pods
+		for (GameObject go:candidates) {
+			TileLocation tl = podsEnabled?ClearingUtility.getTileLocation(go):null;
+			String type = podsEnabled?getPodType(go):null;
+			int found = -1;
+			if (tl!=null) {
+				for (int i=0;i<pods.size();i++) {
+					TileLocation other = podLocations.get(i);
+					// Deliberately matched with TileLocation.equals() rather than a string key: tile names
+					// are not unique once multiple boards are in play.
+					if (other!=null && other.equals(tl) && type.equals(podTypes.get(i))) {
+						found = i;
+						break;
+					}
+				}
+			}
+			if (found>=0) {
+				pods.get(found).add(go);
+			}
+			else {
+				ArrayList<GameObject> pod = new ArrayList<>();
+				pod.add(go);
+				pods.add(pod);
+				podLocations.add(tl); // null for a monster with no location - it can never pod up, and
+									  // chooseGeneratedMonsterMove() skips it exactly as it always has
+				podTypes.add(type);
+			}
+		}
+		return pods;
+	}
+	/**
+	 * How a pod is named in the player-facing Daily Propagation summary.  A Tomb pod is usually a mix of
+	 * undead names, so fall back to the generator's own name ("5 Tomb monsters") rather than mislabelling
+	 * the whole band after whichever member happens to lead it.
+	 */
+	private static String getPodName(ArrayList<GameObject> pod) {
+		GameObject first = pod.get(0);
+		if (pod.size()==1) return first.getName(); // reads exactly as a lone monster always did
+		boolean uniform = true;
+		for (GameObject go:pod) {
+			if (!go.getName().equals(first.getName())) {
+				uniform = false;
+				break;
+			}
+		}
+		if (uniform) return pod.size()+" "+first.getName()+"s";
+		GameObject generator = first.getGameData().getGameObject(first.getThisInt(Constants.GENERATOR_ID));
+		return pod.size()+" "+(generator!=null?generator.getName()+" monsters":"generated monsters");
+	}
+	/**
+	 * Propagate one pod.  The pod is scored ONCE (using its first member as the leader) and every member
+	 * is then moved to that same destination, so the pod stays together instead of fanning out under the
+	 * "-1 per other generated monster" repulsion in calculateIncentive().
+	 *
+	 * If ANY member is blocked the WHOLE pod holds - a pod that has caught a character does not leave
+	 * part of itself behind.  Note isBlocked() is only cleared at day end, so a pinned pod stays pinned
+	 * for the rest of that day.
+	 *
+	 * report may be null when the caller does not build a player-facing summary.
+	 */
+	private static void propagatePod(ArrayList<GameObject> pod,ArrayList<String> report) {
+		MonsterChitComponent leader = (MonsterChitComponent)RealmComponent.getRealmComponent(pod.get(0));
+		String podName = getPodName(pod);
+		if (pod.size()>1) {
+			for (GameObject go:pod) {
+				MonsterChitComponent member = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
+				if (member.isBlocked()) {
+					DebugUtility.diag("[GMP] pod HOLDS "+podName+" at "+leader.getCurrentLocation()
+						+" - "+go.getName()+"#"+go.getStringId()+" is blocked (cleared only at day end)");
+					return;
+				}
+			}
+		}
+		TileLocation before = leader.getCurrentLocation();
+		PodMove move = chooseGeneratedMonsterMove(leader,pod.size());
+		if (move==null) return;
+		for (GameObject go:pod) {
+			MonsterChitComponent member = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
+			applyGeneratedMonsterMove(member,move);
+			TileLocation current = member.getCurrentLocation();
+			if (current!=null && current.isInClearing()) { // null once the monster has walked off a map edge
+				updateMonsterBlock(member);
+			}
+		}
+		if (report!=null) {
+			// Only report pods that actually went somewhere - held and blocked ones stay silent.
+			if (move.offMapEdge) {
+				report.add(podName+" left the map from "+before);
+			}
+			else if (before!=null && move.destination!=null && !before.equals(move.destination)) {
+				report.add(podName+getRevengeSuffix(pod.get(0))+": "+before+" -> "+move.destination);
+			}
+		}
+	}
+	/**
+	 * REVENGE (EXP_GENERATED_MONSTER_BEHAVIOR):  where the character who destroyed this generator is
+	 * right now, or null if this pod has nobody to avenge.
+	 *
+	 * The GENERATOR_DESTROYER stamp doubles as the "revenge is active" flag: TreasureUtility only writes
+	 * it when the option was on at the moment of destruction, and only then are the monsters spared
+	 * instead of dying with their generator.  So a host who turns the option off later leaves already
+	 * spared pods still hunting - which is the right call, since the alternative is retroactively
+	 * killing monsters that are alive on the board.
+	 *
+	 * Returns null - falling back to ordinary wander-away-from-home scoring - when the target can no
+	 * longer be found on the map, e.g. the character died or left the game.
+	 */
+	/** " (hunting Berserker)" for a pod out for revenge, empty otherwise.  Report cosmetics only. */
+	private static String getRevengeSuffix(GameObject monster) {
+		GameObject generator = monster.getGameData().getGameObject(monster.getThisInt(Constants.GENERATOR_ID));
+		if (getRevengeTarget(generator)==null) return "";
+		GameObject destroyer = null;
+		try {
+			destroyer = generator.getGameData().getGameObject(Long.valueOf(generator.getThisAttribute(Constants.GENERATOR_DESTROYER)));
+		}
+		catch(NumberFormatException ex) {
+			return "";
+		}
+		return destroyer==null?"":(" (hunting "+destroyer.getName()+")");
+	}
+	private static TileLocation getRevengeTarget(GameObject generator) {
+		if (generator==null || !generator.hasThisAttribute(Constants.GENERATOR_DESTROYER)) return null;
+		String destroyerId = generator.getThisAttribute(Constants.GENERATOR_DESTROYER);
+		if (destroyerId==null) return null;
+		GameObject destroyer;
+		try {
+			destroyer = generator.getGameData().getGameObject(Long.valueOf(destroyerId));
+		}
+		catch(NumberFormatException ex) { // a malformed stamp must not take down propagation
+			DebugUtility.diag("[GMP] REVENGE: unreadable "+Constants.GENERATOR_DESTROYER+" \""+destroyerId
+				+"\" on "+generator.getName()+" - ignoring");
+			return null;
+		}
+		if (destroyer==null) return null;
+		return ClearingUtility.getTileLocation(destroyer);
+	}
+	/**
+	 * Score every candidate destination and pick a winner, WITHOUT moving anything.  When called for a
+	 * pod, monster is the pod leader and podSize is the pod's size (tracing only).
+	 *
+	 * The decision comes from the leader's position and home.  Position is shared by definition - a pod
+	 * is one place.  Home is shared too whenever the pod came from a single generator, which is the
+	 * normal case; if two generators of the same flavour ever have their spawns meet and merge, the pod
+	 * simply navigates by the leader's home.  That is a deliberate simplification, not an oversight:
+	 * distance-from-home is a tie-breaker that only decides anything when no candidate holds a
+	 * character, so it cannot pull a pod off a character it can see.
+	 */
+	private static PodMove chooseGeneratedMonsterMove(MonsterChitComponent monster,int podSize) {
 		GameObject generator = monster.getGameObject().getGameData().getGameObject(monster.getGameObject().getThisInt(Constants.GENERATOR_ID));
 		TileLocation home = ClearingUtility.getTileLocation(generator);
 		TileLocation current = monster.getCurrentLocation();
+		TileLocation revenge = getRevengeTarget(generator);
 		// TEMP-GENMON-DEBUG: grep TEMP-GENMON-DEBUG to find every piece of this instrumentation.
-		String who = monster.getGameObject().getName()+"#"+monster.getGameObject().getStringId();
+		String who = monster.getGameObject().getName()+"#"+monster.getGameObject().getStringId()
+			+(podSize>1?" (pod leader of "+podSize+")":"");
 		DebugUtility.diag("[GMP] move? "+who
 			+" at="+current
 			+" home="+home+(generator==null?" (NO GENERATOR - generatorid="+monster.getGameObject().getThisInt(Constants.GENERATOR_ID)+")":" ["+generator.getName()+"]")
+			+(revenge==null?"":" REVENGE target="+revenge)
 			+" blocked="+monster.isBlocked()
 			+" flies="+monster.flies()
 			+" monster_die="+monster.getGameObject().getThisInt("monster_die")
 			+" die2="+monster.getGameObject().getThisInt("monster_die2"));
 		if (monster.isBlocked() || current==null) {
 			DebugUtility.diag("[GMP]   SKIP "+who+" reason="+(monster.isBlocked()?"isBlocked (cleared only at day end)":"no current location"));
-			return;
+			return null;
 		}
-		if (home==null) {
+		// Revenge needs no home - the generator it came from is rubble.  Only the ordinary
+		// wander-away-from-home scoring below would NPE without one.
+		if (home==null && revenge==null) {
 			DebugUtility.diag("[GMP]   SKIP "+who+" reason=home is null (generator missing/off-map) - would NPE below");
-			return;
+			return null;
 		}
 		int furthest = Integer.MIN_VALUE;
 		if (monster.flies()) {
 			// Find tiles to move to
 			HashLists<Integer,TileComponent> choices = new HashLists<>();
 			for (TileComponent adj:current.tile.getAllAdjacentTiles()) {
-				int distanceFromHome = ClearingUtility.getDistanceBetweenTiles(adj,home.tile);
+				int score;
+				int interest = 0;
+				if (revenge!=null) {
+					// Hunt: nearer the target scores higher.  Nothing else is allowed to matter.
+					score = -ClearingUtility.getDistanceBetweenTiles(adj,revenge.tile);
+				}
+				else {
+					score = ClearingUtility.getDistanceBetweenTiles(adj,home.tile);
 
-				// if tile has characters in it, make it MORE interesting
-				int interest = calculateIncentive(adj.getAllClearingComponents(),-1,20);
-				distanceFromHome += interest*2; // this makes character tiles MUCH more interesting than leaving the generator
+					// if tile has characters in it, make it MORE interesting
+					interest = calculateIncentive(adj.getAllClearingComponents(),-1,20);
+					score += interest*2; // this makes character tiles MUCH more interesting than leaving the generator
+				}
 
-				furthest = Math.max(furthest,distanceFromHome);
-				choices.put(distanceFromHome,adj);
-				DebugUtility.diag("[GMP]   cand(tile) "+adj.getTileName()+" score="+distanceFromHome+" interest="+interest);
+				furthest = Math.max(furthest,score);
+				choices.put(score,adj);
+				DebugUtility.diag("[GMP]   cand(tile) "+adj.getTileName()+" score="+score
+					+(revenge!=null?" (revenge)":" interest="+interest));
 			}
 
 			if (choices.isEmpty()) {
 				DebugUtility.diag("[GMP]   SKIP "+who+" reason=NO ADJACENT TILES from "+current
 					+" (tile is not on the map grid - this should not happen)");
-				return;
+				return null;
 			}
 
 			// Randomly choose from furthest locations
@@ -813,26 +1033,40 @@ public class SetupCardUtility {
 			TileLocation tl = new TileLocation(finalTile,true);
 
 			DebugUtility.diag("[GMP]   MOVE(fly) "+who+" "+current+" -> "+tl+" (best="+furthest+", tied="+finalChoices.size()+")");
-			ClearingUtility.moveToLocation(monster.getGameObject(),tl);
+			return new PodMove(tl,false,true);
 		}
 		else {
 			// Find clearing to move to
 			HashLists<Integer,ClearingDetail> choices = new HashLists<>();
 			for (PathDetail path:current.clearing.getConnectedPaths()) {
 				ClearingDetail other = path.findConnection(current.clearing);
-				int distanceFromHome = ClearingUtility.calculateClearingCount(home,other.getTileLocation()); // is this going to kill performance?
+				int score;
+				int interest = 0;
+				if (revenge!=null) {
+					// A vengeful pod does not wander off the edge of the realm - it has an errand.
+					if (other.isEdge()) {
+						DebugUtility.diag("[GMP]   cand(clearing) "+other.getTileLocation()+" SKIPPED (edge, revenge)");
+						continue;
+					}
+					// Hunt: nearer the target scores higher.  Nothing else is allowed to matter.
+					score = -ClearingUtility.calculateClearingCount(other.getTileLocation(),revenge);
+				}
+				else {
+					score = ClearingUtility.calculateClearingCount(home,other.getTileLocation()); // is this going to kill performance?
 
-				// if clearing has characters in it, make it MORE interesting
-				int interest = calculateIncentive(other.getClearingComponents(),-1,20);
-				distanceFromHome += interest*2; // this makes character tiles more interesting than leaving the generator
-				
-				furthest = Math.max(furthest,distanceFromHome);
-				choices.put(distanceFromHome,other);
-				DebugUtility.diag("[GMP]   cand(clearing) "+other.getTileLocation()+" score="+distanceFromHome+" interest="+interest+" edge="+other.isEdge());
+					// if clearing has characters in it, make it MORE interesting
+					interest = calculateIncentive(other.getClearingComponents(),-1,20);
+					score += interest*2; // this makes character tiles more interesting than leaving the generator
+				}
+
+				furthest = Math.max(furthest,score);
+				choices.put(score,other);
+				DebugUtility.diag("[GMP]   cand(clearing) "+other.getTileLocation()+" score="+score
+					+(revenge!=null?" (revenge)":" interest="+interest)+" edge="+other.isEdge());
 			}
 			if (choices.isEmpty()) {
 				DebugUtility.diag("[GMP]   SKIP "+who+" reason=no connected paths from "+current);
-				return;
+				return null;
 			}
 
 			// Randomly choose from furthest locations
@@ -841,19 +1075,31 @@ public class SetupCardUtility {
 			ClearingDetail finalClearing = finalChoices.get(r);
 			if (finalClearing.isEdge()) {
 				DebugUtility.diag("[GMP]   DIES(edge) "+who+" walked off the map at "+finalClearing.getTileLocation());
-				RealmUtility.makeDead(monster); // the monster leaves the board
+				return new PodMove(null,true,false); // the monster leaves the board
 			}
-			else {
-				TileLocation tl = finalClearing.getTileLocation();
-				DebugUtility.diag("[GMP]   MOVE(walk) "+who+" "+current+" -> "+tl+" (best="+furthest+", tied="+finalChoices.size()+")");
-				ClearingUtility.moveToLocation(monster.getGameObject(),tl);
-				if (monster.getGameObject().hasThisAttribute(Constants.GM_GROW)) {
-					MonsterGrow table = new MonsterGrow(null,null,monster);
-					DieRollBuilder builder = new DieRollBuilder(null,null,0);
-					DieRoller roller = builder.createRoller(table.getTableKey(),tl);
-					RealmLogging.logMessage("host",table.apply(null,roller));
-				}
-			}
+			TileLocation tl = finalClearing.getTileLocation();
+			DebugUtility.diag("[GMP]   MOVE(walk) "+who+" "+current+" -> "+tl+" (best="+furthest+", tied="+finalChoices.size()+")");
+			return new PodMove(tl,false,false);
+		}
+	}
+	/**
+	 * Carry out a decision made by chooseGeneratedMonsterMove().  Every member of a pod gets the SAME
+	 * PodMove, which is what keeps the pod together.  Per-monster side effects still happen per monster:
+	 * a GM_GROW pod rolls MonsterGrow once for each member, since they grow individually.
+	 */
+	private static void applyGeneratedMonsterMove(MonsterChitComponent monster,PodMove move) {
+		if (move.offMapEdge) {
+			RealmUtility.makeDead(monster); // the monster leaves the board
+			return;
+		}
+		ClearingUtility.moveToLocation(monster.getGameObject(),move.destination);
+		// Growing is a walker-only side effect, exactly as before the pod refactor.  No flier carries
+		// GM_GROW today anyway (only the Blob has it, and Blobs walk), but keep the branch honest.
+		if (!move.flying && monster.getGameObject().hasThisAttribute(Constants.GM_GROW)) {
+			MonsterGrow table = new MonsterGrow(null,null,monster);
+			DieRollBuilder builder = new DieRollBuilder(null,null,0);
+			DieRoller roller = builder.createRoller(table.getTableKey(),move.destination);
+			RealmLogging.logMessage("host",table.apply(null,roller));
 		}
 	}
 	private static void moveTraveler(TravelerChitComponent traveler) {

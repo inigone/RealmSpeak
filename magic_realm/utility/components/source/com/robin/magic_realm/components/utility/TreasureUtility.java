@@ -1508,27 +1508,52 @@ public class TreasureUtility {
 		return price;
 	}
 	public static void destroyGenerator(CharacterWrapper character,GameObject generator) {
+		// character can be null: RealmUtility.makeDead() passes null when the primary monster was killed
+		// by something that is neither a character nor owned by one.
+		String killerName = character==null?"host":character.getGameObject().getName();
+
 		// Mark generator destroyed
 		generator.setThisAttribute(Constants.DESTROYED);
-		RealmLogging.logMessage(character.getGameObject().getName(),"Destroyed the "+generator.getName()+"!");
-		
-		// Destroy ALL monster pods
+		RealmLogging.logMessage(killerName,"Destroyed the "+generator.getName()+"!");
+
 		GamePool pool = new GamePool(generator.getGameData().getGameObjects());
 		ArrayList<String> query = new ArrayList<>();
 		query.add(Constants.GENERATED);
 		query.add(Constants.GENERATOR_ID+"="+generator.getStringId());
 		query.add("!"+Constants.DEAD);
 		ArrayList<GameObject> list = pool.find(query);
-		if (!list.isEmpty()) {
-			RealmLogging.logMessage(character.getGameObject().getName(),list.size()+" generated monster"+(list.size()==1?"":"s")+" leave the realm.");
+
+		/*
+		 * REVENGE (EXP_GENERATED_MONSTER_BEHAVIOR):  the surviving monsters do NOT die with their
+		 * generator.  Instead the generator remembers who killed it, and from now on its pods hunt that
+		 * character across the map (see SetupCardUtility.getRevengeTarget()).  Note the caller has
+		 * already resolved a hireling/controlled killer to its owning character - see RealmUtility, "In
+		 * case killer is a hireling" - so this is the right character to blame.
+		 */
+		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(generator.getGameData());
+		boolean revenge = character!=null
+			&& hostPrefs!=null
+			&& hostPrefs.hasPref(Constants.EXP_GENERATED_MONSTER_BEHAVIOR);
+		if (revenge) {
+			generator.setThisAttribute(Constants.GENERATOR_DESTROYER,character.getGameObject().getStringId());
+			if (!list.isEmpty()) {
+				RealmLogging.logMessage(killerName,list.size()+" generated monster"+(list.size()==1?"":"s")
+					+" survive the "+generator.getName()+" and now hunt "+character.getGameObject().getName()+"!");
+			}
+		}
+		else if (!list.isEmpty()) {
+			// Destroy ALL monster pods
+			RealmLogging.logMessage(killerName,list.size()+" generated monster"+(list.size()==1?"":"s")+" leave the realm.");
 			for (GameObject go:list) {
 				RealmUtility.makeDead(RealmComponent.getRealmComponent(go));
 			}
 		}
-		
+
 		// Reward character
-		character.addFame(20);
-		character.addNotoriety(20);
+		if (character!=null) {
+			character.addFame(20);
+			character.addNotoriety(20);
+		}
 	}
 	
 	private static GameObject getCompanionFromItem(GameObject item) {
