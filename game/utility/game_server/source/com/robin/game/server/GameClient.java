@@ -364,20 +364,33 @@ public abstract class GameClient extends GameNet {
 				logger.info("GameClient "+clientName+": logged in");
 				// Send name information
 				doRequest(new RequestObject(SUBMIT_LOGIN));
-				try {
-					connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); }
-				catch(SocketException ex) {
-					/* keep the login value */
-				}
+				/*
+				 * The socket keeps CLIENT_LOGIN_TIMEOUT_MS a little longer - see the first request in
+				 * the loop below.  SUBMIT_LOGIN itself only trades a name, an IP and an accept/refuse;
+				 * the masterData-to-gameData catch-up that the long timeout exists for arrives on the
+				 * FIRST request of the main loop, so restoring the default here left that read - by far
+				 * the largest one a client ever makes - guarded by DEFAULT_TIMEOUT_MS.
+				 */
 				connected = true;
 				
 				fireStateChanged();
 				
 				// Now, loop through queue
 				logger.info("GameClient "+clientName+": main loop started");
+				boolean initialSyncDone = false;
 				while(!timeToLeave()) {
 					doRequest(getNextInQueue());
-					
+					if (!initialSyncDone) {
+						// The catch-up read is done, so ordinary play can go back to the short timeout -
+						// that is what lets either end notice a dead connection promptly.
+						initialSyncDone = true;
+						try {
+							connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); }
+						catch(SocketException ex) {
+							/* keep the login value */
+						}
+					}
+
 					// Process any other requests in the queue, if there are any
 					while(requestQueue.size()>0) {
 						doRequest(getNextInQueue());
