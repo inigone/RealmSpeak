@@ -1,5 +1,6 @@
 package com.robin.game.server;
 
+import java.io.IOException;
 import java.net.*;
 
 public class GameConnector extends Thread {
@@ -40,6 +41,18 @@ public class GameConnector extends Thread {
 			ex.printStackTrace();
 		}
 	}
+	/**
+	 * Close a socket we accepted but never handed to the host.  Anything thrown here is by definition
+	 * uninteresting - the connection is already going away, and losing the file descriptor is the only
+	 * outcome worth avoiding.
+	 */
+	private static void closeQuietly(Socket socket) {
+		try {
+			socket.close();
+		}
+		catch(IOException ignored) {
+		}
+	}
 	public void run() {
 		try {
 			listener = new ServerSocket(port);
@@ -58,7 +71,11 @@ public class GameConnector extends Thread {
 					catch(SocketException ex) {
 						System.err.println("Unable to accept connection from "+connection.getInetAddress()+".  Stack trace follows:");
 						ex.printStackTrace();
+						closeQuietly(connection); // never handed to the host, so nothing else will ever close it
 					}
+				}
+				else {
+					closeQuietly(connection); // shutting down: kill() opens a socket purely to break out of accept()
 				}
 			}
 			listener.close();
