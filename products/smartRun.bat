@@ -1,4 +1,4 @@
 call FindJavaHome.bat
 set path=%JAVA_HOME%;%path%
 set J2D_D3D=false
-@start javaw -mx512m -cp mail.jar;activation.jar;RealmSpeakFull.jar com.robin.magic_realm.RealmSpeak.RealmSpeakFrame %1
+@start javaw -Xms1g -Xmx4g -cp mail.jar;activation.jar;RealmSpeakFull.jar com.robin.magic_realm.RealmSpeak.RealmSpeakFrame %1
