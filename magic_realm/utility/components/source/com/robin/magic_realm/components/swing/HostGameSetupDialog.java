@@ -1286,7 +1286,6 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_SMALL_MONSTERS,"SMALL MONSTERS - Small monsters (Frog, Squirrel, Bird) don't block characters.",false));
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE2_RED_SPECIAL_SHELTER,"EXTRA SHELTERS - The Lost City and Lost Castle chits count as shelters, for purposes of sheltered phases and weather.",false));
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_SNOW_HIDE_EXCLUDE_CAVES,"SNOW HIDING IN CAVES - Ignore special weather conditions that prevent hiding due to snow or soft ground, when you perform the HIDE activity in a cave.",false));
-		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_CHARACTERLIST_SORTING_BY_PLAY_ORDER, "SORT CHARACTER LISTY BY PLAY ORDER - Sort the character list by the play order. This reveals some information.",false));
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_TRAVELERS_MOVE_ONCE_PER_DAY, "TRAVELERS MOVE ONCE PER DAY - Travelers can only move once per day.",false));
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_GENERATED_MONSTERS_MOVE_ONCE_PER_DAY, "GENERATED MONSTERS MOVE ONCE PER DAY - Generated monsters can only move once per day.",false));
 		newOptionPane.addOption(HOUSE_RULES_TAB,new GameOption(Constants.HOUSE3_TRAVELERS_MOVE_AT_EVENING, "TRAVELERS MOVE AT EVENING - Travelers move only once at Evening.",false));
