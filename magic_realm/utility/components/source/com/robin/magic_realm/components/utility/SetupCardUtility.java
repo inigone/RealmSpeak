@@ -134,57 +134,12 @@ public class SetupCardUtility {
 			}
 		});
 		
-		// Expansion:  handle generated monsters
-		ArrayList<GameObject> nonCurrentTileProwlers = new ArrayList<>();
-		ArrayList<String> generatedQuery = new ArrayList<>();
-		generatedQuery.add(Constants.GENERATED);
-		generatedQuery.add("!"+Constants.DEAD);
-		for (GameObject go:pool.find(generatedQuery)) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			
-			if (!prowlingMonsters.contains(go)) {
-				nonCurrentTileProwlers.add(go);
-			}
-		}
-		
-		// Expansion:  handle visible travelers
-		ArrayList<GameObject> travelers = new ArrayList<>();
-		ArrayList<String> travelerQuery = new ArrayList<>();
-		travelerQuery.add(RealmComponent.TRAVELER);
-		travelerQuery.add(Constants.SPAWNED);
-		travelerQuery.add("!"+RealmComponent.OWNER_ID);
-		for (GameObject go:pool.find(travelerQuery)) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			travelers.add(go);
-		}
-		
+		// Generated monsters and visible travelers used to propagate from here, once per end of
+		// character turn.  They now move exactly once a day, in runDailyGeneratorPhase(), so nothing
+		// happens here - summoning below is unaffected.  The queries that collected them went with it.
+
 		// Now the process can begin
-		
-		// Expansion:  move the generated prowlers
-		for (GameObject prowler:nonCurrentTileProwlers) {
-			if (hostPrefs.hasPref(Constants.HOUSE3_GENERATED_MONSTERS_MOVE_AT_EVENING)) {
-				prowler.setThisAttribute(Constants.GENERATED_MONSTER_MOVE_AT_EVENING);
-			} else {
-				MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(prowler);
-				moveGeneratedMonster(monster, hostPrefs);
-				if (monster.getCurrentLocation().isInClearing()) {
-					updateMonsterBlock(monster);
-				}
-			}
-		}
-		
-		// Expansion:  move the travelers
-		for (GameObject go:travelers) {
-			if (hostPrefs.hasPref(Constants.HOUSE3_TRAVELERS_MOVE_AT_EVENING)) {
-				go.setThisAttribute(Constants.TRAVELER_MOVE_AT_EVENING);
-			} else {
-				TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
-				moveTraveler(traveler,hostPrefs);
-			}
-		}
-		
+
 		// Before anything can be summoned, all prowling monsters on the tile need to be moved to the clearing,
 		for (GameObject prowler : prowlingMonsters) {
 			// Verify that the clearing changes, if not, then NO BLOCKING OCCURS!!
@@ -264,21 +219,12 @@ public class SetupCardUtility {
 		
 		ArrayList<GameObject> newMonsters = new ArrayList<>();
 		
-		// Expansion: Generate monsters from SEEN generators 
-		for (GameObject go:pool.find("seen,generator,!destroyed")) {
-			if (go.getThisInt("monster_die")!=monsterDie && go.getThisInt("monster_die2")!=monsterDie && (nativeDie==-1 || (nativeDie!=-1 && go.getThisInt("native_die")!=nativeDie && go.getThisInt("native_die2")!=nativeDie))) continue;
-			if(!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
-			
-			StateChitComponent rc = (StateChitComponent)RealmComponent.getRealmComponent(go);
-			if (!rc.hasSummonedToday(monsterDie)) { // Even generators only summon once per day
-				TileLocation genTl = ClearingUtility.getTileLocation(go);
-				if (genTl!= null) {
-					newMonsters.addAll(generateMonsters(go,genTl.clearing));
-					rc.addSummonedToday(monsterDie);
-				}
-			}
-		}
-		
+		// Expansion: generators used to spawn from here, on the first end of character turn whose
+		// monster die matched.  They now spawn in runDailyGeneratorPhase(), AFTER the day's propagation,
+		// so a monster created today stays at its generator instead of wandering off the moment it
+		// appears.  Leaving this loop in place as well would spawn every generator twice a day - the
+		// hasSummonedToday() guard here and the daily phase know nothing about each other.
+
 		if (includeSiteChits) {
 			String tileType = tl.tile.getTileType();
 			// Cycle through treasure locations and summon their guardians (if any)
@@ -529,57 +475,404 @@ public class SetupCardUtility {
 		}
 		return count;
 	}
-	public static void moveGeneratedMonster(MonsterChitComponent monster, HostPrefWrapper hostPrefs) {
-		if (monster.getGameObject().hasThisAttribute(Constants.GENERATED_MONSTER_MOVED)) {
-			return;
+	private static int countCharacters(ArrayList<RealmComponent> components) {
+		int count = 0;
+		for (RealmComponent rc:components) {
+			if (rc.isCharacter()) count++;
 		}
+		return count;
+	}
+	private static int countGeneratedMonsters(ArrayList<RealmComponent> components) {
+		int count = 0;
+		for (RealmComponent rc:components) {
+			if (rc.getGameObject().hasThisAttribute(Constants.GENERATED)) count++;
+		}
+		return count;
+	}
+	/**
+	 * One place a monster could go, with everything needed to score it, pick it and explain it.
+	 * Exactly one of tile/clearing is set, matching the branch that built it.
+	 */
+	private static class MoveOption {
+		TileComponent tile;
+		ClearingDetail clearing;
+		int dfh;          // distance from the generator - clearings walking, tiles flying
+		int characters;   // characters present, plus roadway characters attributable here
+		int generated;    // generated monsters already present
+		boolean hold;     // this is where the monster already stands
+		boolean farther;  // at or beyond the monster's own distance from home
+		int ruleScore;    // written-rules score
+		double weight;    // by-chance weight
+		double odds;      // by-chance odds as a percentage, filled once the total is known
+	}
+	/** Written rules: dfh + 40c - 2g, unchanged from upstream.  Highest wins. */
+	private static int ruleScore(int dfh,int characters,int generated) {
+		return dfh + 2*(20*characters - generated);
+	}
+	/**
+	 * By chance: build the odds the host asked for, rather than a score.
+	 * <p>
+	 * With nobody about, propagation runs <b>70% farther from the generator, 20% stay put, 10% closer</b>.
+	 * Each category's share is split EVENLY among its members, so those three numbers hold however the
+	 * map branches - give every candidate a flat weight instead and a monster with five ways outward
+	 * drifts to 90% farther.  A clearing the same distance out counts as farther: a lateral move is not
+	 * a retreat.
+	 * <p>
+	 * A character does not add a share, it multiplies the weight the candidate already has, by 5 each -
+	 * one character makes a spot five times as likely as the same spot empty, two make it twenty-five
+	 * times.  Roadway characters multiply identically.  Generated monsters already present divide the
+	 * weight by (1 + g/4), so ten of them cut a candidate to about a third rather than ruling it out.
+	 */
+	private static void applyChanceWeights(ArrayList<MoveOption> options) {
+		int fartherCount = 0;
+		int closerCount = 0;
+		for (MoveOption option:options) {
+			if (option.hold) continue;
+			if (option.farther) fartherCount++;
+			else closerCount++;
+		}
+		for (MoveOption option:options) {
+			double share;
+			if (option.hold) share = 20.0;
+			else if (option.farther) share = fartherCount>0?70.0/fartherCount:0.0;
+			else share = closerCount>0?10.0/closerCount:0.0;
+			double weight = share;
+			for (int i=0;i<option.characters;i++) {
+				weight *= 5.0;
+			}
+			weight /= (1.0 + option.generated/4.0);
+			option.weight = weight;
+		}
+	}
+	/**
+	 * Pick one option and return its index.  Written rules take the best score, ties broken at random.
+	 * By chance draws in proportion to the weights built by applyChanceWeights().
+	 */
+	private static int choose(ArrayList<MoveOption> options,boolean byChance) {
+		if (options.isEmpty()) return -1;
+		if (!byChance) {
+			int best = Integer.MIN_VALUE;
+			ArrayList<Integer> tied = new ArrayList<>();
+			for (int i=0;i<options.size();i++) {
+				int score = options.get(i).ruleScore;
+				if (score>best) {
+					best = score;
+					tied.clear();
+					tied.add(i);
+				}
+				else if (score==best) {
+					tied.add(i);
+				}
+			}
+			return tied.get(RandomNumber.getRandom(tied.size()));
+		}
+		applyChanceWeights(options);
+		double total = 0.0;
+		for (MoveOption option:options) {
+			total += option.weight;
+		}
+		for (MoveOption option:options) {
+			option.odds = total>0.0?100.0*option.weight/total:0.0;
+		}
+		if (total<=0.0) return RandomNumber.getRandom(options.size());
+		// getRandom(n) yields 0..n-1; scale that into the weight total.
+		double roll = RandomNumber.getRandom(1000000)/1000000.0*total;
+		double running = 0.0;
+		for (int i=0;i<options.size();i++) {
+			running += options.get(i).weight;
+			if (roll<running) return i;
+		}
+		return options.size()-1;
+	}
+	/**
+	 * The odds every option was given, one per line.  Only meaningful once choose() has run with
+	 * byChance - that is what fills in the weights and odds.
+	 * <p>
+	 * What drove those odds is NOT spelled out per line: the report would be unreadable, and the same
+	 * handful of rules is behind every line anyway.  They are explained once, in prose, behind the
+	 * report's About button - see getPropagationAboutText().
+	 */
+	private static String describeOdds(ArrayList<MoveOption> options,MonsterChitComponent monster) {
+		StringBuilder sb = new StringBuilder();
+		for (MoveOption option:options) {
+			String where = option.hold?"stay put"
+				:(option.clearing!=null
+					?(option.clearing.isEdge()?"off the board":String.valueOf(option.clearing.getTileLocation()))
+					:option.tile.getTileName());
+			sb.append(String.format("    %-24s %3.0f%%%n",where,option.odds));
+		}
+		DebugUtility.diag("[GMP]   odds "+monster.getGameObject().getName()+"\n"+sb);
+		return sb.toString();
+	}
+	/**
+	 * Plain-English explanation of how a generated monster picks where to go, for the About button on
+	 * the Daily Propagation report.  Written for a player mid-game, so it describes the pull of each
+	 * consideration and never the arithmetic - anyone wanting the actual weights has the odds column
+	 * in front of them, and the formulas live in applyChanceWeights() and ruleScore().
+	 * <p>
+	 * It reads the host's settings and describes only what is actually switched on, so a player is
+	 * never told about a rule this game is not using.  It is composed on the HOST and shipped to the
+	 * clients with the report, which is why it takes hostPrefs rather than reading them itself -
+	 * clients cannot see the host's preferences.
+	 */
+	public static String getPropagationAboutText(HostPrefWrapper hostPrefs) {
+		boolean byChance = hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE3_GM_MOVE_BY_CHANCE);
+		boolean individually = hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE3_GM_MOVE_INDIVIDUALLY);
+		boolean noRevenge = hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE3_GM_NO_REVENGE);
+		StringBuilder sb = new StringBuilder();
+		sb.append("Once each day, every generated monster already on the board considers where to go.\n");
+		sb.append("It weighs the place it is standing against each neighbouring place it could reach -\n");
+		sb.append("clearings if it walks, whole tiles if it flies.\n\n");
+
+		sb.append("WHAT PULLS A MONSTER\n\n");
+		sb.append("  Characters.  A character is far and away the strongest draw, and several\n");
+		sb.append("  characters together are stronger still - a party is much harder to ignore than a\n");
+		sb.append("  lone adventurer.  A character caught partway along a roadway is not safely between\n");
+		sb.append("  places: it draws from both ends of that road, so either end may come for it.\n\n");
+		sb.append("  Distance from its generator.  With nothing else to go on, a monster wanders\n");
+		sb.append("  outward.  Moving away from the lair that spawned it is what it prefers, holding\n");
+		sb.append("  position appeals less than that, and turning back toward its generator least of\n");
+		sb.append("  all.  A sideways move that keeps its distance counts as moving away - a\n");
+		sb.append("  monster only counts as retreating when it genuinely gets closer to home.\n\n");
+		sb.append("  Crowding.  Generated monsters already standing somewhere make it less appealing.\n");
+		sb.append("  This thins a swarm out across the map; it never rules a place out entirely.\n\n");
+		sb.append("  The board edge.  For a walking monster, leaving the realm is simply another way of\n");
+		sb.append("  moving outward.  One that takes it is gone from the game for good.\n\n");
+
+		sb.append("HOW THE CHOICE IS MADE\n\n");
+		if (byChance) {
+			sb.append("  This game has GENERATED MONSTERS MOVE BY CHANCE switched on, so the pulls above\n");
+			sb.append("  become odds rather than a verdict, and the report lists them.  The most tempting\n");
+			sb.append("  destination is the most likely one, not a certainty - you can work out where a\n");
+			sb.append("  monster will probably go, but never where it must go.\n\n");
+			sb.append("  Where several places are equally worth moving to, they share the chance of moving\n");
+			sb.append("  that way between them.  Having many ways outward does not make a monster more\n");
+			sb.append("  likely to head outward; it only spreads that likelihood among them.\n\n");
+		}
+		else {
+			sb.append("  This game follows the written rules: the most tempting destination simply wins,\n");
+			sb.append("  and a tie is broken at random.  Given the board, you can work out exactly where a\n");
+			sb.append("  monster will go.  (The host can switch on GENERATED MONSTERS MOVE BY CHANCE to\n");
+			sb.append("  turn that verdict into odds instead, and this report will then list them.)\n\n");
+		}
+		sb.append("  Staying put is always one of the choices, and a monster that stays put still grows.\n\n");
+
+		if (!individually) {
+			sb.append("  Monsters standing together move together, as a pod: they decide once and the whole\n");
+			sb.append("  group goes the same way.  (The host can switch on GENERATED MONSTERS MOVE\n");
+			sb.append("  INDIVIDUALLY to have each one choose for itself.)\n\n");
+		}
+		else {
+			sb.append("  Each monster chooses for itself, so a stack can split up.\n\n");
+		}
+		if (!noRevenge) {
+			sb.append("  A monster whose generator has been destroyed hunts the character responsible, and\n");
+			sb.append("  ignores everything above while it does.  It will not take any move that puts it\n");
+			sb.append("  further from its quarry, and it will not leave the board while the hunt is on.\n\n");
+		}
+
+		sb.append("Once every monster has moved, and only then, the generators spawn.  Anything created\n");
+		sb.append("today stays at its generator until tomorrow.");
+		return sb.toString();
+	}
+	/*
+	 * ROADWAY CHARACTERS
+	 *
+	 * A character partway along a roadway is invisible to the ordinary incentive scoring:
+	 * TileComponent.getRealmComponentsAt() skips anything carrying "otherClearing", so such a character
+	 * is counted in NEITHER clearing at the ends of its road, not merely one of them.  Left alone that
+	 * lets a character on a road predict exactly where a monster at one end will go, since nothing is
+	 * pulling it either way.
+	 *
+	 * The rule is the same at both scales: a roadway character counts ONCE for each container its road
+	 * touches.  A walking monster sees it in both clearings at the ends.  A flying monster sees it in
+	 * the one tile a within-tile road lies in, or in both tiles a road spanning a tile boundary
+	 * touches.  Fixed here rather than in getRealmComponentsAt(), which 44 other files rely on for
+	 * blocking, painting and combat.
+	 */
+	private static ArrayList<GameObject> getRoadwayCharacters(GameData data) {
+		ArrayList<GameObject> roadway = new ArrayList<>();
+		for (GameObject go:RealmObjectMaster.getRealmObjectMaster(data).getPlayerCharacterObjects()) {
+			if (!go.hasThisAttribute("otherClearing")) continue;
+			if (go.hasThisAttribute(Constants.DEAD)) continue;
+			RealmComponent rc = RealmComponent.getRealmComponent(go);
+			if (rc!=null && rc.isCharacter()) roadway.add(go);
+		}
+		return roadway;
+	}
+	/** Roadway characters whose road has one of its ends in this clearing.  Rule 2. */
+	private static int roadwayCharactersAtClearing(ArrayList<GameObject> roadwayCharacters,ClearingDetail clearing) {
+		if (clearing==null) return 0;
+		int count = 0;
+		for (GameObject go:roadwayCharacters) {
+			// isBetweenClearings() guarantees clearing, other and other.clearing are all present.
+			TileLocation tl = ClearingUtility.getTileLocation(go);
+			if (tl==null || !tl.isBetweenClearings()) continue;
+			if (clearing.equals(tl.clearing) || clearing.equals(tl.getOther().clearing)) count++;
+		}
+		return count;
+	}
+	/**
+	 * Roadway characters whose road touches this tile, counted ONCE however many of its ends are in it -
+	 * so a road within one tile counts its character once there (rule 3), and a road across a tile
+	 * boundary counts its character once in each of the two tiles (rule 4).
+	 */
+	private static int roadwayCharactersAtTile(ArrayList<GameObject> roadwayCharacters,TileComponent tile) {
+		if (tile==null) return 0;
+		GameObject tileGo = tile.getGameObject();
+		int count = 0;
+		for (GameObject go:roadwayCharacters) {
+			TileLocation tl = ClearingUtility.getTileLocation(go);
+			if (tl==null || !tl.isBetweenClearings()) continue;
+			// TileComponent does not override equals(), so these compare the underlying GameObjects.
+			if (tileGo.equals(tl.tile.getGameObject()) || tileGo.equals(tl.getOther().tile.getGameObject())) count++;
+		}
+		return count;
+	}
+	/**
+	 * A generated monster's chosen move, kept separate from carrying it out.  Choosing and applying are
+	 * split so that a pod of monsters sharing a location can be scored ONCE and then all moved to the
+	 * same destination, instead of each fanning out on its own roll - see propagatePod().  Nothing else
+	 * about the scoring changes: a monster moved on its own goes through exactly the same two steps.
+	 */
+	public static class GeneratedMonsterMove {
+		public final TileLocation destination; // null when the monster leaves the board
+		public final boolean leavesBoard;
+		public final boolean holds;            // destination is where the monster already stands
+		public String odds;                    // per-option odds breakdown, null unless MOVE BY CHANCE
+		private GeneratedMonsterMove(TileLocation destination,boolean leavesBoard,boolean holds) {
+			this.destination = destination;
+			this.leavesBoard = leavesBoard;
+			this.holds = holds;
+		}
+		static GeneratedMonsterMove to(TileLocation destination) {
+			return new GeneratedMonsterMove(destination,false,false);
+		}
+		static GeneratedMonsterMove offBoard() {
+			return new GeneratedMonsterMove(null,true,false);
+		}
+		/**
+		 * The monster chose its own location.  Distinct from a null result - a monster that holds is
+		 * still present in its clearing and still grows; it simply is not relocated or reported.
+		 */
+		static GeneratedMonsterMove hold(TileLocation here) {
+			return new GeneratedMonsterMove(here,false,true);
+		}
+		GeneratedMonsterMove explain(String oddsText) {
+			this.odds = oddsText;
+			return this;
+		}
+	}
+	public static void moveGeneratedMonster(MonsterChitComponent monster, HostPrefWrapper hostPrefs) {
+		if (monster.isBlocked() || monster.getCurrentLocation()==null) return;
+		GeneratedMonsterMove move = chooseGeneratedMonsterMove(monster,hostPrefs);
+		if (move==null) return;
+		applyGeneratedMonsterMove(monster,move,hostPrefs);
+	}
+	/**
+	 * Score the monster's options and pick one, without changing any game state.  Returns null when
+	 * there is nowhere to go, or when the monster chooses to hold position.
+	 * <p>
+	 * <b>Scoring.</b>  Every candidate scores distance from the monster's generator plus twice its
+	 * interest - characters draw it in (+20 each), generated monsters already there push it away
+	 * (-1 each), and distance from home is what makes a monster with nothing better to do wander.
+	 * <p>
+	 * <b>Selection.</b>  By default the best score wins outright, ties broken at random - pickHighest(),
+	 * which is what the written rules say and so is the default.  With HOUSE3_GM_MOVE_BY_CHANCE on, the
+	 * scores instead become weights and one candidate is drawn in proportion - pickWeighted().  A
+	 * destination twice as attractive is then twice as likely rather than certain, so a character can
+	 * work out the odds on a monster's next move but never the answer.  That option is a deliberate
+	 * departure from the rules, which is why it is opt-in where the other generated-monster options are
+	 * opt-out.
+	 * <p>
+	 * On top of that base:
+	 * <ol>
+	 * <li><b>Holding position is always an option.</b>  The monster's current clearing (walking) or
+	 *     current tile (flying) is scored alongside the places it could move to, so a character
+	 *     standing where the monster already is counts for exactly as much as one in an adjacent
+	 *     clearing or tile.  Choosing it yields a holding move, NOT null: the monster is not relocated
+	 *     and nothing is reported, but it is still in its clearing and still grows.</li>
+	 * <li><b>A walking monster counts a roadway character in BOTH clearings</b> at the ends of that
+	 *     road, so a monster at either end is drawn to the road rather than ignoring it.
+	 *     <p>
+	 *     Note this does NOT make holding and walking the road equally likely, under either selection.
+	 *     Written rules: the character's bonus lands on both ends and cancels, so distance from the
+	 *     generator decides and a character can read the answer off the board.  By chance: both ends
+	 *     are multiplied by 5 alike, but holding draws on the 20% share while the far end draws on the
+	 *     70% one, so following the road stays the likelier of the two - uncertain, not even.  Making
+	 *     them genuinely even would mean giving a roadway character its own share rather than a
+	 *     multiplier.</li>
+	 * <li><b>A flying monster counts a within-tile roadway character once, in that tile.</b></li>
+	 * <li><b>A flying monster counts a roadway character whose road crosses a tile boundary once in
+	 *     each of the two tiles</b> the road touches.</li>
+	 * </ol>
+	 * Rules 2 to 4 are one rule at two scales: a roadway character counts once for each container its
+	 * road touches.  Without them such a character is invisible to scoring entirely - see the note on
+	 * getRoadwayCharacters().  All of this only bites when nothing else competes; an ordinary character
+	 * standing in a clearing contributes through the normal incentive and breaks the tie.
+	 * <p>
+	 * The eligibility guards live in the CALLER, not here - moveGeneratedMonster() checks isBlocked()
+	 * and a null location before asking, and propagatePod() checks every pod member.  Anything else
+	 * that calls this directly has to do the same; scoring a blocked monster will happily return a
+	 * destination it is not allowed to use.
+	 */
+	public static GeneratedMonsterMove chooseGeneratedMonsterMove(MonsterChitComponent monster,HostPrefWrapper hostPrefs) {
 		GameObject generator = monster.getGameObject().getGameData().getGameObject(monster.getGameObject().getThisInt(Constants.GENERATOR_ID));
 		TileLocation home = ClearingUtility.getTileLocation(generator);
 		TileLocation current = monster.getCurrentLocation();
-		if (monster.isBlocked() || current==null) return;
 		TileLocation revengeLocation = null;
 		int distanceFromTarget = 0;
 		if (monster.getGameObject().hasThisAttribute(Constants.REVENGE)) {
 			GameObject target = monster.getGameObject().getGameData().getGameObject(new Long(monster.getGameObject().getThisAttribute(Constants.REVENGE)));
 			revengeLocation = ClearingUtility.getTileLocation(target);
 		}
-		int furthest = Integer.MIN_VALUE;
+		ArrayList<GameObject> roadwayCharacters = getRoadwayCharacters(monster.getGameObject().getGameData());
+		boolean byChance = hostPrefs!=null && hostPrefs.hasPref(Constants.HOUSE3_GM_MOVE_BY_CHANCE);
 		if (monster.flies()) {
 			if (revengeLocation!=null) {
 				distanceFromTarget = ClearingUtility.getDistanceBetweenTiles(current.tile,revengeLocation.tile);
 			}
-			
-			// Find tiles to move to
-			HashLists<Integer,TileComponent> choices = new HashLists<>();
-			for (TileComponent adj:current.tile.getAllAdjacentTiles()) {
+
+			// Find tiles to move to.  The tile it is already in is one of them - a monster with nothing
+			// worth moving towards is entitled to hold position, and a character standing where it is
+			// should weigh the same as one in an adjacent tile.
+			int currentDfh = ClearingUtility.getDistanceBetweenTiles(current.tile,home.tile);
+			ArrayList<MoveOption> options = new ArrayList<>();
+			ArrayList<TileComponent> tileOptions = new ArrayList<>();
+			tileOptions.add(current.tile);
+			tileOptions.addAll(current.tile.getAllAdjacentTiles());
+			for (TileComponent adj:tileOptions) {
 				int distanceFromHome = ClearingUtility.getDistanceBetweenTiles(adj,home.tile);
 				if (revengeLocation!=null) {
 					int newDistanceFromTarget = ClearingUtility.getDistanceBetweenTiles(adj,revengeLocation.tile);
 					if (newDistanceFromTarget>distanceFromTarget) continue;
 				}
-				
-				// if tile has characters in it, make it MORE interesting
-				int interest = calculateIncentive(adj.getAllClearingComponents(),-1,20);
-				distanceFromHome += interest*2; // this makes character tiles MUCH more interesting than leaving the generator
-				
-				furthest = Math.max(furthest,distanceFromHome);
-				choices.put(distanceFromHome,adj);
-			}
-			
-			if (choices.isEmpty()) {
-				return;
+
+				ArrayList<RealmComponent> present = adj.getAllClearingComponents();
+				MoveOption option = new MoveOption();
+				option.tile = adj;
+				option.dfh = distanceFromHome;
+				option.characters = countCharacters(present)+roadwayCharactersAtTile(roadwayCharacters,adj);
+				option.generated = countGeneratedMonsters(present);
+				option.hold = adj.getGameObject().equals(current.tile.getGameObject());
+				option.farther = distanceFromHome>=currentDfh;
+				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
+				options.add(option);
 			}
 
-			// Randomly choose from furthest locations
-			ArrayList<TileComponent> finalChoices = choices.getList(furthest);
-			int r = RandomNumber.getRandom(finalChoices.size());
-			TileComponent finalTile = finalChoices.get(r);
-			TileLocation tl = new TileLocation(finalTile,true);
-			
-			ClearingUtility.moveToLocation(monster.getGameObject(),tl);
-			if (hostPrefs.hasPref(Constants.HOUSE3_GENERATED_MONSTERS_MOVE_ONCE_PER_DAY)) {
-				monster.getGameObject().setThisAttribute(Constants.GENERATED_MONSTER_MOVED);
+			if (options.isEmpty()) {
+				return null;
 			}
+
+			int pick = choose(options,byChance);
+			String oddsText = byChance?describeOdds(options,monster):null;
+			TileComponent finalTile = options.get(pick).tile;
+			// Compared by GameObject: TileComponent does not override equals(), so .equals() here would
+			// silently be an identity test.
+			if (finalTile.getGameObject().equals(current.tile.getGameObject())) {
+				return GeneratedMonsterMove.hold(current).explain(oddsText);
+			}
+			return GeneratedMonsterMove.to(new TileLocation(finalTile,true)).explain(oddsText);
 		}
 		else {
 			if (revengeLocation!=null) {
@@ -589,10 +882,53 @@ public class SetupCardUtility {
 					distanceFromTarget = ClearingUtility.calculateClearingCount(current,revengeLocation);
 				}
 			}
-			// Find clearing to move to
-			HashLists<Integer,ClearingDetail> choices = new HashLists<>();
-			for (PathDetail path:current.clearing.getConnectedPaths()) {
-				ClearingDetail other = path.findConnection(current.clearing);
+			// Find clearing to move to.  The clearing it is already in is one of them - a monster with
+			// nothing worth moving towards is entitled to hold position, and a character standing where
+			// it is should weigh the same as one in an adjacent clearing.
+			int currentDfh = ClearingUtility.calculateClearingCount(home,current);
+			ArrayList<MoveOption> options = new ArrayList<>();
+			ArrayList<ClearingDetail> clearingOptions = new ArrayList<>();
+			clearingOptions.add(current.clearing);
+			ArrayList<PathDetail> connected = current.clearing.getConnectedPaths();
+			if (connected!=null) {
+				for (PathDetail path:connected) {
+					ClearingDetail other = path.findConnection(current.clearing);
+					if (other!=null && !clearingOptions.contains(other)) clearingOptions.add(other);
+				}
+			}
+			/*
+			 * Walking off the board is an ordinary option, scored like any other clearing - the monster
+			 * simply leaves the game.  It has to be collected separately: findConnections() resolves a
+			 * tile-edge path through to the adjacent tile's clearing and returns null when there is no
+			 * tile beyond, so a board edge is dropped from getConnectedPaths() entirely.  Map edges live
+			 * only in getConnectedMapEdges().  Without this a walking generated monster could never
+			 * leave, and the isEdge() test further down was unreachable.
+			 */
+			ArrayList<PathDetail> mapEdges = current.clearing.getConnectedMapEdges();
+			if (mapEdges!=null) {
+				for (PathDetail path:mapEdges) {
+					ClearingDetail edge = path.getEdgeClearing();
+					if (edge!=null && !clearingOptions.contains(edge)) clearingOptions.add(edge);
+				}
+			}
+			for (ClearingDetail other:clearingOptions) {
+				/*
+				 * A map edge is not a real place: it holds nothing, and asking for its distance from the
+				 * generator is meaningless.  Treat it as one step further out than wherever the monster
+				 * stands, so it lands in the "farther" group and competes as an ordinary way of moving
+				 * away from home.  A monster hunting a revenge target never takes it - walking off the
+				 * board cannot bring it closer to anyone.
+				 */
+				if (other.isEdge()) {
+					if (revengeLocation!=null) continue;
+					MoveOption edgeOption = new MoveOption();
+					edgeOption.clearing = other;
+					edgeOption.dfh = currentDfh+1;
+					edgeOption.farther = true;
+					edgeOption.ruleScore = ruleScore(currentDfh+1,0,0);
+					options.add(edgeOption);
+					continue;
+				}
 				int distanceFromHome = ClearingUtility.calculateClearingCount(home,other.getTileLocation()); // is this going to kill performance?
 				if (revengeLocation!=null) {
 					if (revengeLocation.clearing==null) {
@@ -604,41 +940,361 @@ public class SetupCardUtility {
 					}
 				}
 
-				// if clearing has characters in it, make it MORE interesting
-				int interest = calculateIncentive(other.getClearingComponents(),-1,20);
-				distanceFromHome += interest*2; // this makes character tiles more interesting than leaving the generator
-				
-				furthest = Math.max(furthest,distanceFromHome);
-				choices.put(distanceFromHome,other);
+				ArrayList<RealmComponent> present = other.getClearingComponents();
+				MoveOption option = new MoveOption();
+				option.clearing = other;
+				option.dfh = distanceFromHome;
+				option.characters = countCharacters(present)+roadwayCharactersAtClearing(roadwayCharacters,other);
+				option.generated = countGeneratedMonsters(present);
+				option.hold = other.equals(current.clearing);
+				option.farther = distanceFromHome>=currentDfh;
+				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
+				options.add(option);
 			}
 			
-			// Randomly choose from furthest locations
-			ArrayList<ClearingDetail> finalChoices = choices.getList(furthest);
-			int r = RandomNumber.getRandom(finalChoices.size());
-			ClearingDetail finalClearing = finalChoices.get(r);
-			if (finalClearing.isEdge()) {
-				RealmUtility.makeDead(monster); // the monster leaves the board
+			// A revenge monster that has caught up with its target can filter out every candidate here -
+			// each neighbour is further from the target than where it already stands - leaving nothing
+			// to choose from.
+			if (options.isEmpty()) {
+				return null;
 			}
-			else {
-				TileLocation tl = finalClearing.getTileLocation();
-				ClearingUtility.moveToLocation(monster.getGameObject(),tl);
-				if (hostPrefs.hasPref(Constants.HOUSE3_GENERATED_MONSTERS_MOVE_ONCE_PER_DAY)) {
-					monster.getGameObject().setThisAttribute(Constants.GENERATED_MONSTER_MOVED);
+
+			int pick = choose(options,byChance);
+			String oddsText = byChance?describeOdds(options,monster):null;
+			ClearingDetail finalClearing = options.get(pick).clearing;
+			// Checked BEFORE isEdge(), or a monster standing in an edge clearing would walk off the
+			// board for choosing to stay put.
+			if (finalClearing.equals(current.clearing)) {
+				return GeneratedMonsterMove.hold(current).explain(oddsText);
+			}
+			if (finalClearing.isEdge()) {
+				return GeneratedMonsterMove.offBoard().explain(oddsText);
+			}
+			return GeneratedMonsterMove.to(finalClearing.getTileLocation()).explain(oddsText);
+		}
+	}
+	/**
+	 * Carry out a move chosen by chooseGeneratedMonsterMove().  Applied per monster, so every member of
+	 * a pod gets its own MOVED stamp and its own MonsterGrow roll while sharing one destination.
+	 */
+	public static void applyGeneratedMonsterMove(MonsterChitComponent monster,GeneratedMonsterMove move,HostPrefWrapper hostPrefs) {
+		if (move.leavesBoard) {
+			RealmUtility.makeDead(monster); // the monster leaves the board
+			return;
+		}
+		// A monster that holds is already where it belongs; relocating it would emit a pointless change
+		// to every client.  It still falls through to MonsterGrow below - staying put does not stop a
+		// monster growing.
+		if (!move.holds) {
+			ClearingUtility.moveToLocation(monster.getGameObject(),move.destination);
+		}
+		// MonsterGrow was reached only from the walking branch before the split.  A flying monster's
+		// destination is a tile-only TileLocation, so testing for a clearing keeps that exactly.
+		if (move.destination.isInClearing() && monster.getGameObject().hasThisAttribute(Constants.GM_GROW)) {
+			MonsterGrow table = new MonsterGrow(null,null,monster);
+			DieRollBuilder builder = new DieRollBuilder(null,null,0);
+			DieRoller roller = builder.createRoller(table.getTableKey(),move.destination);
+			RealmLogging.logMessage("host",table.apply(null,roller));
+		}
+	}
+	/**
+	 * The whole daylight-start generator phase: every generated monster and visible traveler already on
+	 * the board propagates ONCE, and only then do the generators spawn - so a monster created today
+	 * sits at its generator for the rest of the day instead of immediately wandering off.
+	 * <p>
+	 * Returns a human-readable summary for broadcasting, or null when nothing happened.
+	 */
+	public static String runDailyGeneratorPhase(HostPrefWrapper hostPrefs,GameData data,DieRoller monsterDieRoller,DieRoller nativeDieRoller) {
+		if (hostPrefs.getDisableSummoning() || DebugUtility.isNoSummon()) return null;
+		if (monsterDieRoller==null || monsterDieRoller.getNumberOfDice()==0) return null;
+		if (nativeDieRoller!=null && nativeDieRoller.getNumberOfDice()==0) {
+			nativeDieRoller = null; // not a Super Realm game - the caller's roller was never rolled
+		}
+
+		/*
+		 * Resolve the (monsterDie, nativeDie, boardNumber) set ONCE, so propagation can run to
+		 * completion across every die before any generator spawns.  Interleaving them per-die would
+		 * let a monster spawned for die A propagate on die B in the same daylight.
+		 */
+		ArrayList<int[]> dice = new ArrayList<>();
+		ArrayList<String> boards = new ArrayList<>();
+		if (!hostPrefs.getMultiBoardEnabled() || !hostPrefs.hasPref(Constants.EXP_MONSTER_DIE_PER_SET)) {
+			dice.add(new int[]{monsterDieRoller.getValue(0),nativeDieRoller==null?-1:nativeDieRoller.getValue(0)});
+			boards.add(null);
+			if (hostPrefs.hasPref(Constants.EXP_DOUBLE_MONSTER_DIE) && monsterDieRoller.getNumberOfDice()>1) {
+				dice.add(new int[]{monsterDieRoller.getValue(1),nativeDieRoller==null||nativeDieRoller.getNumberOfDice()<2?-1:nativeDieRoller.getValue(1)});
+				boards.add(null);
+			}
+		}
+		else {
+			int diceRolled = monsterDieRoller.getNumberOfDice();
+			int dicePerBoard = hostPrefs.hasPref(Constants.EXP_DOUBLE_MONSTER_DIE)?2:1;
+			for (int i=0;i<diceRolled/dicePerBoard;i++) {
+				String boardNumber = i>0?Constants.MULTI_BOARD_APPENDS.substring(i-1,i):"";
+				for (int n=0;n<dicePerBoard;n++) {
+					int die = dicePerBoard*i+n;
+					dice.add(new int[]{monsterDieRoller.getValue(die),nativeDieRoller==null||nativeDieRoller.getNumberOfDice()<=die?-1:nativeDieRoller.getValue(die)});
+					boards.add(boardNumber);
 				}
-				
-				if (monster.getGameObject().hasThisAttribute(Constants.GM_GROW)) {
-					MonsterGrow table = new MonsterGrow(null,null,monster);
-					DieRollBuilder builder = new DieRollBuilder(null,null,0);
-					DieRoller roller = builder.createRoller(table.getTableKey(),tl);
-					RealmLogging.logMessage("host",table.apply(null,roller));
-				}
+			}
+		}
+
+		// PASS 1 - propagate everything already on the board.  A chit matching two rolled die values
+		// still moves only once: alreadyMoved is carried across every die/board pass.
+		ArrayList<GameObject> alreadyMoved = new ArrayList<>();
+		ArrayList<String> propagated = new ArrayList<>();
+		for (int i=0;i<dice.size();i++) {
+			propagateGeneratedMonsters(hostPrefs,data,alreadyMoved,propagated,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
+		}
+
+		// PASS 2 - THEN the generators spawn.  Everything created here appears after propagation is
+		// finished, so a newly spawned monster sits at its generator for the rest of the day.
+		ArrayList<GameObject> alreadyGenerated = new ArrayList<>();
+		ArrayList<String> spawned = new ArrayList<>();
+		for (int i=0;i<dice.size();i++) {
+			generateFromGenerators(data,alreadyGenerated,spawned,dice.get(i)[0],boards.get(i),dice.get(i)[1]);
+		}
+
+		return buildDailyGeneratorReport(propagated,spawned);
+	}
+	private static boolean matchesPropagationDie(GameObject go,int monsterDie,int nativeDie) {
+		if (go.getThisInt("monster_die")==monsterDie || go.getThisInt("monster_die2")==monsterDie) return true;
+		if (nativeDie==-1) return false;
+		return go.getThisInt("native_die")==nativeDie || go.getThisInt("native_die2")==nativeDie;
+	}
+	private static void propagateGeneratedMonsters(HostPrefWrapper hostPrefs,GameData data,ArrayList<GameObject> alreadyMoved,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
+		GamePool pool = new GamePool(data.getGameObjects());
+
+		ArrayList<String> generatedQuery = new ArrayList<>();
+		generatedQuery.add(Constants.GENERATED);
+		generatedQuery.add("!"+Constants.DEAD);
+		ArrayList<GameObject> candidates = new ArrayList<>();
+		for (GameObject go:pool.find(generatedQuery)) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyMoved.contains(go)) continue;
+			alreadyMoved.add(go);
+			candidates.add(go);
+		}
+		for (ArrayList<GameObject> pod:buildPropagationPods(hostPrefs,candidates)) {
+			/*
+			 * This pass runs on the HOST, inside GameServer.processNextRequest -> GameHost.applyChanges.
+			 * An exception escaping here kills the GameServer thread outright: every client then sees
+			 * EOFException, their GameClient thread dies, and the whole game hangs with no error shown.
+			 * One misbehaving chit must not be able to do that, so failures are contained per pod.
+			 */
+			try {
+				propagatePod(pod,report,hostPrefs);
+			}
+			catch(Exception ex) {
+				String podName = getPodName(pod);
+				RealmLogging.logMessage("host","Daily Propagation: could not move "+podName
+					+" ("+ex+") - "+(pod.size()==1?"it stays":"they stay")+" put.");
+				DebugUtility.diag("[GMP]   ERROR moving "+podName+": "+ex);
+				ex.printStackTrace();
+				continue;
+			}
+		}
+
+		ArrayList<String> travelerQuery = new ArrayList<>();
+		travelerQuery.add(RealmComponent.TRAVELER);
+		travelerQuery.add(Constants.SPAWNED);
+		travelerQuery.add("!"+RealmComponent.OWNER_ID);
+		for (GameObject go:pool.find(travelerQuery)) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyMoved.contains(go)) continue;
+			alreadyMoved.add(go);
+
+			TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
+			TileLocation before = traveler.getCurrentLocation();
+			moveTraveler(traveler,hostPrefs);
+			TileLocation current = traveler.getCurrentLocation();
+			// Travelers still propagate, but deliberately stay OUT of the player-facing report -
+			// that dialog is about the generated monsters.  Traced here instead.
+			if (before!=null && current!=null && !before.equals(current)) {
+				DebugUtility.diag("[GMP]   MOVE(traveler) "+go.getName()+"#"+go.getStringId()+" "+before+" -> "+current);
 			}
 		}
 	}
-	public static void moveTraveler(TravelerChitComponent traveler, HostPrefWrapper hostPrefs) {
-		if (traveler.getGameObject().hasThisAttribute(Constants.TRAVELER_MOVED)) {
-			return;
+	/**
+	 * Monsters of one generator flavour standing in one location move as a pod - scored once, sent to
+	 * one destination - rather than each rolling separately and fanning out.
+	 */
+	private static String getPodType(GameObject go) {
+		GameObject generator = go.getGameData().getGameObject(go.getThisInt(Constants.GENERATOR_ID));
+		String iconType = generator==null?null:generator.getThisAttribute("icon_type");
+		return iconType!=null?("gen:"+iconType):("name:"+go.getName());
+	}
+	private static ArrayList<ArrayList<GameObject>> buildPropagationPods(HostPrefWrapper hostPrefs,ArrayList<GameObject> candidates) {
+		ArrayList<ArrayList<GameObject>> pods = new ArrayList<>();
+		// Opting out of pods just means every pod holds exactly one monster, so the loop below stays the
+		// per-monster loop it would otherwise be and nothing downstream needs to know the difference.
+		boolean podsEnabled = hostPrefs==null || !hostPrefs.hasPref(Constants.HOUSE3_GM_MOVE_INDIVIDUALLY);
+		ArrayList<TileLocation> podLocations = new ArrayList<>(); // parallel to pods; null entries never match
+		ArrayList<String> podTypes = new ArrayList<>();           // parallel to pods
+		for (GameObject go:candidates) {
+			TileLocation tl = podsEnabled?ClearingUtility.getTileLocation(go):null;
+			String type = podsEnabled?getPodType(go):null;
+			int found = -1;
+			if (tl!=null) {
+				for (int i=0;i<pods.size();i++) {
+					TileLocation other = podLocations.get(i);
+					// Deliberately matched with TileLocation.equals() rather than a string key: tile names
+					// are not unique once multiple boards are in play.
+					if (other!=null && other.equals(tl) && type.equals(podTypes.get(i))) {
+						found = i;
+						break;
+					}
+				}
+			}
+			if (found>=0) {
+				pods.get(found).add(go);
+			}
+			else {
+				ArrayList<GameObject> pod = new ArrayList<>();
+				pod.add(go);
+				pods.add(pod);
+				podLocations.add(tl); // null for a monster with no location - it can never pod up, and
+									  // propagatePod() drops it exactly as a lone monster always was
+				podTypes.add(type);
+			}
 		}
+		return pods;
+	}
+	private static String getPodName(ArrayList<GameObject> pod) {
+		GameObject first = pod.get(0);
+		if (pod.size()==1) return first.getName(); // reads exactly as a lone monster always did
+		boolean uniform = true;
+		for (GameObject go:pod) {
+			if (!go.getName().equals(first.getName())) {
+				uniform = false;
+				break;
+			}
+		}
+		if (uniform) return pod.size()+" "+first.getName()+"s";
+		GameObject generator = first.getGameData().getGameObject(first.getThisInt(Constants.GENERATOR_ID));
+		return pod.size()+" "+(generator!=null?generator.getName()+" monsters":"generated monsters");
+	}
+	private static String getRevengeSuffix(GameObject monster) {
+		if (!monster.hasThisAttribute(Constants.REVENGE)) return "";
+		GameObject target;
+		try {
+			target = monster.getGameData().getGameObject(Long.valueOf(monster.getThisAttribute(Constants.REVENGE)));
+		}
+		catch(NumberFormatException ex) { // a malformed stamp must not break the report
+			return "";
+		}
+		return target==null?"":(" (hunting "+target.getName()+")");
+	}
+	private static void propagatePod(ArrayList<GameObject> pod,ArrayList<String> report,HostPrefWrapper hostPrefs) {
+		MonsterChitComponent leader = (MonsterChitComponent)RealmComponent.getRealmComponent(pod.get(0));
+		String podName = getPodName(pod);
+		/*
+		 * chooseGeneratedMonsterMove() screens nothing itself - see its javadoc - so the eligibility
+		 * guards moveGeneratedMonster() applies have to be applied here as well.  A pod holds ENTIRELY
+		 * if ANY member is blocked; letting the rest walk off would defeat the point of moving as one.
+		 */
+		for (GameObject go:pod) {
+			MonsterChitComponent member = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
+			if (member.isBlocked()) {
+				DebugUtility.diag("[GMP] pod HOLDS "+podName+" at "+leader.getCurrentLocation()
+					+" - "+go.getName()+"#"+go.getStringId()+" is blocked (cleared only at day end)");
+				return;
+			}
+		}
+		TileLocation before = leader.getCurrentLocation();
+		if (before==null) return;
+		GeneratedMonsterMove move = chooseGeneratedMonsterMove(leader,hostPrefs);
+		if (move==null) return;
+		for (GameObject go:pod) {
+			MonsterChitComponent member = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
+			applyGeneratedMonsterMove(member,move,hostPrefs);
+			TileLocation current = member.getCurrentLocation();
+			if (current!=null && current.isInClearing()) { // null once the monster has walked off a map edge
+				updateMonsterBlock(member);
+			}
+		}
+		if (report!=null) {
+			// Only report pods that actually went somewhere - held and blocked ones stay silent.
+			// Every outcome is reported when the odds are on show, holds included - the point of the
+			// breakdown is seeing what the monster COULD have done, which a silent hold hides.
+			String line = null;
+			if (move.leavesBoard) {
+				line = podName+" left the map from "+before;
+			}
+			else if (move.holds) {
+				if (move.odds!=null) line = podName+getRevengeSuffix(pod.get(0))+" stayed at "+before;
+			}
+			else if (move.destination!=null && !before.equals(move.destination)) {
+				line = podName+getRevengeSuffix(pod.get(0))+": "+before+" -> "+move.destination;
+			}
+			if (line!=null) {
+				report.add(move.odds==null?line:(line+"\n"+move.odds.replaceAll("\\s+$","")));
+			}
+		}
+	}
+	private static void generateFromGenerators(GameData data,ArrayList<GameObject> alreadyGenerated,ArrayList<String> report,int monsterDie,String boardNumber,int nativeDie) {
+		GamePool pool = new GamePool(data.getGameObjects());
+		ArrayList<GameObject> newMonsters = new ArrayList<>();
+		for (GameObject go:pool.find("seen,generator,!destroyed")) {
+			if (!matchesPropagationDie(go,monsterDie,nativeDie)) continue;
+			if (!GameObjectMatchesBoardNumber(go,boardNumber)) continue;
+			if (alreadyGenerated.contains(go)) continue;
+			alreadyGenerated.add(go);
+
+			TileLocation genTl = ClearingUtility.getTileLocation(go);
+			if (genTl!=null) {
+				// Keep the once-a-day marker truthful even though the daily phase is now the only thing
+				// that spawns generators - it is what every other summoning path tests, and leaving it
+				// unset would let any future EOCTMS path spawn the same generator again the same day.
+				StateChitComponent stateChit = (StateChitComponent)RealmComponent.getRealmComponent(go);
+				if (stateChit.hasSummonedToday(monsterDie)) continue;
+				stateChit.addSummonedToday(monsterDie);
+				ArrayList<GameObject> spawned = generateMonsters(go,genTl.clearing);
+				DebugUtility.diag("[GMP] generator "+go.getName()+"#"+go.getStringId()+" at "+genTl
+					+" spawned "+spawned.size()+" at start of Daylight (these do NOT propagate today)");
+				if (!spawned.isEmpty()) {
+					report.add(go.getName()+" at "+genTl+" spawned "+spawned.size()+" "+spawned.get(0).getName()
+						+(spawned.size()==1?"":"s"));
+				}
+				newMonsters.addAll(spawned);
+			}
+		}
+		for (GameObject added:newMonsters) {
+			RealmComponent rc = RealmComponent.getRealmComponent(added);
+			if (rc.isMonster()) {
+				updateMonsterBlock((MonsterChitComponent)rc);
+			}
+		}
+	}
+	private static String buildDailyGeneratorReport(ArrayList<String> propagated,ArrayList<String> spawned) {
+		if (propagated.isEmpty() && spawned.isEmpty()) return null;
+		StringBuilder sb = new StringBuilder();
+		if (propagated.isEmpty()) {
+			sb.append("No generated monsters moved.\n");
+		}
+		else {
+			sb.append(propagated.size()).append(propagated.size()==1?" generated monster propagated:\n":" generated monsters propagated:\n");
+			appendCapped(sb,propagated);
+		}
+		if (!spawned.isEmpty()) {
+			sb.append("\nGenerators spawned:\n");
+			appendCapped(sb,spawned);
+			sb.append("\nNewly spawned monsters stay at their generator today.");
+		}
+		return sb.toString();
+	}
+	private static void appendCapped(StringBuilder sb,ArrayList<String> lines) {
+		int max = 15;
+		for (int i=0;i<lines.size() && i<max;i++) {
+			sb.append("    ").append(lines.get(i)).append("\n");
+		}
+		if (lines.size()>max) {
+			sb.append("    ...and ").append(lines.size()-max).append(" more\n");
+		}
+	}
+	public static void moveTraveler(TravelerChitComponent traveler, HostPrefWrapper hostPrefs) {
 		TileLocation current = traveler.getCurrentLocation();
 		if (current == null) return;	// not sure why this can happen, but at least this wont throw an error anymore
 		
@@ -668,9 +1324,6 @@ public class SetupCardUtility {
 		if (!current.clearing.equals(finalClearing)) {
 			TileLocation tl = finalClearing.getTileLocation();
 			ClearingUtility.moveToLocation(traveler.getGameObject(),tl);
-			if (hostPrefs.hasPref(Constants.HOUSE3_TRAVELERS_MOVE_ONCE_PER_DAY)) {
-				traveler.getGameObject().setThisAttribute(Constants.TRAVELER_MOVED);
-			}
 		}
 	}
 	private static int getDieRollForString(String dieString) {
