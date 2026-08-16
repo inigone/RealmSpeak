@@ -323,11 +323,6 @@ public class Constants {
 	public static final String TASK_COMPLETED = "task_completed";
 	public static final String GUILD_BENEFIT = "guild_benefit";
 	public static final String GUILD_BENEFIT_SUCESSOR = "guild_benefit_sucessor";
-	public static final String TRAVELER_MOVED = "traveler_moved";
-	public static final String GENERATED_MONSTER_MOVED = "generated_monster_moved";
-	public static final String TRAVELER_MOVE_AT_EVENING = "traveler_move_at_evening";
-	public static final String GENERATED_MONSTER_MOVE_AT_EVENING = "generated_monster_move_at_evening";
-	
 	// Spoils of War needed action
 	public static final String SPOILS_ = "spoils_";
 	public static final String SPOILS_DONE = "spoils_done";						// A tag to indicate spoils processed already
@@ -978,12 +973,27 @@ public class Constants {
 	public static final String HOUSE3_SMALL_MONSTERS = "SmallMonsters";
 	public static final String HOUSE3_HORSE_WEAPON_SAME_BOX = "HorseWeaponSameBox";
 	public static final String HOUSE3_QUEST_HAND_LIMIT_ONE = "QuestHandLimitOne";
-	public static final String HOUSE3_TRAVELERS_MOVE_ONCE_PER_DAY = "TravelersMoveOncePerDay";
-	public static final String HOUSE3_GENERATED_MONSTERS_MOVE_ONCE_PER_DAY = "GeneratedMonstersMoveOncePerDay";
-	public static final String HOUSE3_GENERATED_MONSTERS_REVENGE = "GeneratedMonstersRevenge";
-	public static final String HOUSE3_TRAVELERS_MOVE_AT_EVENING = "TravelersMoveAtEvening";
-	public static final String HOUSE3_GENERATED_MONSTERS_MOVE_AT_EVENING = "GeneratedMonstersMoveAtEvening";
-	
+	/*
+	 * Generated-monster behaviour is on by default and these three turn parts of it OFF, so the good
+	 * behaviour needs no configuring and each option states exactly what it gives up.  They replace
+	 * five earlier options (TravelersMoveOncePerDay, GeneratedMonstersMoveOncePerDay,
+	 * GeneratedMonstersRevenge, TravelersMoveAtEvening, GeneratedMonstersMoveAtEvening) whose
+	 * behaviour is now either unconditional or inverted.
+	 *
+	 * The key STRINGS are deliberately new.  Host prefs persist in a save's _host_preferences_ block
+	 * and are true-by-presence, so reusing a retired key would silently come up already enabled on
+	 * every save from the era that set it.
+	 */
+	public static final String HOUSE3_TRAVELERS_AND_GM_MOVE_AT_DAYLIGHT_END = "TravelersAndGeneratedMonstersMoveAtDaylightEnd";
+	public static final String HOUSE3_GM_MOVE_INDIVIDUALLY = "GeneratedMonstersMoveIndividually";
+	public static final String HOUSE3_GM_NO_REVENGE = "GeneratedMonstersNoRevenge";
+	/*
+	 * Opt IN, not out, unlike the three above.  Always moving to the highest-scoring destination is what
+	 * the written rules say, so it stays the default; this turns propagation into a weighted draw
+	 * instead, which is a deliberate departure.
+	 */
+	public static final String HOUSE3_GM_MOVE_BY_CHANCE = "GeneratedMonstersMoveByChance";
+
 	// Super Realm
 	public static final String SR_DEDUCT_VPS = "DeductVps";
 	public static final String SR_SETUP_TWO_QUESTS = "SetupTwoQuests";
