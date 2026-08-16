@@ -482,10 +482,24 @@ public class SetupCardUtility {
 		}
 		return count;
 	}
-	private static int countGeneratedMonsters(ArrayList<RealmComponent> components) {
+	/**
+	 * Generated monsters standing here, NOT counting the ones doing the deciding.
+	 * <p>
+	 * A monster must not crowd itself out of its own clearing.  Its own location is scored alongside
+	 * the places it could move to, and the crowding term is what makes a place with monsters already
+	 * in it less attractive - so counting itself, and its pod-mates when they move as one body, taxes
+	 * holding position for company the monster IS.  A pod of five was penalised as heavily for staying
+	 * put as for walking into a clearing already holding five strangers.
+	 * <p>
+	 * Only the deciding body is excluded.  Generated monsters of another flavour standing in the same
+	 * clearing are strangers and still crowd normally.
+	 */
+	private static int countGeneratedMonsters(ArrayList<RealmComponent> components,Collection<GameObject> deciding) {
 		int count = 0;
 		for (RealmComponent rc:components) {
-			if (rc.getGameObject().hasThisAttribute(Constants.GENERATED)) count++;
+			if (!rc.getGameObject().hasThisAttribute(Constants.GENERATED)) continue;
+			if (deciding!=null && deciding.contains(rc.getGameObject())) continue;
+			count++;
 		}
 		return count;
 	}
@@ -521,7 +535,9 @@ public class SetupCardUtility {
 	 * A character does not add a share, it multiplies the weight the candidate already has, by 5 each -
 	 * one character makes a spot five times as likely as the same spot empty, two make it twenty-five
 	 * times.  Roadway characters multiply identically.  Generated monsters already present divide the
-	 * weight by (1 + g/4), so ten of them cut a candidate to about a third rather than ruling it out.
+	 * weight by (1 + g/4), so ten of them cut a candidate to about a third rather than ruling it out -
+	 * not counting the monster or pod doing the deciding, which would otherwise tax staying put for
+	 * company it IS.  See countGeneratedMonsters().
 	 */
 	private static void applyChanceWeights(ArrayList<MoveOption> options) {
 		int fartherCount = 0;
@@ -791,7 +807,12 @@ public class SetupCardUtility {
 	 *     current tile (flying) is scored alongside the places it could move to, so a character
 	 *     standing where the monster already is counts for exactly as much as one in an adjacent
 	 *     clearing or tile.  Choosing it yields a holding move, NOT null: the monster is not relocated
-	 *     and nothing is reported, but it is still in its clearing and still grows.</li>
+	 *     and nothing is reported, but it is still in its clearing and still grows.
+	 *     <p>
+	 *     The monster does not count itself as crowding, nor its pod-mates when the pod moves as one
+	 *     body; only strangers count.  Both selections are affected - a monster should no more be
+	 *     driven out of its own clearing by its own presence under the written rules than by
+	 *     chance.</li>
 	 * <li><b>A walking monster counts a roadway character in BOTH clearings</b> at the ends of that
 	 *     road, so a monster at either end is drawn to the road rather than ignoring it.
 	 *     <p>
@@ -817,6 +838,16 @@ public class SetupCardUtility {
 	 * destination it is not allowed to use.
 	 */
 	public static GeneratedMonsterMove chooseGeneratedMonsterMove(MonsterChitComponent monster,HostPrefWrapper hostPrefs) {
+		ArrayList<GameObject> alone = new ArrayList<>();
+		alone.add(monster.getGameObject());
+		return chooseGeneratedMonsterMove(monster,hostPrefs,alone);
+	}
+	/**
+	 * As above, for a pod: every member of `deciding` is excluded from the crowding count, because the
+	 * pod moves as one body and must not count its own members as company - see
+	 * countGeneratedMonsters().  The pod's leader is the monster that does the scoring.
+	 */
+	public static GeneratedMonsterMove chooseGeneratedMonsterMove(MonsterChitComponent monster,HostPrefWrapper hostPrefs,Collection<GameObject> deciding) {
 		GameObject generator = monster.getGameObject().getGameData().getGameObject(monster.getGameObject().getThisInt(Constants.GENERATOR_ID));
 		TileLocation home = ClearingUtility.getTileLocation(generator);
 		TileLocation current = monster.getCurrentLocation();
@@ -853,7 +884,7 @@ public class SetupCardUtility {
 				option.tile = adj;
 				option.dfh = distanceFromHome;
 				option.characters = countCharacters(present)+roadwayCharactersAtTile(roadwayCharacters,adj);
-				option.generated = countGeneratedMonsters(present);
+				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = adj.getGameObject().equals(current.tile.getGameObject());
 				option.farther = distanceFromHome>=currentDfh;
 				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
@@ -903,11 +934,17 @@ public class SetupCardUtility {
 			 * tile beyond, so a board edge is dropped from getConnectedPaths() entirely.  Map edges live
 			 * only in getConnectedMapEdges().  Without this a walking generated monster could never
 			 * leave, and the isEdge() test further down was unreachable.
+			 *
+			 * getEdgeAsClearing(), NOT getEdgeClearing() - the two names are a trap.  A path holds two
+			 * ClearingDetails, the edge itself and the ordinary clearing it touches; getEdgeClearing()
+			 * returns the ORDINARY one, which for these paths is the clearing the monster is standing
+			 * in.  Adding that is a silent no-op - contains() rejects it as a duplicate and no edge
+			 * option ever reaches the scorer.  getEdgeAsClearing() is the one whose isEdge() is true.
 			 */
 			ArrayList<PathDetail> mapEdges = current.clearing.getConnectedMapEdges();
 			if (mapEdges!=null) {
 				for (PathDetail path:mapEdges) {
-					ClearingDetail edge = path.getEdgeClearing();
+					ClearingDetail edge = path.getEdgeAsClearing();
 					if (edge!=null && !clearingOptions.contains(edge)) clearingOptions.add(edge);
 				}
 			}
@@ -945,7 +982,7 @@ public class SetupCardUtility {
 				option.clearing = other;
 				option.dfh = distanceFromHome;
 				option.characters = countCharacters(present)+roadwayCharactersAtClearing(roadwayCharacters,other);
-				option.generated = countGeneratedMonsters(present);
+				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = other.equals(current.clearing);
 				option.farther = distanceFromHome>=currentDfh;
 				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
@@ -1205,7 +1242,7 @@ public class SetupCardUtility {
 		}
 		TileLocation before = leader.getCurrentLocation();
 		if (before==null) return;
-		GeneratedMonsterMove move = chooseGeneratedMonsterMove(leader,hostPrefs);
+		GeneratedMonsterMove move = chooseGeneratedMonsterMove(leader,hostPrefs,pod);
 		if (move==null) return;
 		for (GameObject go:pod) {
 			MonsterChitComponent member = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
