@@ -1520,7 +1520,9 @@ public class TreasureUtility {
 		query.add("!"+Constants.DEAD);
 		ArrayList<GameObject> list = pool.find(query);
 		if (!list.isEmpty()) {
-			if (hostPrefs.hasPref(Constants.HOUSE3_GENERATED_MONSTERS_REVENGE)) {
+			// Revenge is the default: destroying a generator leaves its monsters alive and hunting the
+			// character responsible.  The option turns that OFF, killing them with the generator.
+			if (!hostPrefs.hasPref(Constants.HOUSE3_GM_NO_REVENGE)) {
 				for (GameObject go:list) {
 					go.setThisAttribute(Constants.REVENGE,character.getGameObject().getStringId());
 				}
