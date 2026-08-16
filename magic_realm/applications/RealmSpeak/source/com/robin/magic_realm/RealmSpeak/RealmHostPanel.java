@@ -574,6 +574,14 @@ public class RealmHostPanel extends JPanel {
 				}
 			}
 
+			// Expansion:  generated monsters and travelers propagate once, and THEN the generators
+			// spawn - so newly spawned monsters do not also propagate today.  This replaces the old
+			// per-character-turn propagation in SetupCardUtility.summonMonsters().  Unless the host
+			// asked for Daylight End, it happens here, before anyone has taken a turn.
+			if (!hostPrefs.hasPref(Constants.HOUSE3_TRAVELERS_AND_GM_MOVE_AT_DAYLIGHT_END)) {
+				runDailyGeneratorPhase(monsterDieRoller,nativeDieRoller);
+			}
+
 			// Figure out who is following who, and determine which characters actually get to move here
 			ArrayList<GameObject> allChars = new ArrayList<>(getLivingCharacters());
 			HashMap<String,String> followHash = new HashMap<>(); // to identify follow cycles
@@ -862,6 +870,14 @@ public class RealmHostPanel extends JPanel {
 			}
 		}
 		else {
+			// DAYLIGHT END.  The last character has finished its turn but the day is not over yet, so
+			// this is still a daylight move - monsters already blocked stay blocked and do not take
+			// part, exactly as at Daylight start.  Deliberately before applySunset() and before the
+			// state moves to RESOLVING, so it is a daylight event rather than an evening one.
+			if (hostPrefs.hasPref(Constants.HOUSE3_TRAVELERS_AND_GM_MOVE_AT_DAYLIGHT_END)) {
+				runDailyGeneratorPhase(game.getMonsterDie(),game.getNativeDie());
+			}
+
 			// move on to the next game stage here
 			for (GameObject characterGo : activeCharacters) {
 				CharacterWrapper character = new CharacterWrapper(characterGo);
@@ -894,35 +910,6 @@ public class RealmHostPanel extends JPanel {
 	}
 	private void updateGameStateResolving() {
 		logger.fine("EVENING");
-		
-		GamePool pool = new GamePool(host.getGameData().getGameObjects());
-		// Expansion:  move the generated prowlers
-		ArrayList<String> generatedQuery = new ArrayList<>();
-		generatedQuery.add(Constants.GENERATED);
-		generatedQuery.add(Constants.GENERATED_MONSTER_MOVE_AT_EVENING);
-		for (GameObject go:pool.find(generatedQuery)) {
-			if (!go.hasThisAttribute(Constants.DEAD)) {
-				MonsterChitComponent monster = (MonsterChitComponent)RealmComponent.getRealmComponent(go);
-				SetupCardUtility.moveGeneratedMonster(monster, hostPrefs);
-				if (monster.getCurrentLocation().isInClearing()) {
-					SetupCardUtility.updateMonsterBlock(monster);
-				}
-			}
-			go.removeThisAttribute(Constants.GENERATED_MONSTER_MOVE_AT_EVENING);
-		}
-		// Expansion:  move the travelers
-		ArrayList<String> travelerQuery = new ArrayList<>();
-		travelerQuery.add(RealmComponent.TRAVELER);
-		travelerQuery.add(Constants.SPAWNED);
-		travelerQuery.add(Constants.TRAVELER_MOVE_AT_EVENING);
-		for (GameObject go:pool.find(travelerQuery)) {
-			if (!go.hasThisAttribute(Constants.DEAD) && !go.hasThisAttribute(RealmComponent.OWNER_ID)) {
-				TravelerChitComponent traveler = (TravelerChitComponent)RealmComponent.getRealmComponent(go);
-				SetupCardUtility.moveTraveler(traveler,hostPrefs);
-			}
-			go.removeThisAttribute(Constants.TRAVELER_MOVE_AT_EVENING);
-		}
-		
 		autoSaveNow();
 		ArrayList<GameObject> activeCharacters = getLivingCharacters();
 		for (GameObject go:activeCharacters) {
@@ -1017,12 +1004,8 @@ public class RealmHostPanel extends JPanel {
 				MonsterChitComponent monster = (MonsterChitComponent) rc;
 				monster.setBlocked(false);
 			}
-			go.removeThisAttribute(Constants.GENERATED_MONSTER_MOVED);
 		}
-		for (GameObject go:pool.find(Constants.TRAVELER)) {
-			go.removeThisAttribute(Constants.TRAVELER_MOVED);
-		}
-		
+
 		for (GameObject go:pool.find("guild,color_source")) {
 			go.removeThisAttribute("color_source");
 		}
@@ -1221,6 +1204,60 @@ public class RealmHostPanel extends JPanel {
 			QuestRequirementParams params = new QuestRequirementParams();
 			params.timeOfCall = GamePhaseType.Midnight;
 			character.testQuestRequirements(new JFrame(), params);
+		}
+	}
+	/**
+	 * Run the once-a-day generator phase and publish its summary.  Called from one of two points
+	 * depending on HOUSE3_TRAVELERS_AND_GM_MOVE_AT_DAYLIGHT_END: the start of Daylight before anyone has moved, or
+	 * the close of Daylight once the last character has finished.  Either way it is still daylight,
+	 * and it happens exactly once per day.
+	 */
+	private void runDailyGeneratorPhase(DieRoller monsterDieRoller,DieRoller nativeDieRoller) {
+		SetupCardUtility.DailyGeneratorReport report = SetupCardUtility.runDailyGeneratorPhase(hostPrefs,host.getGameData(),monsterDieRoller,nativeDieRoller);
+		if (report==null) return;
+		// Broadcast first: this is the permanent record, and it survives the dialog being dismissed
+		// (or never arriving, if a client is mid-reconnect).  The dialog only ever shows the latest
+		// day - each one closes the one before it - so the log is where an earlier day is found.
+		host.broadcast("host","--- "+report.title+" ---");
+		for (String line : report.text.split("\n")) {
+			if (line.trim().length()>0) {
+				host.broadcast("host",line);
+			}
+		}
+		// The About text is composed HERE and shipped with the report, because it describes the rules
+		// this game is actually playing under and only the host can read hostPrefs.
+		popupToAllPlayers(report.title,report.text,SetupCardUtility.getPropagationAboutText(hostPrefs));
+	}
+	/**
+	 * Pushes a plain informational popup to every connected player (the host player included - the
+	 * host runs a client of its own and so has a GameServer in the list).  Uses the standard
+	 * RealmDirectInfoHolder POPUP_MESSAGE channel, arriving via RESPOND_DIRECT_INFO and handled by
+	 * RealmGameHandler.handleDirectInfo().
+	 * <p>
+	 * A non-null aboutText adds an About button to the popup, opening a modal explanation - see
+	 * RealmUtility.popupMessage(), which treats the fourth string as optional so the three-string
+	 * senders elsewhere are unaffected.
+	 * <p>
+	 * SAFETY: this is only safe because that handler dispatches POPUP_MESSAGE to the EDT with
+	 * invokeLater.  handleDirectInfo() itself runs on the receiving client's GameClient networking
+	 * thread; showing a modal dialog directly on that thread stops the client polling, and the
+	 * server's 10s SO_TIMEOUT then kills the connection ("Broken pipe" / "This client is DEAD!",
+	 * every window torn down).  If that invokeLater is ever removed, this method becomes unsafe.
+	 * <p>
+	 * Sending is non-blocking either way - addInfoDirect only queues, so a player who leaves the
+	 * dialog sitting open cannot stall the host or anybody else.
+	 */
+	private void popupToAllPlayers(String title,String message,String aboutText) {
+		ArrayList<String> strings = new ArrayList<>();
+		strings.add(title);
+		strings.add(message);
+		strings.add(""); // no die roller image
+		if (aboutText!=null) strings.add(aboutText);
+		for (GameServer server : host.getServers()) {
+			RealmDirectInfoHolder holder = new RealmDirectInfoHolder(host.getGameData());
+			holder.setCommand(RealmDirectInfoHolder.POPUP_MESSAGE);
+			holder.setStrings(strings);
+			server.addInfoDirect(new InfoObject(server.getClientName(),holder.getInfo()));
 		}
 	}
 	private void sendEmailAll(String message) {
