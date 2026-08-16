@@ -94,11 +94,22 @@ public class FrameManager {
 		showDefaultManagedFrame(parent,message,title,icon,modalLike,null);
 	}
 	public static void showDefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon) {
-		ManagedFrame mf = getDefaultManagedFrame(parent,message,title,icon,modalLike,frameIcon);
+		showDefaultManagedFrame(parent,message,title,icon,modalLike,frameIcon,DEFAULT_FRAME_KEY);
+	}
+	/**
+	 * As above, but registered under a caller-supplied key instead of DEFAULT_FRAME_KEY.
+	 * <p>
+	 * Frames sharing a key replace one another - addFrame() disposes whatever is registered before
+	 * showing the new one.  Every default frame shares one key, so an unrelated message would close a
+	 * recurring report and vice versa; give such a report its own key and it replaces only its own
+	 * previous instance.
+	 */
+	public static void showDefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon,String frameKey) {
+		ManagedFrame mf = getDefaultManagedFrame(parent,message,title,icon,modalLike,frameIcon,frameKey);
 		getFrameManager().addFrame(mf);
 	}
-	private static ManagedFrame getDefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon) {
-		DefaultManagedFrame mf = new DefaultManagedFrame(parent,message,title,icon,modalLike,frameIcon);
+	private static ManagedFrame getDefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon,String frameKey) {
+		DefaultManagedFrame mf = new DefaultManagedFrame(parent,message,title,icon,modalLike,frameIcon,frameKey);
 		return mf;
 	}
 	/**
@@ -110,9 +121,11 @@ public class FrameManager {
 		
 		private JFrame parent;
 		private JButton okButton;
+		private String frameKey;
 		
-		public DefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon) {
+		public DefaultManagedFrame(JFrame parent,JComponent message,String title,Icon icon,boolean modalLike,ImageIcon frameIcon,String frameKey) {
 			super(title);
+			this.frameKey = frameKey==null?DEFAULT_FRAME_KEY:frameKey;
 			if (parent!=null && modalLike) {
 				parent.addWindowListener(this);
 			}
@@ -146,7 +159,7 @@ public class FrameManager {
 			}
 		}
 		public String getKey() {
-			return DEFAULT_FRAME_KEY;
+			return frameKey;
 		}
 		public void actionPerformed(ActionEvent e) {
 			// The only way this method is called, is on a close event
