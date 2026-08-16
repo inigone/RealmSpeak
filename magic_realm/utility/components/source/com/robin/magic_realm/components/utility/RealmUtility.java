@@ -13,6 +13,7 @@ import com.robin.general.io.PreferenceManager;
 import com.robin.general.io.ResourceFinder;
 import com.robin.general.swing.ButtonOptionDialog;
 import com.robin.general.swing.DieRoller;
+import com.robin.general.swing.FrameManager;
 import com.robin.general.swing.IconFactory;
 import com.robin.general.util.*;
 import com.robin.magic_realm.components.*;
@@ -983,14 +984,33 @@ public class RealmUtility {
 //	public static void main(String[] args) {
 //		System.out.println("Started "+DateFormat.getDateTimeInstance().format(Calendar.getInstance().getTime()));
 //	}
+	/**
+	 * Show a popup pushed from the host.  A FOURTH string, when present, is explanatory text: the popup
+	 * then carries an About button that opens it in a modal dialog.  Senders that pass only the three
+	 * required strings (RealmTable, and every other caller) behave exactly as before.
+	 */
 	public static void popupMessage(JFrame parent,RealmDirectInfoHolder info) {
 		ArrayList<String> strings = info.getStrings();
 		String title = strings.get(0);
 		String message = strings.get(1);
 		String rollerStringResult = strings.get(2);
+		String aboutText = strings.size()>3?strings.get(3):null;
 		DieRoller roller = null;
 		if (rollerStringResult.length()>0) {
 			roller = new DieRoller(rollerStringResult,25,6);
+		}
+		if (aboutText!=null && aboutText.trim().length()>0) {
+			Icon icon = roller==null?UIManager.getIcon("OptionPane.informationIcon"):roller.getIcon();
+			JComponent content = buildMessageWithAboutButton(message,aboutText,title);
+			if (parent==null) {
+				JOptionPane.showMessageDialog(new JFrame(),content,title,JOptionPane.INFORMATION_MESSAGE,icon);
+			}
+			else {
+				// Same managed frame the plain path uses - dismissable, and it does NOT lock the game
+				// while the player reads it.  The About dialog it opens IS modal, but only over this.
+				FrameManager.showDefaultManagedFrame(parent,content,title,icon,true);
+			}
+			return;
 		}
 		if (parent==null) {
 			JOptionPane.showMessageDialog(new JFrame(), message,title,
@@ -1000,6 +1020,50 @@ public class RealmUtility {
 			MessageMaster.showMessage(parent, message,title,
 					JOptionPane.INFORMATION_MESSAGE,roller==null?null:roller.getIcon());
 		}
+	}
+	/**
+	 * The message body for a popup that has explanatory text behind an About button.
+	 * <p>
+	 * Monospaced on purpose: reports built this way line their columns up with spaces (the Daily
+	 * Propagation odds, for one), and a proportional font turns them into a ragged mess.  The body
+	 * scrolls rather than growing without limit - a busy day's propagation runs to dozens of lines.
+	 */
+	private static JComponent buildMessageWithAboutButton(String message,String aboutText,String title) {
+		JTextArea text = new JTextArea(message);
+		text.setEditable(false);
+		text.setOpaque(false);
+		text.setFont(new Font(Font.MONOSPACED,Font.PLAIN,12));
+		text.setBorder(BorderFactory.createEmptyBorder(0,0,0,0));
+		JScrollPane scroll = new JScrollPane(text);
+		scroll.setBorder(BorderFactory.createEmptyBorder(0,0,0,0));
+		scroll.getViewport().setOpaque(false);
+		scroll.setOpaque(false);
+		Dimension pref = text.getPreferredSize();
+		scroll.setPreferredSize(new Dimension(Math.min(Math.max(pref.width+20,400),720),Math.min(pref.height+10,420)));
+
+		JButton aboutButton = new JButton("About");
+		aboutButton.setToolTipText("How this is worked out");
+		aboutButton.addActionListener(ev -> showAboutDialog((Component)ev.getSource(),aboutText,title));
+		Box buttonBox = Box.createHorizontalBox();
+		buttonBox.add(aboutButton);
+		buttonBox.add(Box.createHorizontalGlue());
+
+		JPanel panel = new JPanel(new BorderLayout(0,10));
+		panel.setOpaque(false);
+		panel.add(scroll,"Center");
+		panel.add(buttonBox,"South");
+		return panel;
+	}
+	private static void showAboutDialog(Component parent,String aboutText,String title) {
+		JTextArea text = new JTextArea(aboutText);
+		text.setEditable(false);
+		text.setOpaque(false);
+		text.setFont(new Font(Font.MONOSPACED,Font.PLAIN,12));
+		JScrollPane scroll = new JScrollPane(text);
+		scroll.setBorder(BorderFactory.createEmptyBorder(0,0,0,0));
+		Dimension pref = text.getPreferredSize();
+		scroll.setPreferredSize(new Dimension(Math.min(pref.width+30,760),Math.min(pref.height+10,560)));
+		JOptionPane.showMessageDialog(parent,scroll,"About "+title,JOptionPane.INFORMATION_MESSAGE);
 	}
 	public static ArrayList<GameObject> dropNonFlyableStuff(JFrame frame,CharacterWrapper character,Fly fly,TileLocation current) {
 		GameObject weightlessItem = character.getWeightlessInactiveItem();
