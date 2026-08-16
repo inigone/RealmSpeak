@@ -514,7 +514,8 @@ public class SetupCardUtility {
 		int characters;   // characters present, plus roadway characters attributable here
 		int generated;    // generated monsters already present
 		boolean hold;     // this is where the monster already stands
-		boolean farther;  // at or beyond the monster's own distance from home
+		boolean farther;  // strictly further from the generator than the monster already is
+		boolean same;     // exactly as far from the generator - a lateral move, or holding
 		int ruleScore;    // written-rules score
 		double weight;    // by-chance weight
 		double odds;      // by-chance odds as a percentage, filled once the total is known
@@ -526,11 +527,22 @@ public class SetupCardUtility {
 	/**
 	 * By chance: build the odds the host asked for, rather than a score.
 	 * <p>
-	 * With nobody about, propagation runs <b>70% farther from the generator, 20% stay put, 10% closer</b>.
-	 * Each category's share is split EVENLY among its members, so those three numbers hold however the
-	 * map branches - give every candidate a flat weight instead and a monster with five ways outward
-	 * drifts to 90% farther.  A clearing the same distance out counts as farther: a lateral move is not
-	 * a retreat.
+	 * With nobody about, propagation runs <b>70% further from the generator, 20% no further, 10%
+	 * closer</b>.  Each category's share is split EVENLY among its members, so those three numbers hold
+	 * however the map branches - give every candidate a flat weight instead and a monster with five ways
+	 * outward drifts to 90% further.
+	 * <p>
+	 * The categories are decided by what the move does to the DISTANCE, not by whether it is a move at
+	 * all: holding position and a lateral step both leave the monster exactly as far from its generator
+	 * as it was, so they sit in one category and share its 20%.  Bucketing on "moves away or not" instead
+	 * made a lateral step worth as much as a genuine advance - wasps at Evil Valley offered Dark Valley,
+	 * Ledges and Borderland (all further) alongside Decrepid Swamp and Awful Valley (both the same
+	 * distance) drew 15% each, with no preference for actually getting anywhere.
+	 * <p>
+	 * A consequence worth knowing: holding is only the whole 20% when no lateral move exists.  Where the
+	 * map offers laterals they share that category with it, so a monster with two of them holds about a
+	 * third as often as one hemmed in.  That is the point - all three outcomes leave it equally far from
+	 * home, so the map decides which of them it takes, not the scorer.
 	 * <p>
 	 * A character does not add a share, it multiplies the weight the candidate already has, by 5 each -
 	 * one character makes a spot five times as likely as the same spot empty, two make it twenty-five
@@ -541,16 +553,19 @@ public class SetupCardUtility {
 	 */
 	private static void applyChanceWeights(ArrayList<MoveOption> options) {
 		int fartherCount = 0;
+		int sameCount = 0;
 		int closerCount = 0;
 		for (MoveOption option:options) {
-			if (option.hold) continue;
+			// Holding is not special-cased: its distance from the generator is the monster's own, so it
+			// falls into the same-distance category with any lateral moves and shares their 20%.
 			if (option.farther) fartherCount++;
+			else if (option.same) sameCount++;
 			else closerCount++;
 		}
 		for (MoveOption option:options) {
 			double share;
-			if (option.hold) share = 20.0;
-			else if (option.farther) share = fartherCount>0?70.0/fartherCount:0.0;
+			if (option.farther) share = fartherCount>0?70.0/fartherCount:0.0;
+			else if (option.same) share = sameCount>0?20.0/sameCount:0.0;
 			else share = closerCount>0?10.0/closerCount:0.0;
 			double weight = share;
 			for (int i=0;i<option.characters;i++) {
@@ -646,10 +661,12 @@ public class SetupCardUtility {
 		sb.append("  lone adventurer.  A character caught partway along a roadway is not safely between\n");
 		sb.append("  places: it draws from both ends of that road, so either end may come for it.\n\n");
 		sb.append("  Distance from its generator.  With nothing else to go on, a monster wanders\n");
-		sb.append("  outward.  Moving away from the lair that spawned it is what it prefers, holding\n");
-		sb.append("  position appeals less than that, and turning back toward its generator least of\n");
-		sb.append("  all.  A sideways move that keeps its distance counts as moving away - a\n");
-		sb.append("  monster only counts as retreating when it genuinely gets closer to home.\n\n");
+		sb.append("  outward.  Getting further from the lair that spawned it is what it prefers, going\n");
+		sb.append("  no further appeals less than that, and turning back toward its generator least of\n");
+		sb.append("  all.  What counts is where the move leaves it, not whether it moved: a sideways\n");
+		sb.append("  step that keeps its distance is no better to it than standing still, and the two\n");
+		sb.append("  compete with each other.  So a monster with somewhere to drift sideways holds its\n");
+		sb.append("  ground less often than one with nowhere to go but out or back.\n\n");
 		sb.append("  Crowding.  Generated monsters already standing somewhere make it less appealing.\n");
 		sb.append("  This thins a swarm out across the map; it never rules a place out entirely.\n\n");
 		sb.append("  The board edge.  For a walking monster, leaving the realm is simply another way of\n");
@@ -812,7 +829,11 @@ public class SetupCardUtility {
 	 *     The monster does not count itself as crowding, nor its pod-mates when the pod moves as one
 	 *     body; only strangers count.  Both selections are affected - a monster should no more be
 	 *     driven out of its own clearing by its own presence under the written rules than by
-	 *     chance.</li>
+	 *     chance.
+	 *     <p>
+	 *     Under MOVE BY CHANCE holding gets no category of its own: it is simply the same-distance
+	 *     option that happens not to move, and shares that category's 20% with any lateral steps -
+	 *     see applyChanceWeights().</li>
 	 * <li><b>A walking monster counts a roadway character in BOTH clearings</b> at the ends of that
 	 *     road, so a monster at either end is drawn to the road rather than ignoring it.
 	 *     <p>
@@ -886,7 +907,8 @@ public class SetupCardUtility {
 				option.characters = countCharacters(present)+roadwayCharactersAtTile(roadwayCharacters,adj);
 				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = adj.getGameObject().equals(current.tile.getGameObject());
-				option.farther = distanceFromHome>=currentDfh;
+				option.farther = distanceFromHome>currentDfh;
+				option.same = distanceFromHome==currentDfh;
 				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
 				options.add(option);
 			}
@@ -984,7 +1006,8 @@ public class SetupCardUtility {
 				option.characters = countCharacters(present)+roadwayCharactersAtClearing(roadwayCharacters,other);
 				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = other.equals(current.clearing);
-				option.farther = distanceFromHome>=currentDfh;
+				option.farther = distanceFromHome>currentDfh;
+				option.same = distanceFromHome==currentDfh;
 				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
 				options.add(option);
 			}
