@@ -11,7 +11,8 @@ public class ChitDisplayOption {
 	public boolean droppedInventory;
 	public boolean siteCards;
 	public boolean tileBewitchingSpells;
-	
+	public boolean tileEffects;
+
 	public ChitDisplayOption() {
 		characters = true;
 		monsters = true;
@@ -21,6 +22,7 @@ public class ChitDisplayOption {
 		droppedInventory = true;
 		siteCards = true;
 		tileBewitchingSpells = true;
+		tileEffects = true;
 	}
 	public boolean okayToDraw(RealmComponent rc) {
 		return (characters || (!rc.isCharacter() && !rc.isFamiliar() && !rc.isPhantasm()))
