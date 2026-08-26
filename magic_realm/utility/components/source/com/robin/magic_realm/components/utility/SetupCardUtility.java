@@ -432,6 +432,7 @@ public class SetupCardUtility {
 		int monsters = getDieRollForString(dieString);
 		MonsterCreator mc = new MonsterCreator("gen"+iconType);
 		boolean noUndeadAllowed = ClearingUtility.getItemInClearingWithKey(clearing.getTileLocation(),Constants.NO_UNDEAD)!=null;
+		String podId = null; // minted from the first monster actually created - see below
 		for (int i=0;i<monsters;i++) {
 			GameObject go = null;
 			if ("wasp".equals(iconType)) {
@@ -452,6 +453,12 @@ public class SetupCardUtility {
 			}
 			if (go!=null) {
 				go.setThisAttribute(Constants.GENERATED);
+				// One spawn batch = one new pod, never joining whatever already stands here. The id is
+				// taken from the first monster created in this batch: object ids are unique and never
+				// reused, so no counter needs persisting, and the label survives that monster's death
+				// since it is only ever compared, never dereferenced.
+				if (podId==null) podId = "p"+go.getStringId();
+				go.setThisAttribute(Constants.GM_POD_ID,podId);
 				go.setThisAttribute("clearing",String.valueOf(clearing));
 				clearing.add(go,null);
 				go.setThisAttribute("monster_die",generator.getThisAttribute("monster_die"));
@@ -687,9 +694,15 @@ public class SetupCardUtility {
 		sb.append("  Staying put is always one of the choices, and a monster that stays put still grows.\n\n");
 
 		if (!individually) {
-			sb.append("  Monsters standing together move together, as a pod: they decide once and the whole\n");
+			sb.append("  Monsters spawned together move together, as a pod: they decide once and the whole\n");
 			sb.append("  group goes the same way.  (The host can switch on GENERATED MONSTERS MOVE\n");
 			sb.append("  INDIVIDUALLY to have each one choose for itself.)\n\n");
+			sb.append("  A pod keeps its identity for life.  Two pods that end up in the same clearing do\n");
+			sb.append("  NOT become one - they stay separate bodies, each deciding for itself, and each\n");
+			sb.append("  counts the other as crowding just as it would any other monster standing there.\n");
+			sb.append("  So a shared clearing pushes both of them to move on, rather than settling into a\n");
+			sb.append("  single ever-growing crowd.  Each fresh batch a generator spawns is a new pod too,\n");
+			sb.append("  even when it appears on top of one already sitting at the lair.\n\n");
 		}
 		else {
 			sb.append("  Each monster chooses for itself, so a stack can split up.\n\n");
@@ -760,7 +773,8 @@ public class SetupCardUtility {
 	}
 	/**
 	 * A generated monster's chosen move, kept separate from carrying it out.  Choosing and applying are
-	 * split so that a pod of monsters sharing a location can be scored ONCE and then all moved to the
+	 * split so that a pod - a body of monsters spawned together and stamped with one
+	 * {@link Constants#GM_POD_ID} - can be scored ONCE and then all moved to the
 	 * same destination, instead of each fanning out on its own roll - see propagatePod().  Nothing else
 	 * about the scoring changes: a monster moved on its own goes through exactly the same two steps.
 	 */
@@ -1206,34 +1220,68 @@ public class SetupCardUtility {
 		}
 	}
 	/**
-	 * Monsters of one generator flavour standing in one location move as a pod - scored once, sent to
-	 * one destination - rather than each rolling separately and fanning out.
+	 * The generator flavour a monster belongs to. Now used only when breaking a pre-pod-id save's
+	 * monsters into starting pods - live membership is the persistent {@link Constants#GM_POD_ID}
+	 * stamp, not flavour-plus-location, so that two same-flavour pods sharing a clearing stay two pods.
 	 */
 	private static String getPodType(GameObject go) {
 		GameObject generator = go.getGameData().getGameObject(go.getThisInt(Constants.GENERATOR_ID));
 		String iconType = generator==null?null:generator.getThisAttribute("icon_type");
 		return iconType!=null?("gen:"+iconType):("name:"+go.getName());
 	}
+	/** Unstamped monsters from a pre-pod-id save are broken into pods of at most this many. */
+	private static final int LEGACY_POD_SIZE = 6;
+	/**
+	 * Groups the day's movers into pods by their PERSISTENT {@link Constants#GM_POD_ID} stamp.
+	 * <p>
+	 * Pods deliberately never combine. An earlier version rebuilt them from (location,flavour) every
+	 * day, which meant two pods that happened to move into the same clearing were silently fused into
+	 * one body the next morning - and, worse, thereafter excluded each other from the crowding count
+	 * (see countGeneratedMonsters(), which exempts only the deciding body), so they stopped repelling
+	 * one another entirely. Keying on a stamp assigned once, at spawn, keeps them distinct for life:
+	 * each is scored on its own and counts the other as company it is NOT, which is the standard
+	 * repellant effect applied afresh at the moment each pod decides - pods are propagated in sequence
+	 * and every option is scored against the clearing as it stands right then, so a pod that has
+	 * already moved today is counted where it now is.
+	 */
 	private static ArrayList<ArrayList<GameObject>> buildPropagationPods(HostPrefWrapper hostPrefs,ArrayList<GameObject> candidates) {
 		ArrayList<ArrayList<GameObject>> pods = new ArrayList<>();
 		// Opting out of pods just means every pod holds exactly one monster, so the loop below stays the
 		// per-monster loop it would otherwise be and nothing downstream needs to know the difference.
 		boolean podsEnabled = hostPrefs==null || !hostPrefs.hasPref(Constants.HOUSE3_GM_MOVE_INDIVIDUALLY);
-		ArrayList<TileLocation> podLocations = new ArrayList<>(); // parallel to pods; null entries never match
-		ArrayList<String> podTypes = new ArrayList<>();           // parallel to pods
+		if (!podsEnabled) {
+			for (GameObject go:candidates) {
+				ArrayList<GameObject> pod = new ArrayList<>();
+				pod.add(go);
+				pods.add(pod);
+			}
+			return pods;
+		}
+
+		assignLegacyPodIds(candidates);
+
+		// Keyed on the stamp AND current location. The stamp is what stops two pods merging; the location
+		// is what keeps the "a pod is one body standing in one place" invariant that propagatePod()
+		// depends on - it scores the leader's position and then moves every member there, so a pod whose
+		// members had drifted apart would teleport the stragglers. Members can be separated by things
+		// outside propagation (one blocked while the rest moved, killed, relocated by a spell), which the
+		// old location-derived grouping made impossible by construction. A split subgroup is re-stamped
+		// with a fresh id below, so the halves stay separate for good rather than snapping back together
+		// if they ever reunite.
+		ArrayList<String> podKeys = new ArrayList<>();            // parallel to pods
+		ArrayList<TileLocation> podLocations = new ArrayList<>(); // parallel to pods
 		for (GameObject go:candidates) {
-			TileLocation tl = podsEnabled?ClearingUtility.getTileLocation(go):null;
-			String type = podsEnabled?getPodType(go):null;
+			String podId = go.getThisAttribute(Constants.GM_POD_ID);
+			TileLocation tl = ClearingUtility.getTileLocation(go);
 			int found = -1;
-			if (tl!=null) {
-				for (int i=0;i<pods.size();i++) {
-					TileLocation other = podLocations.get(i);
-					// Deliberately matched with TileLocation.equals() rather than a string key: tile names
-					// are not unique once multiple boards are in play.
-					if (other!=null && other.equals(tl) && type.equals(podTypes.get(i))) {
-						found = i;
-						break;
-					}
+			for (int i=0;i<pods.size();i++) {
+				if (!podKeys.get(i).equals(podId==null?"":podId)) continue;
+				TileLocation other = podLocations.get(i);
+				// Deliberately matched with TileLocation.equals() rather than a string key: tile names
+				// are not unique once multiple boards are in play.
+				if (other==null?tl==null:other.equals(tl)) {
+					found = i;
+					break;
 				}
 			}
 			if (found>=0) {
@@ -1243,12 +1291,87 @@ public class SetupCardUtility {
 				ArrayList<GameObject> pod = new ArrayList<>();
 				pod.add(go);
 				pods.add(pod);
+				podKeys.add(podId==null?"":podId);
 				podLocations.add(tl); // null for a monster with no location - it can never pod up, and
 									  // propagatePod() drops it exactly as a lone monster always was
-				podTypes.add(type);
 			}
 		}
+		// Re-stamp any pod that turned out to be a split remnant, so the pieces never re-merge.
+		ArrayList<String> seenIds = new ArrayList<>();
+		for (ArrayList<GameObject> pod:pods) {
+			String podId = pod.get(0).getThisAttribute(Constants.GM_POD_ID);
+			if (podId!=null && !seenIds.contains(podId)) {
+				seenIds.add(podId);
+				continue;
+			}
+			String freshId = "p"+pod.get(0).getStringId();
+			for (GameObject go:pod) go.setThisAttribute(Constants.GM_POD_ID,freshId);
+			seenIds.add(freshId);
+			DebugUtility.diag("[GMP] pod split: "+pod.size()+" member(s) of "+podId
+				+" separated at "+ClearingUtility.getTileLocation(pod.get(0))+" -> new pod "+freshId);
+		}
 		return pods;
+	}
+	/**
+	 * Stamps any monster that predates {@link Constants#GM_POD_ID} - i.e. everything already standing on
+	 * the board in a game saved before pods became persistent. Co-located monsters of one flavour are
+	 * split into pods of {@link #LEGACY_POD_SIZE}, plus a remainder pod for whatever is left over, so a
+	 * long-accumulated stack disperses as several bodies that repel each other rather than as one
+	 * immovable crowd. Runs once per monster: after this, the stamp is what identifies the pod, and a
+	 * pod that later loses members simply shrinks.
+	 */
+	private static void assignLegacyPodIds(ArrayList<GameObject> candidates) {
+		ArrayList<GameObject> unstamped = new ArrayList<>();
+		for (GameObject go:candidates) {
+			if (go.getThisAttribute(Constants.GM_POD_ID)==null) unstamped.add(go);
+		}
+		if (unstamped.isEmpty()) return;
+
+		ArrayList<TileLocation> groupLocations = new ArrayList<>();
+		ArrayList<String> groupTypes = new ArrayList<>();
+		ArrayList<ArrayList<GameObject>> groups = new ArrayList<>();
+		for (GameObject go:unstamped) {
+			TileLocation tl = ClearingUtility.getTileLocation(go);
+			String type = getPodType(go);
+			int found = -1;
+			if (tl!=null) {
+				for (int i=0;i<groups.size();i++) {
+					TileLocation other = groupLocations.get(i);
+					// Deliberately matched with TileLocation.equals() rather than a string key: tile names
+					// are not unique once multiple boards are in play.
+					if (other!=null && other.equals(tl) && type.equals(groupTypes.get(i))) {
+						found = i;
+						break;
+					}
+				}
+			}
+			if (found>=0) {
+				groups.get(found).add(go);
+			}
+			else {
+				ArrayList<GameObject> group = new ArrayList<>();
+				group.add(go);
+				groups.add(group);
+				groupLocations.add(tl);
+				groupTypes.add(type);
+			}
+		}
+
+		for (ArrayList<GameObject> group:groups) {
+			String podId = null;
+			int inPod = 0;
+			for (GameObject go:group) {
+				if (podId==null || inPod==LEGACY_POD_SIZE) {
+					podId = "p"+go.getStringId();
+					inPod = 0;
+				}
+				go.setThisAttribute(Constants.GM_POD_ID,podId);
+				inPod++;
+			}
+			DebugUtility.diag("[GMP] assignLegacyPodIds: "+group.size()+" unstamped "+getPodType(group.get(0))
+				+" at "+ClearingUtility.getTileLocation(group.get(0))+" -> "
+				+((group.size()+LEGACY_POD_SIZE-1)/LEGACY_POD_SIZE)+" pod(s)");
+		}
 	}
 	private static String getPodName(ArrayList<GameObject> pod) {
 		GameObject first = pod.get(0);
