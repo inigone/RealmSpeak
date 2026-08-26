@@ -4253,6 +4253,12 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void setJustReleasedFollowerActionCount(int val) {
 		setInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT, val);
 	}
+	// Returns 0 when unstamped, which is safe for the only caller
+	// (ActionRow.processReleasedFollowerBatch, which reads it only for objects already matched on
+	// RELEASE_BATCH_GUIDE_ID and so always carries the pair - markReleasedFromGuide writes both).
+	public int getJustReleasedFollowerActionCount() {
+		return getInt(JUST_RELEASED_FOLLOWER_ACTION_COUNT);
+	}
 	// Low-level attribute removal — see clearReleaseBatchStamp() below for the actual consume step
 	// callers should use.
 	public void removeJustReleasedFollowerActionCount() {
