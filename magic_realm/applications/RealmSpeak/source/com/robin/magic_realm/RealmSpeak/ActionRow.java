@@ -1258,11 +1258,25 @@ public class ActionRow {
 	static void triggerPostPhaseFor(CharacterWrapper character, RealmGameHandler gameHandler) {
 		if (character.isMinion()) return;
 
-		TileLocation loc = character.getCurrentLocation();
-		if (loc == null || !loc.isInClearing()) return;
-
 		int actionPhasesPerformedNow = character.getNumberOfPerformedActionPhasesToday();
 		if (character.getPostPhaseActivityActionCount() == actionPhasesPerformedNow) return;
+
+		TileLocation loc = character.getCurrentLocation();
+		if (loc == null || !loc.isInClearing()) {
+			// Out of a clearing - mid-flight, having "flown to tile". There is no clearing to gather
+			// post-phase participants from, so step 7 is trivially complete for this phase with an
+			// empty set. Stamp anyway and return: the stamp means "step 7 has RUN for this phase", not
+			// "participants exist" (see the unconditional-stamp note below), and it is the only thing
+			// RealmTurnPanel.isAwaitingPostPhaseDecision() consults for non-minions. Returning without
+			// stamping used to hold that gate shut for the whole airborne stretch, which in turn held
+			// the released-follower batch: a follower dropped on a guide's first FLY had its EOCTMS
+			// deferred until the guide next landed in a clearing (observed: dropped phase 1, fired at
+			// the phase-4 Hide), instead of at the end of the phase it was dropped in per step 10.a.
+			// The batch's own EOCTMS fires in the FOLLOWERS' clearing (step 10.a.i), which is perfectly
+			// well-defined while the guide is airborne - so there is no reason to wait for a landing.
+			character.setPostPhaseActivityActionCount(actionPhasesPerformedNow);
+			return;
+		}
 
 		ArrayList<CharacterWrapper> postPhaseParticipants = getPostPhaseParticipants(character, gameHandler, loc);
 
@@ -1335,6 +1349,13 @@ public class ActionRow {
 	 * {@code RealmTurnPanel.playNext()}/{@code CharacterFrame.cascadeStopFollowing}; day's end:
 	 * {@link #releaseLastPhaseFollowers()}).
 	 * <p>
+	 * The stamped phase is a lower bound, NOT an equality test: every set stamped at or before the
+	 * guide's current phase count is processed, oldest first, one {@link #processOneReleasedFollowerBatch}
+	 * call each. Matching on equality alone stranded followers permanently whenever the guide advanced
+	 * a phase before a qualifying tick landed - see the catch-up comment in the body for the
+	 * game-9093 case that exposed it. Sets stamped AHEAD of the count are this phase's own
+	 * pre-increment stamps and are correctly left for the next call.
+	 * <p>
 	 * This method runs on the GUIDE's own client (inside their {@code ActionRow.process()}), so it
 	 * only performs pure shared-GameData operations — the single summon check,
 	 * {@link #triggerPostPhaseFor}, and {@link #completeFollowerTurnDataOnly}. It cannot safely call
@@ -1385,15 +1406,58 @@ public class ActionRow {
 		GamePool pool = new GamePool(guide.getGameObject().getGameData().getGameObjects());
 		ArrayList<String> keyVals = new ArrayList<>();
 		keyVals.add(CharacterWrapper.RELEASE_BATCH_GUIDE_ID + "=" + guide.getGameObject().getStringId());
-		keyVals.add(CharacterWrapper.JUST_RELEASED_FOLLOWER_ACTION_COUNT + "=" + actionPhasesPerformedNow);
-		ArrayList<GameObject> batchGameObjects = pool.find(keyVals);
+		ArrayList<GameObject> pendingForGuide = pool.find(keyVals);
 
-		if (batchGameObjects.isEmpty()) {
+		// Deliberately queries on the guide id ALONE and then buckets by stamped phase, rather than
+		// asking for JUST_RELEASED_FOLLOWER_ACTION_COUNT == the guide's current count as this used to.
+		// That exact-equality match was a latent stranding bug: the stamp is a fixed number but the
+		// guide's phase count only moves forward, so if no qualifying tick landed while the two were
+		// equal, the batch could never match again and its members were never completed at all - their
+		// playOrder stayed non-zero and the day could not end. Observed in game-9093: a Magician
+		// following a Giant Bat was dropped on the bat's first FLY (stamped phase 1), the bat then flew
+		// twice more and hid twice (count 5), and the Magician was stranded permanently. turnDone()'s
+		// Batch-NLF-End call could not rescue him either, since it queries the current count too.
+		// Anything stamped at or before the current count is now processed, oldest batch first.
+		TreeMap<Integer,ArrayList<GameObject>> readyByPhase = new TreeMap<>();
+		for (GameObject go : pendingForGuide) {
+			int stampedPhase = new CharacterWrapper(go).getJustReleasedFollowerActionCount();
+			if (stampedPhase > actionPhasesPerformedNow) {
+				// This phase's own pre-increment stamp (markReleasedFromGuide's +1 convention) - the
+				// dispatch that created it hasn't finished, so it is genuinely not ready yet.
+				continue;
+			}
+			readyByPhase.computeIfAbsent(stampedPhase, k -> new ArrayList<>()).add(go);
+		}
+
+		if (readyByPhase.isEmpty()) {
 			DebugUtility.diag("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
-				+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + " -> no released followers this phase");
+				+ " phase=" + actionPhasesPerformedNow + " " + batchLabel + " -> no released followers ready"
+				+ (pendingForGuide.isEmpty() ? "" : " (" + pendingForGuide.size() + " stamped ahead of this phase)"));
 			return;
 		}
 
+		// One call per stamped phase, so each release set keeps its own single shared summon check
+		// rather than several sets collapsing into one roll. Same-phase members still share one check,
+		// which is the rule this batching exists to implement.
+		for (Map.Entry<Integer,ArrayList<GameObject>> entry : readyByPhase.entrySet()) {
+			if (entry.getKey().intValue() != actionPhasesPerformedNow) {
+				DebugUtility.diag("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
+					+ " CATCH-UP: processing stale batch stamped phase=" + entry.getKey()
+					+ " while guide is at phase=" + actionPhasesPerformedNow + " " + batchLabel);
+			}
+			processOneReleasedFollowerBatch(guide, gameHandler, batchLabel, entry.getKey().intValue(), entry.getValue());
+		}
+	}
+
+	/**
+	 * Completes ONE release set - every follower stamped with the same guide and the same phase - and
+	 * fires the single shared monster-summoning check that set is entitled to. Split out of
+	 * {@link #processReleasedFollowerBatch} so that method can process more than one set per call when
+	 * an earlier set was missed; see the catch-up note there. All the cross-client safety reasoning in
+	 * that method's javadoc applies here unchanged, since this is where its body now lives.
+	 */
+	private static void processOneReleasedFollowerBatch(CharacterWrapper guide, RealmGameHandler gameHandler,
+			String batchLabel, int actionPhasesPerformedNow, ArrayList<GameObject> batchGameObjects) {
 		StringBuilder names = new StringBuilder();
 		for (GameObject go : batchGameObjects) names.append(go.getName()).append(",");
 		DebugUtility.diag("[IPD] processReleasedFollowerBatch guide=" + guide.getGameObject().getName()
