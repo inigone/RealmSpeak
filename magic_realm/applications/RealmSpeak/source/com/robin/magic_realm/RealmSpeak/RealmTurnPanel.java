@@ -1450,6 +1450,13 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		// never got their own summon check. Placed here (not in updateControls()'s polling loop) so
 		// this waits for the PC's actual Done click instead of firing the moment actionsLeft goes false,
 		// which could be well before the human clicks anything. See Phasing_Character_Turn_Flow.txt.
+		// Flush any still-pending per-phase batch BEFORE the day's-end release stamps its own, so the
+		// two keep their separate EOCTMS events (steps 10.a and 15.b). releaseLastPhaseFollowers()
+		// stamps with the UNADJUSTED final phase count, which is the same number an in-phase drop from
+		// that same final phase carries - so a batch that was missed earlier would otherwise be bucketed
+		// together with the day's-end batch and collapse two events into one. Normally a no-op: the
+		// per-phase batch was already consumed when its own phase's post-phase settled.
+		ActionRow.processReleasedFollowerBatch(getCharacter(), getGameHandler(), "Batch-NLF-1");
 		if (currentActionRow >= 0 && currentActionRow < actionRows.size()) {
 			actionRows.get(currentActionRow).releaseLastPhaseFollowers();
 		}
