@@ -770,6 +770,12 @@ public class Constants {
 	
 	public static final String GENERATED = "generated"; // for generated monsters
 	public static final String GENERATOR_ID = "generatorid";
+	// Persistent pod membership for generated monsters. Pods are identified by this stamp rather than
+	// rebuilt from (location,flavour) each day, so two pods that happen to share a clearing stay two
+	// pods and go on repelling each other instead of silently fusing. See SetupCardUtility's
+	// buildPropagationPods(). A brand-new key on purpose: saves from the IL-032/034 era carry stale
+	// generated-monster attributes, and reusing any of those names would come up pre-populated.
+	public static final String GM_POD_ID = "gmpodid";
 	public static final String GM_GROW = "gm_grow";
 	public static final String GM_SCARE = "gm_scare";
 	
