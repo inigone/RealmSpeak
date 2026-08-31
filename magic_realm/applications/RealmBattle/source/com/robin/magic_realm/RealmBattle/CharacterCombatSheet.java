@@ -1033,6 +1033,13 @@ public class CharacterCombatSheet extends CombatSheet {
 	private static Rectangle FORT_RECT = new Rectangle(0,330,400,35);  // Fort Rect?  Ewww.
 	protected void drawOther(Graphics g1) {
 		Graphics2D g = (Graphics2D)g1;
+		drawAttackKillEstimates(g,POS_TARGET_BOX1,POS_ATTACK_BOX1);
+		// Denizen attacks go in the open area left of the DUCK box and below the DODGE box.  The
+		// printed DUCK box is a good deal narrower than its hotspot, so the block can run past it.
+		int denizenBlockX = 6;
+		int denizenBlockY = getPosition(POS_TARGET_BOX2).y+(getHotSpotSize()>>1)+8;
+		drawEstimateBlock(g,getAttackerEstimates(false,true),denizenBlockX,denizenBlockY,
+				getPosition(POS_TARGET_BOX3).x-32-denizenBlockX,DENIZEN_ESTIMATE_FONT);
 		if (sheetOwner!=null && sheetOwner.isCharacter()) {
 			spellRegions.clear();
 			spellRegionHash.clear();

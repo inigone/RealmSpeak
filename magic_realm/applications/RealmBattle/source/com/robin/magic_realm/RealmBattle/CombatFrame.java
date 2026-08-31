@@ -1229,7 +1229,8 @@ public class CombatFrame extends JFrame {
 					}
 					break;
 				case Constants.COMBAT_TACTICS:
-					// This stage can ONLY happen if the character has a special item (ie., Battle Bracelets)
+					// Every player stops here, whether or not they can replace a chit: it is the last
+					// look at the final combat boxes before attacks are rolled
 					instructionLabel = new JLabel("Change Tactics",IconFactory.findIcon("icons/arrow4.gif"),SwingConstants.LEADING);
 					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
@@ -1819,7 +1820,13 @@ public class CombatFrame extends JFrame {
 				if (row==0) {
 					CombatSummarySheet combatSummarySheet = new CombatSummarySheet(this);
 					int height = 400+allParticipants.size()*(PARTICIPANT_ROW_HEIGHT+PARTICIPANT_ROW_HEIGHT/2);
-					combatSummarySheet.setPreferredSize(new Dimension(600,height));
+					int width = 600;
+					if (hostPrefs!=null && hostPrefs.hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES)) {
+						// Room for the outcome line column, plus slack for rows a long list grows
+						width = 1250;
+						height += allParticipants.size()*60;
+					}
+					combatSummarySheet.setPreferredSize(new Dimension(width,height));
 					combatSheetPanel.add(new JScrollPane(combatSummarySheet));
 				}
 				else {
@@ -5360,6 +5367,7 @@ public class CombatFrame extends JFrame {
 	public void showCombatSummary() {
 		BattleSummaryWrapper bsw = new BattleSummaryWrapper(theGame.getGameObject());
 		BattleSummary bs = bsw.getBattleSummary();
+		bs.setOutcomes(OutcomeLines.collectBattle(this,currentBattleModel,hostPrefs));
 		BattleSummaryIcon icon = new BattleSummaryIcon(bs);
 		JScrollPane sp = new JScrollPane(new JLabel(icon));
 		ComponentTools.lockComponentSize(sp,640,480);
