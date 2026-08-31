@@ -835,6 +835,7 @@ public class Constants {
 	public static final String NO_SUMMONING = "no_summoning";
 	public static final String OPT_STUMBLE = "Stumble";
 	public static final String OPT_FUMBLE = "Fumble";
+	public static final String OPT_COMBAT_OUTCOME_PROBABILITIES = "CombatOutcomeProbabilities";
 	public static final String OPT_WEATHER = "Weather";
 	public static final String OPT_MISSILE = "OptionalMissileTable";
 	public static final String OPT_QUIET_MONSTERS = "QuietMonsters";
