@@ -764,6 +764,7 @@ public class CharacterChitComponent extends RoundChitComponent implements Battle
 			CombatWrapper monCombat = new CombatWrapper(transmorph.getGameObject());
 			if (monCombat.getKilledBy() != null) {
 				combat.setKilledBy(attacker.getGameObject());
+			CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_KILL,getGameObject());
 				combat.setKilledLength(attacker.getLength());
 				combat.setKilledSpeed(attacker.getAttackSpeed());
 				ret = true;
@@ -975,6 +976,7 @@ public class CharacterChitComponent extends RoundChitComponent implements Battle
 							if (!character.isFortDamaged()) {
 								RealmLogging.logMessage(attacker.getGameObject().getNameWithNumber(),"Damages the character fortification.");
 								character.setFortDamaged(true);
+								CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_ARMOR_DAMAGED,armor.getGameObject());
 							}
 						}
 						else {
@@ -996,6 +998,7 @@ public class CharacterChitComponent extends RoundChitComponent implements Battle
 											+armor.getGameObject().getName());
 									destroyed = false;
 									armorChit.setIntact(false); // NOW its damaged
+									CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_ARMOR_DAMAGED,armor.getGameObject());
 								}
 							}
 							else if (armorChit.getGameObject().hasThisAttribute(Constants.DAMAGEABLE_NOT)) {
@@ -1026,6 +1029,7 @@ public class CharacterChitComponent extends RoundChitComponent implements Battle
 							if (!combatArmor.isDead()) {
 								combatArmor.setKilledBy(attacker.getGameObject());
 								combatArmor.setHitByOrderNumber(attackOrderPos);
+								CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_ARMOR_DESTROYED,armor.getGameObject());
 								RealmLogging.logMessage(attacker.getGameObject().getNameWithNumber(),"Destroys the "
 										+getGameObject().getName()+"'s "
 										+armor.getGameObject().getName());
@@ -1138,6 +1142,7 @@ public class CharacterChitComponent extends RoundChitComponent implements Battle
 		}
 		if (characterWasKilled) {
 			combat.setKilledBy(attacker.getGameObject());
+			CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_KILL,getGameObject());
 			combat.setKilledSpeed(attacker.getAttackSpeed());
 			combat.setKilledLength(attacker.getLength());
 			damageTaken = true;
