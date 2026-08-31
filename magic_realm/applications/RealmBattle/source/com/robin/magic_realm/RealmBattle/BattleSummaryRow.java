@@ -37,6 +37,8 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 	private static final int RESOLUTION_PARRY = 5;
 	
 	private int hitOrder;
+	private int attackOrder;
+	private Color attackOrderColor;
 	private GameObject attacker;
 	private GameObject target;
 	
@@ -48,10 +50,12 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 	private String subtitle;
 	private Harm harmApplied;
 	
-	public BattleSummaryRow(GameObject attacker,GameObject target,int hitOrder) {
+	public BattleSummaryRow(GameObject attacker,GameObject target,int hitOrder,int attackOrder,Color attackOrderColor) {
 		this.attacker = attacker;
 		this.target = target;
 		this.hitOrder = hitOrder;
+		this.attackOrder = attackOrder;
+		this.attackOrderColor = attackOrderColor;
 		
 		CombatWrapper attackerCombat = new CombatWrapper(attacker);
 		CombatWrapper combat = attackerCombat;
@@ -200,6 +204,19 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 			}
 		}
 	}
+	private static final Font ATTACK_ORDER_FONT = new Font("Dialog",Font.BOLD,14);
+
+	/**
+	 * The same combat sequence number the combat sheets and summary pane show, in the same colour
+	 * that attack's order stamp has on the pane - grey when it will not land, gold when incoming,
+	 * green when outgoing.  Matching colours is what lets the two views be read against each other.
+	 */
+	private void drawAttackOrder(Graphics2D g,int x,int y) {
+		if (attackOrder<=0) return;
+		g.setFont(ATTACK_ORDER_FONT);
+		g.setColor(attackOrderColor==null?OutcomeLines.COLOR_NOT_LANDING:attackOrderColor);
+		g.drawString("["+attackOrder+"]",x,y+16);
+	}
 	public int compareTo(BattleSummaryRow row) {
 		return row.hitOrder;
 	}
@@ -317,6 +334,7 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 		
 		TextType tt = new TextType(toString(),170,"TITLE");
 		tt.draw(g,x-5,y-5,Alignment.Left);
+		drawAttackOrder(g,x+150,y-3);
 		
 		// Draw Die Roll
 		if (roller!=null) {
@@ -411,7 +429,7 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 		BattleSummaryRow row;
 		BattleSummaryIcon icon = new BattleSummaryIcon();
 		
-		row = new BattleSummaryRow(anotherAttacker,target,0);
+		row = new BattleSummaryRow(anotherAttacker,target,0,1,null);
 		row.resolution = RESOLUTION_HIT;
 		row.roller = new DieRoller("Red|3:White|2&1",25,6);
 		row.subtitle = "Boom";
@@ -419,7 +437,7 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 		row.harmApplied = Harm.getHarmFromKey("neg+2");
 		icon.addRow(row);
 		
-		row = new BattleSummaryRow(attacker,target,0);
+		row = new BattleSummaryRow(attacker,target,0,2,null);
 		row.resolution = RESOLUTION_KILL;
 		row.roller = new DieRoller("Red|3:White|2&1",25,6);
 		row.subtitle = "Boom";
@@ -427,7 +445,7 @@ public class BattleSummaryRow implements Comparable<BattleSummaryRow> {
 		row.harmApplied = Harm.getHarmFromKey("neg+2");
 		icon.addRow(row);
 		
-		row = new BattleSummaryRow(target,attacker,0);
+		row = new BattleSummaryRow(target,attacker,0,3,null);
 		row.resolution = RESOLUTION_NOATTACK;
 		row.roller = new DieRoller("Red|3:White|2&1",25,6);
 		row.subtitle = "Boom";
