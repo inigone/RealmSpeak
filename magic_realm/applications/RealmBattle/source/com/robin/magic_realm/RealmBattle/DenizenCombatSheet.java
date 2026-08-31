@@ -9,6 +9,7 @@ import javax.swing.*;
 
 import com.robin.game.objects.GameObject;
 import com.robin.general.swing.ImageCache;
+import com.robin.general.util.HashLists;
 import com.robin.magic_realm.components.*;
 import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
 import com.robin.magic_realm.components.utility.BattleUtility;
@@ -174,6 +175,9 @@ public class DenizenCombatSheet extends CombatSheet {
 			new Point(DEN_COL3_SR,TARGET_ROW3_SR),
 	};
 	
+	/** Vertical space taken by the two-line "OTHER ATTACKERS" caption printed under the attack column. */
+	private static final int ATTACKERS_CAPTION_HEIGHT = 46;
+
 	private boolean isOwnedByActive;
 	private boolean targetNeedsAssignment = false;
 	HostPrefWrapper hostPrefs;
@@ -942,8 +946,38 @@ public class DenizenCombatSheet extends CombatSheet {
 		if (circleGroup!=null) drawRollerGroup(g,circleGroup,POS_ATTACKERS,POS_ATTACKERS_BOX1);
 		if (squareGroup!=null) drawRollerGroup(g,squareGroup,POS_DEFENDER_TARGETS,POS_DEFENDER_TARGET_BOX3);
 	}
+	/**
+	 * Each group of chits gets its outcome lines next to it: the sheet owner's own attack below the
+	 * denizen boxes, the attackers' below the attack column, and the denizen's target's below the
+	 * target row.
+	 */
 	protected void drawOther(Graphics g) {
-		// This implementation does nothing
+		int half = getHotSpotSize()>>1;
+
+		// Sheet owner's attack - left of the DUCK column, below the DODGE row
+		int ownerX = 6;
+		drawEstimateBlock(g,getSheetOwnerEstimates(),ownerX,getPosition(POS_DEFENDER_BOX2).y+half+8,
+				getPosition(POS_DEFENDER_BOX3).x-42-ownerX,ESTIMATE_FONT);
+
+		// Attackers - below the attack column, clearing the printed "OTHER ATTACKERS" caption.  The
+		// Super Realm sheet captions its attack column at the top instead, so it needs no clearance.
+		int attackerX = getPosition(POS_ATTACKERS_BOX1).x-82;
+		int attackerY = getPosition(POS_ATTACKERS_BOX3).y+half+8;
+		if (!hostPrefs.hasPref(Constants.SR_COMBAT)) {
+			attackerY += ATTACKERS_CAPTION_HEIGHT;
+		}
+		drawEstimateBlock(g,getAttackerEstimates(true,true),attackerX,attackerY,
+				getIcon().getIconWidth()-6-attackerX,ESTIMATE_FONT);
+
+		// The denizen's target - below the target row
+		int targetX = 6;
+		drawEstimateBlock(g,getSheetOwnerTargetEstimates(),targetX,lowestTargetRow()+half+8,
+				getPosition(POS_DEFENDER_TARGET_BOX1).x+half-targetX,ESTIMATE_FONT);
+	}
+	/** Super Realm stacks the target boxes down three rows; the plain sheet keeps them on one. */
+	private int lowestTargetRow() {
+		return Math.max(getPosition(POS_DEFENDER_TARGET_BOX1).y,
+				Math.max(getPosition(POS_DEFENDER_TARGET_BOX2).y,getPosition(POS_DEFENDER_TARGET_BOX3).y));
 	}
 	
 	public static void lureDenizens(CombatFrame combatFrame, RealmComponent sheetOwner) {
