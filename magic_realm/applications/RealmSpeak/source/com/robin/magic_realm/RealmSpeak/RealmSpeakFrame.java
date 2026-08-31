@@ -23,6 +23,7 @@ import com.robin.magic_realm.MRMap.MapBuilder;
 import com.robin.magic_realm.RealmBattle.CombatFrame;
 import com.robin.magic_realm.RealmCharacterBuilder.RealmCharacterBuilderFrame;
 import com.robin.magic_realm.RealmCharacterBuilder.RealmCharacterBuilderModel;
+import com.robin.magic_realm.RealmSpeak.update.UpdateDialog;
 import com.robin.magic_realm.RealmGm.JFrameWithStatus;
 import com.robin.magic_realm.RealmGm.RealmGmFrame;
 import com.robin.magic_realm.RealmGm.RealmSpeakInit;
@@ -1630,6 +1631,14 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 					}
 				});
 			helpMenu.add(aboutHelp);
+			helpMenu.add(new JSeparator());
+				JMenuItem checkForUpdates = new JMenuItem("Check for Updates...");
+				checkForUpdates.addActionListener(new ActionListener() {
+					public void actionPerformed(ActionEvent ev) {
+						UpdateDialog.showInigoneUpdateDialog(RealmSpeakFrame.this);
+					}
+				});
+			helpMenu.add(checkForUpdates);
 		menu.add(helpMenu);
 		
 		toolMenu = new JMenu("Tools");
