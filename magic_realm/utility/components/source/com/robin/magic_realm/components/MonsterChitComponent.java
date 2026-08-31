@@ -9,7 +9,6 @@ import com.robin.game.objects.GameObject;
 import com.robin.general.graphics.StarShape;
 import com.robin.general.graphics.TextType;
 import com.robin.general.graphics.TextType.Alignment;
-import com.robin.general.swing.ImageCache;
 import com.robin.magic_realm.components.attribute.*;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
@@ -505,9 +504,7 @@ public class MonsterChitComponent extends SquareChitComponent implements BattleC
 		int size = getChitSize();
 		NativeSteedChitComponent horse = (NativeSteedChitComponent)getHorse(false);
 		if (horse!=null) {
-			String[] ret = horse.getFolderAndType();
-			int horseSize = ret[2]==null?20:40*Integer.valueOf(ret[2]);
-			ImageIcon icon = ImageCache.getIcon(ret[0]+"/"+ret[1],horseSize);
+			ImageIcon icon = getHorseIcon(horse);
 			g.drawImage(icon.getImage(),size-icon.getIconWidth()-2,(size>>1),null);
 		}
 	}
@@ -934,12 +931,14 @@ public class MonsterChitComponent extends SquareChitComponent implements BattleC
 				RealmLogging.logMessage(attacker.getGameObject().getNameWithNumber(),"Hits shield, thus monster is not killed, and reduces sharpness: "+harm.toString());
 				if (harm.getAppliedStrength().equalTo(shield.getStrength()) && !shield.isDamaged() && !shield.getGameObject().hasThisAttribute(Constants.DAMAGEABLE_NOT)) {
 					shield.setDamaged(true);
+					CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_ARMOR_DAMAGED,shield.getGameObject());
 					RealmLogging.logMessage(attacker.getGameObject().getNameWithNumber(),"Damages "+this.getName()+"'s shield.");
 				}
 				else if ((harm.getAppliedStrength().strongerThan(shield.getStrength())
 						|| (harm.getAppliedStrength().equalTo(shield.getStrength()) && shield.isDamaged()))) {
 					shield.setDestroyed(true);
 					shieldCombat.setKilledBy(attacker.getGameObject());
+					CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_ARMOR_DESTROYED,shield.getGameObject());
 					shieldCombat.setKilledLength(attacker.getLength());
 					shieldCombat.setKilledSpeed(attacker.getAttackSpeed());
 					shieldCombat.setHitByOrderNumber(attackOrderPos);
@@ -991,6 +990,7 @@ public class MonsterChitComponent extends SquareChitComponent implements BattleC
 		else if (applied.strongerOrEqualTo(vulnerability)) {
 			// Dead monster!
 			combat.setKilledBy(attacker.getGameObject());
+			CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_KILL,getGameObject());
 			combat.setKilledLength(attacker.getLength());
 			combat.setKilledSpeed(attacker.getAttackSpeed());
 			if (hostPrefs.hasPref(Constants.HOUSE2_DENIZENS_SERIOUS_WOUNDS) && applied.equalTo(vulnerability)) {
