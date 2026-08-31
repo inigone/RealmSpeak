@@ -9,6 +9,7 @@ import javax.swing.*;
 import javax.swing.border.*;
 
 import com.robin.game.objects.GameObject;
+import com.robin.game.server.GameClient;
 import com.robin.general.graphics.GraphicsUtil;
 import com.robin.general.graphics.TextType;
 import com.robin.general.graphics.TextType.Alignment;
@@ -102,6 +103,9 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 	}
 	public boolean hasHotspots() {
 		return hotspotHash.size()>0;
+	}
+	protected Point getPosition(int index) {
+		return positions[index];
 	}
 	public RealmComponent getSheetOwner() {
 		return sheetOwner;
@@ -248,11 +252,18 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 				}
 				
 				String prefix = (rc.isCharacter()?"":("B"+combat.getCombatBoxAttack()+","+combat.getCombatBoxDefense()+" "));
+				// Tag each roll with the attack order shown on the sheet - the panel truncates these
+				// titles hard, so the number is often all that is readable
+				ArrayList<Integer> positions = outcomeLines().tagRollsWithAttackOrder()
+						?outcomeLines().attackOrder().positionsFor(bc.getGameObject()):new ArrayList<Integer>();
 				Iterator<String> r=rs.iterator();
 				Iterator<String> s=ss.iterator();
+				int rollIndex = 0;
 				while(r.hasNext()) {
+					String tag = rollIndex<positions.size()?("["+positions.get(rollIndex)+"] "):"";
+					rollIndex++;
 					RollerResult rr = new RollerResult(
-							prefix+combat.getGameObject().getName()+type,
+							tag+prefix+combat.getGameObject().getName()+type,
 							r.next(),
 							s.next());
 					battleRolls.add(rr);
@@ -335,6 +346,7 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 	}
 	public void paint(Graphics g) {
 		//super.paint(g);
+		outcomeLines().reset(); // recomputed per paint, so a tactics change cannot leave it stale
 		g.drawImage(getImageIcon().getImage(),0,0,null);
 		
 		// Draw components
@@ -803,6 +815,169 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 				TextType.drawText(g,split[1],x+93,y+5,HOTSPOT_SIZE,90,Alignment.Center);
 			}
 		}
+	}
+	protected static final Font ESTIMATE_FONT = new Font("Dialog",Font.BOLD,11);
+	private static final Color ESTIMATE_BACKING = new Color(255,255,255,220);
+	private static final Color ESTIMATE_LIVE_TEXT = new Color(0,0,160);
+	/** An outcome that cannot come up however the target repositions. */
+	private static final Color ESTIMATE_UNAVAILABLE_TEXT = new Color(120,120,120);
+	/** Line height follows the fitted font size - see fitEstimateFont. */
+	/** Denizen attack lines carry a harm breakdown, so they run a point smaller to fit their area. */
+	protected static final Font DENIZEN_ESTIMATE_FONT = new Font("Dialog",Font.BOLD,10);
+	/** What separates one harm group from the next - also where an over-long line is broken. */
+	static final String ESTIMATE_GROUP_SEPARATOR = " , ";
+	private static final String ESTIMATE_WRAP_INDENT = "    ";
+
+	/**
+	 * Draws the FUMBLE/MISSILE arithmetic for a placed attack, on a backing so that it stays
+	 * readable over the printed sheet.  See AttackKillEstimate.
+	 *
+	 * @return		the y coordinate just below what was drawn, so callers can stack blocks
+	 */
+	protected int paintAttackEstimate(Graphics g,int x,int y,int width,AttackKillEstimate estimate,Font font,int lineHeight) {
+		FontMetrics metrics = g.getFontMetrics(font);
+		ArrayList<String> texts = new ArrayList<>();
+		ArrayList<AttackKillEstimate.Emphasis> emphases = new ArrayList<>();
+		for (AttackKillEstimate.EstimateLine line : estimate.getLines()) {
+			for (String wrapped : wrapEstimateLine(metrics,line.text,width-6)) {
+				texts.add(wrapped);
+				emphases.add(line.emphasis);
+			}
+		}
+		int height = (lineHeight*texts.size())+2;
+		g.setColor(ESTIMATE_BACKING);
+		g.fillRect(x,y,width,height);
+		g.setFont(font);
+		int lineY = y+lineHeight-1;
+		for (int i=0;i<texts.size();i++) {
+			g.setColor(emphases.get(i)==AttackKillEstimate.Emphasis.LIVE?ESTIMATE_LIVE_TEXT:ESTIMATE_UNAVAILABLE_TEXT);
+			g.drawString(texts.get(i),x+3,lineY);
+			lineY += lineHeight;
+		}
+		return y+height;
+	}
+	/**
+	 * Breaks an over-long estimate line between harm groups rather than letting it run off the
+	 * sheet.  A missile table can produce a distinct result for all six rolls, which is wider than
+	 * any clear area of the sheet.
+	 */
+	private static ArrayList<String> wrapEstimateLine(FontMetrics metrics,String text,int maxWidth) {
+		ArrayList<String> wrapped = new ArrayList<>();
+		if (metrics.stringWidth(text)<=maxWidth) {
+			wrapped.add(text);
+			return wrapped;
+		}
+		String[] parts = text.split(ESTIMATE_GROUP_SEPARATOR);
+		String current = parts[0];
+		for (int i=1;i<parts.length;i++) {
+			String candidate = current+ESTIMATE_GROUP_SEPARATOR+parts[i];
+			if (metrics.stringWidth(wrapped.isEmpty()?candidate:(ESTIMATE_WRAP_INDENT+candidate))>maxWidth) {
+				wrapped.add(wrapped.isEmpty()?current:(ESTIMATE_WRAP_INDENT+current));
+				current = parts[i];
+			}
+			else {
+				current = candidate;
+			}
+		}
+		wrapped.add(wrapped.isEmpty()?current:(ESTIMATE_WRAP_INDENT+current));
+		return wrapped;
+	}
+	/**
+	 * Outcome lines only make sense once attacks and maneuvers are being placed, so nothing is
+	 * written before the POSITION step.
+	 */
+	/**
+	 * Whether repositioning and change-of-tactics have already been applied.  From the TACTICS step
+	 * on they have, so the combat boxes are final and only the outcome that will actually happen is
+	 * worth showing.  Before that either outcome is still live - see AttackKillEstimate.
+	 */
+	/**
+	 * This attack's place in the resolution order, or 0 before the boxes are final.  The order spans
+	 * until the longest line fits the space available.  The whole block uses one size so it does not
+	 * read as ragged, and wrapping only takes over once the smallest size still overflows.
+	 * <p>
+	 * Guarded: the outcome lines are a reading aid, so a fault while working them out must never
+	 * take the combat sheet's painting down with it.  Worst case the lines go missing.
+	 */
+	protected void drawEstimateBlock(Graphics g,ArrayList<AttackKillEstimate> estimates,int x,int y,int width,Font preferredFont) {
+		try {
+			if (estimates.isEmpty()) return;
+			Font font = fitEstimateFont(g,preferredFont,estimates,width-6);
+			int lineHeight = font.getSize()+1;
+			for (AttackKillEstimate estimate : estimates) {
+				y = paintAttackEstimate(g,x,y,width,estimate,font,lineHeight)+ESTIMATE_BLOCK_GAP;
+			}
+		}
+		catch (Exception ex) {
+			OutcomeLineDebug.log("failed to draw outcome lines: "+ex);
+		}
+	}
+	/** Smallest the outcome lines are allowed to shrink before wrapping takes over instead. */
+	private static final int MIN_ESTIMATE_FONT_SIZE = 8;
+	/**
+	 * The largest size, at or below the preferred one, that fits every line of every estimate in the
+	 * block.  Measured against the real FontMetrics, so it adapts to whatever the lines actually say.
+	 */
+	private static Font fitEstimateFont(Graphics g,Font preferredFont,ArrayList<AttackKillEstimate> estimates,int maxWidth) {
+		Font font = preferredFont;
+		while (font.getSize()>MIN_ESTIMATE_FONT_SIZE) {
+			FontMetrics metrics = g.getFontMetrics(font);
+			boolean fits = true;
+			for (AttackKillEstimate estimate : estimates) {
+				for (AttackKillEstimate.EstimateLine line : estimate.getLines()) {
+					if (metrics.stringWidth(line.text)>maxWidth) {
+						fits = false;
+						break;
+					}
+				}
+				if (!fits) break;
+			}
+			if (fits) break;
+			font = font.deriveFont((float)(font.getSize()-1));
+		}
+		return font;
+	}
+	/** Gap between one attack's block of lines and the next. */
+	private static final int ESTIMATE_BLOCK_GAP = 3;
+	/**
+	 * How far left of an attack box's centre a block must stop.  The printed box is narrower than
+	 * its hotspot and the chits inside it narrower still, so the text can run past the hotspot edge.
+	 */
+	private static final int ATTACK_COLUMN_INSET = 31;
+
+	/**
+	 * Writes the local player's own attacks in a block across the top - to the right of the CHARGE
+	 * and THRUST box, and left of the attack column.  Each attack's lines are tagged with its
+	 * strength, speed and sharpness so they can be matched to the chit in the attack column.
+	 *
+	 * @param maneuverBox1Index		position index of the CHARGE and THRUST box on this sheet
+	 * @param attackBox1Index		position index of attack box 1, which bounds the block on the right
+	 */
+	protected void drawAttackKillEstimates(Graphics g,int maneuverBox1Index,int attackBox1Index) {
+		int half = getHotSpotSize()>>1;
+		int x = getPosition(maneuverBox1Index).x+half+8;
+		drawEstimateBlock(g,getAttackerEstimates(true,false),x,ESTIMATE_BLOCK_GAP,
+				getPosition(attackBox1Index).x-ATTACK_COLUMN_INSET-x,ESTIMATE_FONT);
+	}
+	/**
+	 * What a character's attack placed on THIS sheet is aimed at.  On a denizen's sheet that is the
+	 * sheet owner; on a character's own sheet it is whatever that character targeted, which
+	/** Which outcome lines belong to this sheet - see OutcomeLines. */
+	private OutcomeLines outcomeLines;
+	protected OutcomeLines outcomeLines() {
+		if (outcomeLines==null) {
+			outcomeLines = new OutcomeLines(combatFrame,model,hostPrefs,sheetOwner,alwaysSecret);
+		}
+		return outcomeLines;
+	}
+	protected ArrayList<AttackKillEstimate> getAttackerEstimates(boolean includeCharacters,boolean includeDenizens) {
+		return outcomeLines().getAttackerEstimates(includeCharacters,includeDenizens);
+	}
+	protected ArrayList<AttackKillEstimate> getSheetOwnerEstimates() {
+		return outcomeLines().getSheetOwnerEstimates();
+	}
+	protected ArrayList<AttackKillEstimate> getSheetOwnerTargetEstimates() {
+		return outcomeLines().getSheetOwnerTargetEstimates();
 	}
 	private void paintRealmComponent(Graphics g,RealmComponent rc,int index) {
 		ImageIcon icon = rc.getIcon();

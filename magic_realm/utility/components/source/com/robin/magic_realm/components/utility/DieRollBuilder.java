@@ -58,10 +58,19 @@ public class DieRollBuilder {
 		return createRoller(key,tl,2);
 	}
 	public DieRoller createRoller(String key,TileLocation tl,int numberOfDice) {
+		DieRollParameters params = getDieRollParameters(key,tl,numberOfDice);
+		return createRoller(params.dice,params.modifier,params.controlsRed,params.key);
+	}
+	/**
+	 * How many dice this character would roll on the given table, and with what modifier - worked
+	 * out WITHOUT rolling, so that callers can preview a roll without consuming the shared random
+	 * number stream (which would desync a multiplayer game).
+	 */
+	public DieRollParameters getDieRollParameters(String key,TileLocation tl,int numberOfDice) {
 		int dice = numberOfDice;
 		int mod = 0;
 		boolean controlsRed = false;
-		
+
 		// key refers to a source table, or type of action that the roller will be used for
 		key = key.toLowerCase();
 		
@@ -142,7 +151,21 @@ public class DieRollBuilder {
 			mod += ClearingUtility.getClearingDieMod(tl);
 		}
 		
-		return createRoller(dice,mod,controlsRed,key);
+		return new DieRollParameters(dice,mod,controlsRed,key);
+	}
+	/** The dice, modifier and red-die control that a roll on a given table would use. */
+	public static class DieRollParameters {
+		public final int dice;
+		public final int modifier;
+		public final boolean controlsRed;
+		/** The table key, lower cased - createRoller uses it as the roll description. */
+		public final String key;
+		private DieRollParameters(int dice,int modifier,boolean controlsRed,String key) {
+			this.dice = dice;
+			this.modifier = modifier;
+			this.controlsRed = controlsRed;
+			this.key = key;
+		}
 	}
 		/*
 		 * Things that affect die rolls

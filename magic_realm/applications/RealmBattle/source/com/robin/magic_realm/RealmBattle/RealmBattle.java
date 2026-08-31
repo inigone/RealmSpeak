@@ -416,6 +416,7 @@ public class RealmBattle {
 		RealmComponent charRc = RealmComponent.getRealmComponent(character.getGameObject());
 		BattleGroup characterBattleGroup = model.getBattleGroup(charRc);
 		if (characterBattleGroup==null) {
+			logger.finer("requiresCombatInteraction: "+character.getGameObject().getName()+" SKIPPED (getBattleGroup==null) charRcOwnerId="+charRc.getOwnerId()+" charRcId="+charRc.getGameObject().getId());
 			return false;
 		}
 
@@ -552,14 +553,21 @@ public class RealmBattle {
 			case Constants.COMBAT_POSITIONING: // playing attacks and manuevers
 				return true; // Show positioning every round - this allows hidden characters to extend combat by fatiguing on purpose...
 			case Constants.COMBAT_TACTICS: // flips denizens, repositions, allows characters that *can* to replace MOVE or FIGHT
-				Collection<RealmComponent> attackers = model.getAttackersFor(RealmComponent.getRealmComponent(character.getGameObject()));
-				RealmComponent attacker = RealmComponent.getRealmComponent(character.getGameObject());
-				RealmComponent target = attacker.getTarget();
-				RealmComponent target2 = attacker.get2ndTarget();
-				return (activeCharacterIsHere 
-						&& ( character.canReplaceMove(attackers))
-								|| (target!=null && (character.canReplaceFight(target) || character.canReplaceParry(target)))
-								|| (target2!=null && (character.canReplaceFight(target2) || character.canReplaceParry(target2))));
+				if (HostPrefWrapper.findHostPrefs(character.getGameObject().getGameData()).hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES)) {
+					// Show tactics every round.  Repositioning and change-of-tactics have already
+					// been applied by the time this stage is displayed, and no attack has been rolled
+					// yet, so this is the one point where a player can read the final combat boxes -
+					// and the outcome lines derived from them - before the FUMBLE and MISSILE dice
+					// are thrown.
+					return true;
+				}
+				Collection<RealmComponent> tacticsAttackers = model.getAttackersFor(charRc);
+				RealmComponent tacticsTarget = charRc.getTarget();
+				RealmComponent tacticsTarget2 = charRc.get2ndTarget();
+				return (activeCharacterIsHere
+						&& ( character.canReplaceMove(tacticsAttackers))
+								|| (tacticsTarget!=null && (character.canReplaceFight(tacticsTarget) || character.canReplaceParry(tacticsTarget)))
+								|| (tacticsTarget2!=null && (character.canReplaceFight(tacticsTarget2) || character.canReplaceParry(tacticsTarget2))));
 			case Constants.COMBAT_RESOLVING: // determines hits, show results
 				return true; // Show resolution every round - this guarantees that everything is cleaned up properly.
 			case Constants.COMBAT_FATIGUE:
@@ -598,6 +606,7 @@ public class RealmBattle {
 				// uncontrolled denizen
 				ownerid = UNCONTROLLED;
 			}
+			logger.finer("buildBattleModel: "+rc.getGameObject().getName()+" ownerid="+ownerid+" type="+rc.getClass().getSimpleName());
 			lists.put(ownerid,rc);
 		}
 		

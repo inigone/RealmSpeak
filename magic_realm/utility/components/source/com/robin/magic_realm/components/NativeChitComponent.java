@@ -14,7 +14,6 @@ import com.robin.game.objects.GameObject;
 import com.robin.general.graphics.StarShape;
 import com.robin.general.graphics.TextType;
 import com.robin.general.graphics.TextType.Alignment;
-import com.robin.general.swing.ImageCache;
 import com.robin.magic_realm.components.attribute.*;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
@@ -408,13 +407,10 @@ public class NativeChitComponent extends SquareChitComponent implements BattleCh
 		int size = getChitSize();
 		NativeSteedChitComponent horse = (NativeSteedChitComponent)getHorse(false);
 		if (horse!=null) {
-			String[] ret = horse.getFolderAndType();
-			int horseSize = ret[2]==null?20:40*Integer.valueOf(ret[2]);
-			ImageIcon icon = ImageCache.getIcon(ret[0]+"/"+ret[1],horseSize);
+			ImageIcon icon = getHorseIcon(horse);
 			g.drawImage(icon.getImage(),size-icon.getIconWidth()-2,(size>>1),null);
 		}
 	}
-
 	// BattleChit Interface
 	public boolean targets(BattleChit chit) {
 		RealmComponent rc = getTarget();
@@ -641,6 +637,7 @@ public class NativeChitComponent extends SquareChitComponent implements BattleCh
 		else if (applied.strongerOrEqualTo(vulnerability)) {
 			// Dead native!
 			combat.setKilledBy(attacker.getGameObject());
+			CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_KILL,getGameObject());
 			combat.setKilledLength(attacker.getLength());
 			combat.setKilledSpeed(attacker.getAttackSpeed());
 			if (hostPrefs.hasPref(Constants.HOUSE2_DENIZENS_SERIOUS_WOUNDS) && applied.equalTo(vulnerability)) {
