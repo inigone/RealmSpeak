@@ -1161,6 +1161,78 @@ public class BattleModel {
 	}
 	
 	/**
+	 * The order every attack in this battle will resolve in, as 1-based numbers keyed by
+	 * getAttackOrderKey().  Built from the same collect/sort/group pipeline doResolveAttacks runs,
+	 * so the numbers match what actually happens.
+	 * <p>
+	 * Attacks that share a length and a speed are simultaneous - handleSortTies groups them into one
+	 * attack block - so they share a number rather than being ranked against each other.
+	 */
+	public AttackOrder getAttackOrder(int round) {
+		AttackOrder order = new AttackOrder();
+		ArrayList<BattleChit> battleChits = collectBattleChits(new ArrayList<>(getAllBattleParticipants(true)),hostPrefs);
+		collectSpells(battleChits,getAllParticipatingCharacters());
+		Collections.sort(battleChits,round==1?new BattleChitLengthComparator():new BattleChitSpeedComparator());
+
+		ArrayList<String> attackBlockOrder = new ArrayList<>();
+		HashLists<String,BattleChit> attackBlocks = new HashLists<>();
+		handleSortTies(battleChits,attackBlockOrder,attackBlocks);
+
+		fillAttackOrder(order,attackBlockOrder,attackBlocks);
+		return order;
+	}
+	/** Numbers the attack blocks exactly as processHits walks them. */
+	private static void fillAttackOrder(AttackOrder order,ArrayList<String> attackBlockOrder,HashLists<String,BattleChit> attackBlocks) {
+		int position = 1;
+		for (String key : attackBlockOrder) {
+			for (BattleChit chit : attackBlocks.getList(key)) {
+				Integer at = Integer.valueOf(position);
+				order.byAttack.put(getAttackOrderKey(chit),at);
+				order.byOwner.put(chit.getGameObject().getStringId(),at);
+				order.keysByOwner.put(chit.getGameObject().getStringId(),getAttackOrderKey(chit));
+			}
+			position++;
+		}
+	}
+	/** Where each attack in a battle falls in the resolution order.  See getAttackOrder. */
+	public static class AttackOrder {
+		private final HashMap<String,Integer> byAttack = new HashMap<>();
+		private final HashLists<String,Integer> byOwner = new HashLists<>();
+		private final HashLists<String,String> keysByOwner = new HashLists<>();
+		/** 1-based position of one attack, or 0 when it is not part of this battle. */
+		public int positionOf(BattleChit chit) {
+			Integer position = byAttack.get(getAttackOrderKey(chit));
+			return position==null?0:position.intValue();
+		}
+		/**
+		 * Positions of every attack one game object makes, in resolution order.  A character's
+		 * fumble and missile rolls all accumulate on the character rather than on the fight chit
+		 * that threw them, so the only way to match roll to attack is by position in this list.
+		 */
+		public ArrayList<Integer> positionsFor(GameObject owner) {
+			ArrayList<Integer> positions = byOwner.getList(owner.getStringId());
+			return positions==null?new ArrayList<Integer>():positions;
+		}
+		/** The attack keys behind positionsFor, in the same order, so each can be identified. */
+		public ArrayList<String> attackKeysFor(GameObject owner) {
+			ArrayList<String> keys = keysByOwner.getList(owner.getStringId());
+			return keys==null?new ArrayList<String>():keys;
+		}
+	}
+	/**
+	 * Identifies one attack for getAttackOrder.  A character makes one attack per fight chit, so the
+	 * chit - not the character - is what distinguishes them.
+	 */
+	public static String getAttackOrderKey(BattleChit chit) {
+		if (chit.isCharacter() && chit instanceof CharacterChitComponent) {
+			RealmComponent attackChit = ((CharacterChitComponent)chit).getAttackChit();
+			if (attackChit!=null) {
+				return attackChit.getGameObject().getStringId();
+			}
+		}
+		return chit.getGameObject().getStringId();
+	}
+	/**
 	 * @return The number of hits that occurred during this round
 	 */
 	public int doResolveAttacks(int round,CombatWrapper tile) {
@@ -1207,7 +1279,11 @@ public class BattleModel {
 		
 		// Build a battle summary here
 		BattleSummaryWrapper bs = new BattleSummaryWrapper(theGame.getGameObject());
-		bs.initFromBattleChits(battleChits);
+		// Built from the very blocks processHits walked, so the round summary window shows the same
+		// sequence numbers the combat sheets and summary pane do
+		AttackOrder resolvedOrder = new AttackOrder();
+		fillAttackOrder(resolvedOrder,attackBlockOrder,attackBlocks);
+		bs.initFromBattleChits(battleChits,resolvedOrder);
 		
 		return totalHits;
 	}
@@ -1878,88 +1954,28 @@ public class BattleModel {
 				logBattleInfo("Random attack direction! "+attacker.getName()+" attacks box "+attacker.getAttackCombatBox()+".");
 			}
 			
-			int hitType = NO_ATTACK;
-			if (attacker.hasAnAttack()) {
-				hitType = MISS;
-				boolean undercuttingAllowed = !attacker.getGameObject().hasThisAttribute(Constants.NO_UNDERCUT);
-				if (attacker.getAttackCombatBox()==target.getManeuverCombatBox() || target.getManeuverCombatBox()==0) {
-					// Intercepted!
-					hitType = INTERCEPT;
-					attackerCombat.setHitResult("Intercepted");
-					setWeaponHitForCharacter(attacker);
-					logBattleInfo("Intercepted! (box "+attacker.getAttackCombatBox()+" matches box "+target.getManeuverCombatBox()+")");
-				}
-				else if (undercuttingAllowed && attacker.getAttackSpeed().fasterThan(target.getMoveSpeed())) {
-					// Undercut!
-					boolean stopsUndercut = ((RealmComponent)target).affectedByKey(Constants.STOP_UNDERCUT);
-					if (stopsUndercut) {
-						logBattleInfo("Miss! ("+attacker.getAttackSpeed()+" is faster than "+target.getMoveSpeed()+", but "+target.getGameObject().getNameWithNumber()+" cannot be undercut!)");
-					}
-					else {
-						hitType = UNDERCUT;
-						attackerCombat.setHitResult("Undercut");
-						setWeaponHitForCharacter(attacker);
-						logBattleInfo("Undercut! ("+attacker.getAttackSpeed()+" is faster than "+target.getMoveSpeed()+")");
-					}
-				}
-				else if (undercuttingAllowed && attacker.getAttackSpeed().equalTo(target.getMoveSpeed()) && attacker.hitsOnTie()) {
-					// Check for the special case where a character has a HIT_TIE treasure alerted
-					hitType = UNDERCUT;
-					attackerCombat.setHitResult("Undercut");
-					setWeaponHitForCharacter(attacker);
-					logBattleInfo("Undercut (hits on tie)! ("+attacker.getAttackSpeed()+" is equal to "+target.getMoveSpeed()+")");
-				}
-				if (!undercuttingAllowed && hitType==MISS) {
-					logBattleInfo(attacker.getGameObject().getNameWithNumber()+" cannot be used to undercut the "+target.getGameObject().getNameWithNumber()+", and as such has missed.");
-				}
+			ArrayList<String> hitTypeLog = new ArrayList<>();
+			int hitType = calculateHitType(attacker,target,hitTypeLog);
+			if (hitType==INTERCEPT) {
+				attackerCombat.setHitResult("Intercepted");
+				setWeaponHitForCharacter(attacker);
+			}
+			else if (hitType==UNDERCUT) {
+				attackerCombat.setHitResult("Undercut");
+				setWeaponHitForCharacter(attacker);
+			}
+			for (String entry : hitTypeLog) {
+				logBattleInfo(entry);
 			}
 			attackerCombat.addHitType(hitType,target.getGameObject());
 			
 			if (hitType>MISS) {
 				int fumbleModifier = 0;
 				if (hostPrefs.hasPref(Constants.OPT_FUMBLE)) {
-					fumbleModifier = calculateBaseFumbleModifier(attacker, target, hitType, hostPrefs);
-					/*
-					 * Possibilities:
-					 * 		No OPT_SEPARATE_RIDER
-					 * 			Targeting non-horseback rider - DONE
-					 * 			Targeting horseback rider - DONE
-					 * 		OPT_SEPARATE_RIDER
-					 * 			Targeting non-horseback rider - DONE
-					 * 			Targeting horseback rider
-					 * 			Targeting rider's horse - DONE
-					 */
-					if (hostPrefs.hasPref(Constants.OPT_RIDING_HORSES)) {
-						// Determine if we need to do rider maneuver adjustment
-						RealmComponent targetRc = (RealmComponent)target;
-						if (targetRc.getHorse()!=null && targetCombat.isTargetingRider(attacker.getGameObject())) {
-							// This is the new situation that we need to handle
-							//		- Get the rider's maneuver (if any) separate from the horse
-							//		- Need the box, and the speed...
-							int mBox = 0;
-							Speed mSpeed = null;
-							if (targetRc instanceof Horsebackable) {
-								Horsebackable hb = (Horsebackable)targetRc;
-								mBox = hb.getManeuverCombatBox(false);
-								mSpeed = hb.getMoveSpeed(false);
-								if (mBox>0 && mSpeed!=null) {
-									logBattleInfo("Applying special horse/rider maneuver rules:");
-									
-									// Apply the extra fumbleModifier here
-									fumbleModifier += (attacker.getAttackSpeed().getNum() - mSpeed.getNum());
-									logBattleInfo("fumble + "+attacker.getAttackSpeed().getNum()+" - "+mSpeed.getNum()+" = "+fumbleModifier+" (base attack speed versus rider)");
-									
-									if (attacker.getAttackCombatBox()==mBox) {
-										logBattleInfo("Intercepted Rider! (box "+attacker.getAttackCombatBox()+" matches box "+mBox+")");
-									}
-									else {
-										logBattleInfo("Did not Intercept Rider! (box "+attacker.getAttackCombatBox()+" does not match box "+mBox+")");
-										fumbleModifier += 4;
-										logBattleInfo("fumble + 4 = "+fumbleModifier+" (for failing to intercept rider)");
-									}
-								}
-							}
-						}
+					FumbleModifier fumble = FumbleModifier.calculate(attacker,target,hitType,hostPrefs);
+					fumbleModifier = fumble.getValue();
+					for (String entry : fumble.getLogEntries()) {
+						logBattleInfo(entry);
 					}
 				}
 				int currentNewWounds = 0;
@@ -2143,6 +2159,10 @@ public class BattleModel {
 					int woundsThisHit = targetCombat.getNewWounds() - currentNewWounds;
 					if (woundsThisHit>0) {
 						logBattleInfo(target.getGameObject().getNameWithNumber()+" takes "+woundsThisHit+" wound"+(woundsThisHit==1?"":"s"));
+						for (int wound=0;wound<woundsThisHit;wound++) {
+							// One coup per wound, so the summary can show how many this attack caused
+							CombatWrapper.recordCoup(attacker.getGameObject(),CombatWrapper.COUP_WOUND,target.getGameObject());
+						}
 					}
 				}
 				
@@ -2348,12 +2368,7 @@ public class BattleModel {
 		sb.append(chit.getGameObject().getNameWithNumber());
 		sb.append(" ");
 		if (attacker) {
-			Harm harm = chit.getHarm();
-			sb.append(harm.getStrength());
-			sb.append(chit.getAttackSpeed().getSpeedString());
-			for (int i=0;i<harm.getSharpness();i++) {
-				sb.append("*");
-			}
+			sb.append(getAttackLabel(chit));
 		}
 		else {
 			sb.append(chit.getMoveSpeed());
@@ -2361,33 +2376,56 @@ public class BattleModel {
 		sb.append(" ");
 		return sb.toString();
 	}
-	private static int calculateBaseFumbleModifier(BattleChit attacker, BattleChit target, int hitType, HostPrefWrapper hostPrefs) {
-		int fumbleModifier = attacker.getAttackSpeed().getNum() - target.getMoveSpeed().getNum();
-		CombatWrapper attackerCombat = new CombatWrapper(attacker.getGameObject());
-		if (hostPrefs.hasPref(Constants.OPT_TWO_HANDED_WEAPONS) && RealmComponent.getRealmComponent(attackerCombat.getGameObject()).isCharacter()) {
-			CharacterWrapper attackerCharacter = new CharacterWrapper(attackerCombat.getGameObject());
-			ArrayList<GameObject> activeInventory = attackerCharacter.getActiveInventory();
-			boolean shield = false;
-			boolean twoHandedWeapon = false;
-			if (!attackerCharacter.affectedByKey(Constants.STRONG)) {
-				for (GameObject item : activeInventory) {
-					if (item.hasThisAttribute(Constants.SHIELD) && item.getThisAttribute(Constants.WEIGHT) != "L") shield = true;
-					if (item.hasThisAttribute(Constants.TWO_HANDED)) twoHandedWeapon = true;
-				}
+	/**
+	 * An attack's strength, speed and sharpness the way the battle log writes it - eg. <code>L1**</code>.
+	 * The combat sheet tags its estimates with this so they can be matched up to the log.
+	 */
+	static String getAttackLabel(BattleChit chit) {
+		Harm harm = chit.getHarm();
+		StringBuffer sb = new StringBuffer();
+		sb.append(harm.getStrength());
+		sb.append(chit.getAttackSpeed().getSpeedString());
+		for (int i=0;i<harm.getSharpness();i++) {
+			sb.append("*");
+		}
+		return sb.toString();
+	}
+	/**
+	 * Works out whether an attack intercepts, undercuts, or misses.  Shared with the combat sheet
+	 * (see AttackKillEstimate), so it stays free of side effects: the log lines combat resolution
+	 * writes are collected in hitTypeLog for the caller to emit.
+	 */
+	static int calculateHitType(BattleChit attacker, BattleChit target, ArrayList<String> hitTypeLog) {
+		if (!attacker.hasAnAttack()) {
+			return NO_ATTACK;
+		}
+		int hitType = MISS;
+		boolean undercuttingAllowed = !attacker.getGameObject().hasThisAttribute(Constants.NO_UNDERCUT);
+		if (attacker.getAttackCombatBox()==target.getManeuverCombatBox() || target.getManeuverCombatBox()==0) {
+			// Intercepted!
+			hitType = INTERCEPT;
+			hitTypeLog.add("Intercepted! (box "+attacker.getAttackCombatBox()+" matches box "+target.getManeuverCombatBox()+")");
+		}
+		else if (undercuttingAllowed && attacker.getAttackSpeed().fasterThan(target.getMoveSpeed())) {
+			// Undercut!
+			boolean stopsUndercut = ((RealmComponent)target).affectedByKey(Constants.STOP_UNDERCUT);
+			if (stopsUndercut) {
+				hitTypeLog.add("Miss! ("+attacker.getAttackSpeed()+" is faster than "+target.getMoveSpeed()+", but "+target.getGameObject().getNameWithNumber()+" cannot be undercut!)");
 			}
-			if (twoHandedWeapon && shield) {
-				fumbleModifier = fumbleModifier+2;
-				logBattleInfo("fumble = "+attacker.getAttackSpeed().getNum()+" - "+target.getMoveSpeed().getNum()+" = "+fumbleModifier+" (base speed difference and two-handed weapon malus)");
+			else {
+				hitType = UNDERCUT;
+				hitTypeLog.add("Undercut! ("+attacker.getAttackSpeed()+" is faster than "+target.getMoveSpeed()+")");
 			}
 		}
-		else {
-			logBattleInfo("fumble = "+attacker.getAttackSpeed().getNum()+" - "+target.getMoveSpeed().getNum()+" = "+fumbleModifier+" (base speed difference)");
+		else if (undercuttingAllowed && attacker.getAttackSpeed().equalTo(target.getMoveSpeed()) && attacker.hitsOnTie()) {
+			// Check for the special case where a character has a HIT_TIE treasure alerted
+			hitType = UNDERCUT;
+			hitTypeLog.add("Undercut (hits on tie)! ("+attacker.getAttackSpeed()+" is equal to "+target.getMoveSpeed()+")");
 		}
-		if (hitType==UNDERCUT) {
-			fumbleModifier += 4;
-			logBattleInfo("fumble + 4 = "+fumbleModifier+" (for undercut)");
+		if (!undercuttingAllowed && hitType==MISS) {
+			hitTypeLog.add(attacker.getGameObject().getNameWithNumber()+" cannot be used to undercut the "+target.getGameObject().getNameWithNumber()+", and as such has missed.");
 		}
-		return fumbleModifier;
+		return hitType;
 	}
 	private static void setWeaponHitForCharacter(BattleChit attacker) {
 		if (attacker.isCharacter() && !(new CharacterWrapper(attacker.getGameObject()).isTransmorphed())) {
@@ -2456,43 +2494,11 @@ public class BattleModel {
 				combat.addMissileRollTargetId(targetId);
 				logBattleInfo("Missile roll: "+roller.getDescription());
 				
-				int result = roller.getHighDieResult(); // fumbleModifier will always be zero if this option is OFF
-				if (hostPrefs.hasPref(Constants.OPT_MISSILE)) {
-					// Optional missile table
-					if (result<1) {
-						result = 1;
-					}
-					if (result<10) {
-						if (result<8) {
-							totalHarm.changeLevels(4-result);
-							combat.addMissileRollSubtitle(RealmUtility.getLevelChangeString(4-result));
-							logBattleInfo("Missile table result (using optional): "+result+" = "+RealmUtility.getLevelChangeString(4-result));
-						}
-						else {
-							totalHarm.setWound(true);
-							combat.addMissileRollSubtitle("wound");
-							logBattleInfo("Missile table result (using optional): "+result+" = wound");
-						}
-					}
-				}
-				else if (hostPrefs.hasPref(Constants.REV_MISSILE)) {
-					// Revised Optional missile table
-					int change = RealmUtility.revisedMissileTable(result);
-					totalHarm.changeLevels(change);
-					combat.addMissileRollSubtitle(RealmUtility.getLevelChangeString(change));
-					logBattleInfo("Missile table result (using revised): "+result+" = "+RealmUtility.getLevelChangeString(change));
-				}
-				else {
-					// Standard missile table - normalize value
-					if (result>6) {
-						result = 6;
-					}
-					if (result<1) {
-						result = 1;
-					}
-					totalHarm.changeLevels(3-result);
-					combat.addMissileRollSubtitle(RealmUtility.getLevelChangeString(3-result));
-					logBattleInfo("Missile table result: "+result+" = "+RealmUtility.getLevelChangeString(3-result));
+				int result = CombatTables.normalizeMissileResult(roller.getHighDieResult(),hostPrefs); // fumbleModifier will always be zero if this option is OFF
+				String subtitle = CombatTables.applyMissileTable(totalHarm,result,hostPrefs);
+				if (subtitle!=null) {
+					combat.addMissileRollSubtitle(subtitle);
+					logBattleInfo("Missile table result"+CombatTables.getMissileTableLabel(hostPrefs)+": "+result+" = "+subtitle);
 				}
 			}
 			else if (hostPrefs.hasPref(Constants.OPT_FUMBLE) && !magicAttack && !redAttack) {
@@ -2513,28 +2519,7 @@ public class BattleModel {
 				combat.addFumbleRollTargetId(targetId);
 				logBattleInfo("Fumble roll: "+roller.getDescription());
 				
-				int result = roller.getHighDieResult();
-				int change;
-				if (result<2) {
-					change = 2;
-				}
-				else if (result<4) {
-					change = 1;
-				}
-				else if (result<7) {
-					change = 0;
-				}
-				else if (result<9) {
-					change = -1;
-				}
-				else if (result<10) {
-					change = -2;
-				}
-				else {
-					change = -10000; // NEG
-				}
-				String changeString = change==-10000?"Negligible Harm":RealmUtility.getLevelChangeString(change);
-				totalHarm.changeLevels(change);
+				String changeString = CombatTables.applyFumbleTable(totalHarm,roller.getHighDieResult());
 				combat.addFumbleRollSubtitle(changeString);
 				logBattleInfo("Fumble result: "+changeString);
 			}

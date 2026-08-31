@@ -57,6 +57,7 @@ public class CombatWrapper extends GameObjectWrapper {
 	private static final String CHANGE_TACTICS_RESULT = "CHTC_BX";
 	private static final String HIT_RESULT = "HIT_RSLT";
 	private static final String HIT_BY_IDS = "HIT_BY_IDS"; // A list of all ids of killers, in the order they hit
+	private static final String COUPS = "COUPS"; // What this attacker achieved this battle - see addCoup
 	private static final String PARRIED = "PARRIED";
 	private static final String KILLED_BY_ID = "KILLED_BY_ID"; // The fastest or longest killer (sounds silly, but I know what I mean here!)
 	private static final String KILLED_LENGTH = "KILLED_LENGTH";
@@ -361,6 +362,40 @@ public class CombatWrapper extends GameObjectWrapper {
 	public int getHitByOrderNumber() {
 		return getInt(HIT_BY_ORDER_NUMBER);
 	}
+	/** An attacker damaged a piece of armor. */
+	public static final String COUP_ARMOR_DAMAGED = "armorDamaged";
+	/** An attacker destroyed a piece of armor. */
+	public static final String COUP_ARMOR_DESTROYED = "armorDestroyed";
+	/** An attacker wounded its target. */
+	public static final String COUP_WOUND = "wound";
+	/** An attacker killed its target. */
+	public static final String COUP_KILL = "kill";
+
+	/**
+	 * Records something this attacker achieved, so the combat summary can mark it.  Every attacker
+	 * involved in an outcome records its own coup, which is what credits all of them when
+	 * simultaneous attacks share a result.  Cleared with the rest of the round's combat info.
+	 *
+	 * @param affected	what the coup was scored against, so the summary can show its symbol
+	 */
+	public void addCoup(String type,GameObject affected) {
+		addListItem(COUPS,type+COUP_SEPARATOR+affected.getStringId());
+	}
+	public ArrayList<String> getCoups() {
+		return getList(COUPS);
+	}
+	/** Splits a stored coup into {type,affected game object id}. */
+	public static String[] splitCoup(String coup) {
+		int split = coup.indexOf(COUP_SEPARATOR);
+		if (split<0) return null;
+		return new String[]{coup.substring(0,split),coup.substring(split+1)};
+	}
+	/** Convenience for the combat code, which always has these as GameObjects. */
+	public static void recordCoup(GameObject attacker,String type,GameObject affected) {
+		if (attacker==null || affected==null) return;
+		new CombatWrapper(attacker).addCoup(type,affected);
+	}
+	private static final String COUP_SEPARATOR = ":";
 	public void addSeriousWoundRoll(String val) {
 		addListItem(SERIOUS_WOUND_ROLLS,val);
 	}
@@ -870,6 +905,7 @@ public class CombatWrapper extends GameObjectWrapper {
 			go.removeAttribute(COMBAT_BLOCK,KILLED_LENGTH);
 			go.removeAttribute(COMBAT_BLOCK,KILLED_SPEED);
 			go.removeAttribute(COMBAT_BLOCK,NEW_WOUNDS);
+			go.removeAttribute(COMBAT_BLOCK,COUPS);
 			go.removeAttribute(COMBAT_BLOCK,KILLED_BY_WOUNDS);
 			go.removeAttribute(COMBAT_BLOCK,HEALING);
 			go.removeAttribute(COMBAT_BLOCK,MISSILE_ROLLS);
