@@ -3840,14 +3840,16 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public int getTotalEarnedVps(boolean restrictToAssigned,boolean excludeStartingWorth) {
 		int evps = 0;
 		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(getGameObject().getGameData());
-		if (hostPrefs.hasPref(Constants.EXP_DEVELOPMENT_SR)) {
-			evps += getQuestPointScore().getEarnedVictoryPoints(restrictToAssigned); // quest points don't count towards earned VPs!
+		boolean anyVp = hostPrefs.hasPref(Constants.EXP_DEV_ANY_VP);
+		boolean restrict = anyVp ? false : restrictToAssigned;
+		if (hostPrefs.hasPref(Constants.EXP_DEVELOPMENT_SR) || anyVp) {
+			evps += getQuestPointScore().getEarnedVictoryPoints(restrict);
 		}
-		evps += getGreatTreasureScore().getEarnedVictoryPoints(restrictToAssigned);
-		evps += getUsableSpellScore().getEarnedVictoryPoints(restrictToAssigned);
-		evps += getFameScore().getEarnedVictoryPoints(restrictToAssigned);
-		evps += getNotorietyScore().getEarnedVictoryPoints(restrictToAssigned);
-		evps += getGoldScore().getEarnedVictoryPoints(restrictToAssigned,excludeStartingWorth);
+		evps += getGreatTreasureScore().getEarnedVictoryPoints(restrict);
+		evps += getUsableSpellScore().getEarnedVictoryPoints(restrict);
+		evps += getFameScore().getEarnedVictoryPoints(restrict);
+		evps += getNotorietyScore().getEarnedVictoryPoints(restrict);
+		evps += getGoldScore().getEarnedVictoryPoints(restrict,excludeStartingWorth);
 		return evps;
 	}
 	

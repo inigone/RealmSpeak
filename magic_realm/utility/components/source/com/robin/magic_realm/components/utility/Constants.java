@@ -895,6 +895,7 @@ public class Constants {
 	public static final String EXP_DEVELOPMENT_SR = "DevelopmentInSuperRealm";
 	public static final String EXP_DEV_EXCLUDE_SW = "DevExcludeStartingWorth";
 	public static final String EXP_DEV_3RD_REL = "DevEarn3rdRelationships";
+	public static final String EXP_DEV_ANY_VP = "DevAnyVpType";
 	public static final String EXP_CUSTOM_CHARS = "CustomCharacters";
 	public static final String SR_CHARS = "SuperRealmCharacters";
 	public static final String EXP_ASSASSIN_THIEF = "Assassinthief";
