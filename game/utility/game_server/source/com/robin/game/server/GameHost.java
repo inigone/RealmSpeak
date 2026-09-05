@@ -1,10 +1,10 @@
 package com.robin.game.server;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.logging.Logger;
 
 import com.robin.game.objects.GameData;
@@ -38,6 +38,7 @@ public class GameHost {
 	protected ArrayList<GameHostListener> gameHostListeners;
 
 	private Map<String, String> clientLayouts = new HashMap<>();
+	private Path layoutPersistFile = null;
 
 	public GameHost(String dataPath,String gameTitle,String password) {
 		mostRecentHost = this;
@@ -93,12 +94,43 @@ public class GameHost {
 		}
 		return success;
 	}
+	/** Sets the file used to persist client layouts across server restarts, and loads any saved layouts from it. */
+	public void setLayoutPersistFile(Path file) {
+		this.layoutPersistFile = file;
+		loadLayouts();
+	}
+
 	public void storeClientLayout(String clientName, String data) {
 		clientLayouts.put(clientName, data);
+		persistLayouts();
 	}
 
 	public String retrieveClientLayout(String clientName) {
 		return clientLayouts.get(clientName);
+	}
+
+	private void loadLayouts() {
+		if (layoutPersistFile == null || !Files.exists(layoutPersistFile)) return;
+		Properties props = new Properties();
+		try (InputStream in = Files.newInputStream(layoutPersistFile)) {
+			props.load(in);
+			for (String key : props.stringPropertyNames()) {
+				clientLayouts.put(key, props.getProperty(key));
+			}
+		} catch (IOException ex) {
+			logger.warning("Could not load client layouts: " + ex.getMessage());
+		}
+	}
+
+	private void persistLayouts() {
+		if (layoutPersistFile == null) return;
+		Properties props = new Properties();
+		props.putAll(clientLayouts);
+		try (OutputStream out = Files.newOutputStream(layoutPersistFile)) {
+			props.store(out, null);
+		} catch (IOException ex) {
+			logger.warning("Could not save client layouts: " + ex.getMessage());
+		}
 	}
 
 	public void fireHostOnly(InfoObject io) {
