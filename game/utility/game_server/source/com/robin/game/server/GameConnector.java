@@ -11,7 +11,7 @@ public class GameConnector extends Thread {
 	protected ServerSocket listener;
 	protected String ipAddress;
 	
-	protected boolean alive;
+	protected volatile boolean alive;
 	
 	public GameConnector(GameHost host,int port) {
 		this.host = host;
@@ -69,9 +69,8 @@ public class GameConnector extends Thread {
 						host.addConnection(connection);
 					}
 					catch(SocketException ex) {
-						System.err.println("Unable to accept connection from "+connection.getInetAddress()+".  Stack trace follows:");
-						ex.printStackTrace();
-						closeQuietly(connection); // never handed to the host, so nothing else will ever close it
+						System.out.println("Rejected connection from " + connection.getInetAddress() + ": " + ex.getMessage());
+						closeQuietly(connection);
 					}
 				}
 				else {

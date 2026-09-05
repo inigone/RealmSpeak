@@ -2172,7 +2172,8 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 				data,
 				hostPrefs.getGameTitle(),
 				hostPrefs.getGamePass());
-			
+		host.setLayoutPersistFile(com.robin.magic_realm.RealmSpeak.update.AppUpdater.getInstallDir().resolve("client-layouts.properties"));
+
 		// Launch a game connection frame
 		realmHostFrame = new RealmHostPanel(host,netConnect);
 		
