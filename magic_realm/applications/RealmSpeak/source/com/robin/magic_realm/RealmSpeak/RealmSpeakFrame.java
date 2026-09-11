@@ -259,11 +259,7 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 		if (networkingOption.isSelected()!=realmSpeakOptions.getOptions().getBoolean(RealmSpeakOptions.NETWORKING_OPTION)) {
 			networkingOption.doClick();
 		}
-		String val = realmSpeakOptions.getOptions().get(RealmSpeakOptions.LAST_SAVE_LOCATION);
-		if (val!=null) {
-			lastSaveGame = new File(val);
-		}
-		val = realmSpeakOptions.getOptions().get(RealmSpeakOptions.LAST_EXPORT_LOCATION);
+		String val = realmSpeakOptions.getOptions().get(RealmSpeakOptions.LAST_EXPORT_LOCATION);
 		if (val!=null) {
 			exportHTMLFileManager.setCurrentDirectory(new File(val));
 		}
@@ -274,9 +270,6 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 	protected void saveFramePreferences() {
 		realmSpeakOptions.getOptions().set(RealmSpeakOptions.NETWORKING_OPTION,networkingOption.isSelected());
 		captureFrameSize(realmSpeakOptions.getOptions());
-		if (lastSaveGame!=null) {
-			realmSpeakOptions.getOptions().set(RealmSpeakOptions.LAST_SAVE_LOCATION,lastSaveGame.getAbsolutePath());
-		}
 		if (exportHTMLFileManager.getCurrentDirectory()!=null) {
 			realmSpeakOptions.getOptions().set(RealmSpeakOptions.LAST_EXPORT_LOCATION,exportHTMLFileManager.getCurrentDirectory().getAbsolutePath());
 		}
@@ -1789,7 +1782,7 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 			chooser = new JFileChooser(new File(filePath));
 		}
 		else {
-			chooser = new JFileChooser();
+			chooser = new JFileChooser(new File(".").getAbsoluteFile());
 		}
 		chooser.setAcceptAllFileFilterUsed(false);
 		chooser.setFileFilter(saveGameFileFilter);
@@ -1959,7 +1952,7 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 			chooser.setSelectedFile(lastSaveGame);
 		}
 		else {
-			chooser = new JFileChooser();
+			chooser = new JFileChooser(new File(".").getAbsoluteFile());
 			chooser.setSelectedFile(new File("RealmSpeakSave.rsgame"));
 		}
 		chooser.setAcceptAllFileFilterUsed(false);
