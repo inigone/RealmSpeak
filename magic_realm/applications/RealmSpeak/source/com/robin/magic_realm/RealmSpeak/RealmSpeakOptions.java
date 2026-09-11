@@ -25,7 +25,6 @@ public class RealmSpeakOptions {
 	public static final String FRAME_HEIGHT = "frameHeight";
 	public static final String FRAME_X = "frameX";
 	public static final String FRAME_Y = "frameY";
-	public static final String LAST_SAVE_LOCATION = "lastSaveLocation";
 	public static final String LAST_EXPORT_LOCATION = "lastExportLocation";
 	
 	public static final String METAL_LNF = "metalLnf";
