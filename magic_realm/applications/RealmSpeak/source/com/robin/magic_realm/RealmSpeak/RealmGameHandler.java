@@ -1064,6 +1064,25 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			SwingUtilities.invokeLater(this::applyPendingLayout);
 			return;
 		}
+		else if (RealmDirectInfoHolder.CHAT_HISTORY.equals(command)) {
+			ArrayList<String> list = info.getStrings();
+			ArrayList<ChatLine> history = new ArrayList<>();
+			while (list.size() >= 2) {
+				String id = list.remove(0);
+				String msg = list.remove(0);
+				GameObject go = client.getGameData().getGameObject(Long.valueOf(id));
+				if (go != null) {
+					ChatLineCharacter line = new ChatLineCharacter(new CharacterWrapper(go), msg);
+					if (line.isValid()) history.add(line);
+				}
+			}
+			CharacterChatPanel.setHistoryBacklog(history);
+			for (ChatLine line : history) {
+				CharacterChatPanel.updateAllChatPanels(line);
+				if (inspector != null) inspector.addChatLine(line);
+			}
+			return;
+		}
 		else if (RealmDirectInfoHolder.HOST_DETAIL_LOG.equals(command)) {
 			RealmLogWindow.getSingleton().clearLog();
 			ArrayList<String> list = info.getStrings();
@@ -1305,6 +1324,9 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			if (line.isValid()) {
 				CharacterChatPanel.updateAllChatPanels(line);
 				inspector.addChatLine(line);
+				if (GameHost.mostRecentHost != null) {
+					GameHost.mostRecentHost.logChatLine(id, message);
+				}
 			}
 		}
 		else {
