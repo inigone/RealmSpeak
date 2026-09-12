@@ -1,0 +1,257 @@
+inigone-local changes
+=====================
+Lists all IL-specific changes in reverse order (newest first).
+MERGED UPSTREAM and OBSOLETE tags are omitted — those are upstream changes, not inigone additions.
+Update this file before creating each new IL-commit tag.
+
+------------------------------------------------------------------------------
+IL-commit-056
+NEW FEATURES:
+# Add changes-inigone.txt listing all IL-specific changes (updated before each new IL-commit)
+UPDATER:
+# About RealmSpeak shows full release tag (e.g. "1.2.6.5 (1265-inigone.1)") when
+#   running from an installed release; dev builds show plain "Version 1.2.6.5"
+
+------------------------------------------------------------------------------
+IL-commit-055
+NEW FEATURES:
+# Chat history persists across reconnects: host tees all chat to a per-game log file
+#   (one file per game title, append mode so server restarts preserve history);
+#   reconnecting clients receive the full chat history and any character window
+#   opened after reconnect auto-populates from it
+CHANGES:
+# Remove on-counter kill-chance/DRM badge overlays from the Combat Preview step;
+#   Results-step die-roll overlays (drawCombatRolls) are unchanged
+UPDATER:
+# About RealmSpeak now shows the full release tag (e.g. "1.2.6.5 (1265-inigone.1)")
+#   when running from an installed release, not just the bare upstream version
+
+------------------------------------------------------------------------------
+IL-commit-054
+NEW FEATURES:
+# Add Combat Preview stage (between Tactics and Resolving) when Outcome Lines option is on:
+#   auto-selects the embedded summary pane; OL portrait badges on both defender and
+#   attacker counters showing die modifier (yellow) and kill outcome (white)
+
+------------------------------------------------------------------------------
+IL-commit-053
+CHANGES:
+# Stop remembering last game directory across sessions (opens to home dir each time)
+
+------------------------------------------------------------------------------
+IL-commit-052
+NEW FEATURES:
+# Client window layouts (character list, map, character frames) now persist across
+#   server restarts, not just reconnects within the same server session
+
+------------------------------------------------------------------------------
+IL-commit-051
+NEW FEATURES:
+# In-app updater: Help → Check for Updates fetches and installs inigone releases
+#   from GitHub; Mac/Linux extract in place and restart; Windows uses a staging
+#   script to swap files after the JVM exits
+
+------------------------------------------------------------------------------
+IL-commit-050
+NEW FEATURES:
+# E.6.10 Any VP Type option: quest VPs (and all VP types) count toward character
+#   development chit advancement
+
+------------------------------------------------------------------------------
+IL-commit-049
+NEW FEATURES:
+# Outcome Lines: predicted attack/defence hits shown on combat sheets; secret until
+#   Tactics, then all OLs revealed simultaneously on every sheet and the summary page;
+#   FINER-level diagnostics in RealmBattle for tracing battle-group assignment
+
+------------------------------------------------------------------------------
+IL-commit-045
+BUGS/ISSUES:
+# Generated monster pods keep their identity instead of merging on contact — pods
+#   were rebuilt from (location, flavour) each day so two pods sharing a clearing
+#   fused and stopped counting each other as crowding; membership is now a persistent
+#   GM_POD_ID stamped per spawn batch; legacy saves are broken into pods of 6 plus
+#   a remainder; a separated pod is re-stamped so split pieces never re-merge
+
+------------------------------------------------------------------------------
+IL-commit-044
+BUGS/ISSUES:
+# Fix followers stranded forever when a guide leaves them behind — triggerPostPhaseFor()
+#   skipped its post-phase stamp while the guide was mid-flight, holding the
+#   released-follower batch gate shut so a dropped follower's turn was never completed
+#   and the day could not end; plus lower-bound batch matching and a pre-flush before
+#   the day's-end release so each release set keeps its own single EOCTMS
+
+------------------------------------------------------------------------------
+IL-commit-043
+NEW FEATURES:
+# Generated monsters: rebuild daily propagation on upstream's mechanism — once-a-day
+#   pod movement at Daylight; five upstream House Rules replaced by three opt-outs
+#   plus MOVE BY CHANCE; hold position, roadway characters, board-edge departure,
+#   self-crowding excluded; by-chance odds bucketed by resulting distance; Daily
+#   Propagation report with its About dialog
+
+------------------------------------------------------------------------------
+IL-commit-039
+CHANGES:
+# Remove SORT CHARACTER LIST BY PLAY ORDER option — play order is hidden information
+#   in Magic Realm and the option admitted it was revealing; character list now always
+#   sorts alphabetically; fixes Notifications panel GridLayout column overflow
+
+------------------------------------------------------------------------------
+IL-commit-038
+BUGS/ISSUES:
+# Windows launchers raise heap from -mx512m to -Xms1g -Xmx4g so large games can load
+
+------------------------------------------------------------------------------
+IL-commit-037
+BUGS/ISSUES:
+# Keep login timeout in force until the catch-up sync has actually finished —
+#   SUBMIT_LOGIN only trades a name and accept/refuse; the masterData-to-gameData
+#   transfer on the first main-loop request timed out on large saved games
+
+------------------------------------------------------------------------------
+IL-commit-036
+BUGS/ISSUES:
+# Close accepted sockets that are never handed to the host — GameConnector leaked
+#   a file descriptor for every failed connection (internet port probes) and for
+#   each kill() socket opened to break accept() out of its block
+
+------------------------------------------------------------------------------
+IL-commit-035
+CHANGES:
+# Restore explanatory comments stripped by upstream on five merged PRs: GameNet
+#   login-timeout note, CharacterWrapper.isDoRecord() javadoc (PR #47), both
+#   CharacterFrame death-path notes (PR #49); comments only, no behaviour change
+
+------------------------------------------------------------------------------
+IL-commit-031
+NEW FEATURES:
+# Diagnostics master switch: Enable Diagnostics host option gates all [IPD] traces
+#   and EOCTMS dialogs (69 println sites); forced-monster-die field pins die to a
+#   chosen value every other day for testing
+
+------------------------------------------------------------------------------
+IL-commit-026
+BUGS/ISSUES:
+# Fix stale clearingPlot after a day spent following — a follower released at guide's
+#   day end kept the previous day's plot; next day's first recorded move was validated
+#   from a stale origin and legal moves were flagged invalid
+
+------------------------------------------------------------------------------
+IL-commit-025
+BUGS/ISSUES:
+# Immediate follower turn completion + EOCTMS batching: released-follower batches
+#   (ditch/voluntary-stop/mechanical-drop/day's-end) close turns and fire one shared
+#   EOCTMS each, gated against racing the guide's own post-phase; fixes turn-order
+#   renumbering assumption and block-candidate/participant eligibility mismatch
+
+------------------------------------------------------------------------------
+IL-commit-024
+BUGS/ISSUES:
+# Restore dark noir pre/post reaction dialog colors and textColorFor() text wiring
+#   lost during an earlier IL recreate
+
+------------------------------------------------------------------------------
+IL-commit-023
+NEW FEATURES:
+# Auto-complete follower turns after 5s idle (autoFollowerDoneTimer in RealmTurnPanel)
+
+------------------------------------------------------------------------------
+IL-commit-022
+BUGS/ISSUES:
+# Guard Show Phase-Start Dialog button on !phasingCharPendingPrePhase() so it matches
+#   the auto-show path
+
+------------------------------------------------------------------------------
+IL-commit-021
+NEW FEATURES:
+# Character list/window selection sync: activating a CharacterFrame selects its row
+# Vertical map view-control buttons
+CHANGES:
+# Remove dead doBlockNow/handleBlockCharacter methods
+
+------------------------------------------------------------------------------
+IL-commit-020
+NEW FEATURES:
+# In-phase follower reactions: restore direct-follower and found-hidden-enemy ditch
+#   guards; remove legacy follow-counter mechanism (to-Continue buttons); keep SR
+#   Enchant gate; add Hide/Peer Search option
+
+------------------------------------------------------------------------------
+IL-commit-019
+CHANGES:
+# Reactions rebuild: remove combo dialogs, clean pre/post-phase gate, post-phase
+#   NAME_KEY fix, just-released-follower fix, ditch cascade removed,
+#   no-op Rest/phase reaction windows
+
+------------------------------------------------------------------------------
+IL-commit-017
+BUGS/ISSUES:
+# Fix post-phase block dialog incorrectly listing guide's underling hirelings
+
+------------------------------------------------------------------------------
+IL-commit-016
+BUGS/ISSUES:
+# Never rearrange existing subwindows when a new frame is added to the desktop
+
+------------------------------------------------------------------------------
+IL-commit-015
+BUGS/ISSUES:
+# Network Reconnect available any time in-game; fix duplicate-name on manual reconnect
+
+------------------------------------------------------------------------------
+IL-commit-014
+BUGS/ISSUES:
+# Fix doubled Your-Turn tab: remove invokeLater from showYourTurn/hideYourTurn
+
+------------------------------------------------------------------------------
+IL-commit-013
+NEW FEATURES:
+# Personal clearing markers on the map
+
+------------------------------------------------------------------------------
+IL-commit-011
+BUGS/ISSUES:
+# Fix follower stop-following opportunity between stacked rests
+
+------------------------------------------------------------------------------
+IL-commit-010
+NEW FEATURES:
+# Reaction dialog UI improvements: dynamic submit label, button layout, tooltips
+
+------------------------------------------------------------------------------
+IL-commit-008
+BUGS/ISSUES:
+# Fix phase-count ordinal label in pre/post-phase reaction dialog headers
+
+------------------------------------------------------------------------------
+IL-commit-007
+NEW FEATURES:
+# Combat window: dockable button toolbar, toggle buttons, styling improvements
+
+------------------------------------------------------------------------------
+IL-commit-006
+BUGS/ISSUES:
+# Fix mouseover hints: scope char symbol tooltip to icon; add toggle hints to tabs
+
+------------------------------------------------------------------------------
+IL-commit-005
+NEW FEATURES:
+# Client reconnect support
+# Client window-layout persistence across reconnects
+
+------------------------------------------------------------------------------
+IL-commit-004
+NEW FEATURES:
+# Highlight characters awaiting input in red in the character list
+
+------------------------------------------------------------------------------
+IL-commit-002
+BUGS/ISSUES:
+# Re-enable Play All and fix stacked-Rest interphase interrupts
+
+------------------------------------------------------------------------------
+IL-commit-001
+NEW FEATURES:
+# Per-character reaction skip filters (local-feature/reaction-controls)
