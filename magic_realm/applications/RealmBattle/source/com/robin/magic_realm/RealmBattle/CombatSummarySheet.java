@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 
 import javax.swing.JButton;
 import javax.swing.JPanel;
@@ -164,7 +163,6 @@ public class CombatSummarySheet extends JPanel {
 			g.drawImage(battleParticipant.getImage(),x+80,y-40,80,80,null);
 			portraitHitBoxes.add(new PortraitHitBox(x+80,y-40,battleParticipant));
 			drawAttackOrderStamp(g,battleParticipant,x+80,y-40);
-			drawOLPortraitBadge(g,battleParticipant,x+80,y-40);
 			drawDeadHorseMark(g,battleParticipant,x+80,y-40);
 			drawCoupMarkers(g,battleParticipant,x+80,y-40);
 			drawCombatRolls(g,battleParticipant,x+80,y-40);		
@@ -237,7 +235,6 @@ public class CombatSummarySheet extends JPanel {
 				g.drawImage(attackerRc.getImage(),xAttacker,y-40,80,80,null);
 				portraitHitBoxes.add(new PortraitHitBox(xAttacker,y-40,attackerRc));
 				drawAttackOrderStamp(g,attackerRc,xAttacker,y-40);
-				drawOLAttackerBadge(g,attackerRc,battleParticipant,xAttacker,y-40);
 				drawDeadHorseMark(g,attackerRc,xAttacker,y-40);
 				drawCoupMarkers(g,attackerRc,xAttacker,y-40);
 				drawCombatRolls(g,attackerRc,xAttacker,y-40);
@@ -316,99 +313,6 @@ public class CombatSummarySheet extends JPanel {
 	private static final int ROLL_DIE_SIZE = 14;
 	private static final int ROLL_DOT_SIZE = 4;
 	private static final Color ROLL_BACKING = new Color(210, 210, 210, 170);
-	private static final Color OL_BADGE_BG    = new Color(60, 60, 60, 190);
-	private static final Color OL_BADGE_MOD   = new Color(255, 220, 80);
-	private static final Color OL_BADGE_KILL  = Color.WHITE;
-	private static final Font  OL_BADGE_FONT  = new Font("Dialog", Font.BOLD, 10);
-
-	/**
-	 * During Preview, draws a compact OL badge at the right-center of this portrait showing the total
-	 * die modifier (yellow) and kill outcome (white) on a dark semi-transparent background.
-	 * Used for sheet-owner (defender) portraits — finds their first outgoing attack.
-	 */
-	private void drawOLPortraitBadge(Graphics2D g, RealmComponent participant, int x, int y) {
-		if (!showsOutcomeExtras() || combatFrame.getActionState() != Constants.COMBAT_PREVIEW) return;
-		if (outcomes == null || attackOrder == null) return;
-		ArrayList<AttackKillEstimate> estimates = outcomes.byParticipant.get(participant.getGameObject().getStringId());
-		if (estimates == null) return;
-
-		// Find the first LIVE outgoing estimate for this participant (i.e., an attack it is making)
-		AttackKillEstimate first = null;
-		String ownId = participant.getGameObject().getStringId();
-		for (AttackKillEstimate est : estimates) {
-			if (!ownId.equals(est.getTargetId())) { // outgoing attack
-				for (AttackKillEstimate.EstimateLine line : est.getLines()) {
-					if (line.emphasis == AttackKillEstimate.Emphasis.LIVE) {
-						first = est;
-						break;
-					}
-				}
-			}
-			if (first != null) break;
-		}
-		if (first == null) return;
-		drawOLBadge(g, x, y, first);
-	}
-
-	/**
-	 * During Preview, draws the OL badge for an attacker counter — finds the attacker's estimate
-	 * inside the known target's byParticipant entry by matching attack keys.
-	 */
-	private void drawOLAttackerBadge(Graphics2D g, RealmComponent attacker, RealmComponent target, int x, int y) {
-		if (!showsOutcomeExtras() || combatFrame.getActionState() != Constants.COMBAT_PREVIEW) return;
-		if (outcomes == null || attackOrder == null) return;
-		ArrayList<AttackKillEstimate> targetEstimates = outcomes.byParticipant.get(target.getGameObject().getStringId());
-		if (targetEstimates == null) return;
-
-		ArrayList<String> myKeys = attackOrder.attackKeysFor(attacker.getGameObject());
-		if (myKeys.isEmpty()) return;
-		HashSet<String> myKeySet = new HashSet<>(myKeys);
-
-		AttackKillEstimate first = null;
-		for (AttackKillEstimate est : targetEstimates) {
-			if (myKeySet.contains(est.getAttackKey())) {
-				for (AttackKillEstimate.EstimateLine line : est.getLines()) {
-					if (line.emphasis == AttackKillEstimate.Emphasis.LIVE) {
-						first = est;
-						break;
-					}
-				}
-			}
-			if (first != null) break;
-		}
-		if (first == null) return;
-		drawOLBadge(g, x, y, first);
-	}
-
-	/** Shared badge painter for both defender and attacker portraits. */
-	private void drawOLBadge(Graphics2D g, int x, int y, AttackKillEstimate estimate) {
-		String killText = estimate.getKillSummary();
-		int    modifier = estimate.getTotalModifier();
-		String modText  = modifier == 0 ? "" : (modifier > 0 ? "+" + modifier : String.valueOf(modifier));
-
-		g.setFont(OL_BADGE_FONT);
-		FontMetrics fm = g.getFontMetrics();
-		int killW  = fm.stringWidth(killText);
-		int modW   = modText.isEmpty() ? 0 : fm.stringWidth(modText) + 2;
-		int totalW = killW + (modW > 0 ? modW + 4 : 0) + 6;
-		int bh     = fm.getHeight() + 2;
-		int bx     = x + PORTRAIT_SIZE - totalW;
-		int by     = y + (PORTRAIT_SIZE - bh) / 2;
-
-		g.setColor(OL_BADGE_BG);
-		g.fillRoundRect(bx, by, totalW, bh, 4, 4);
-
-		int tx = bx + 3;
-		int ty = by + fm.getAscent() + 1;
-		if (!modText.isEmpty()) {
-			g.setColor(OL_BADGE_MOD);
-			g.drawString(modText, tx, ty);
-			tx += modW + 2;
-		}
-		g.setColor(OL_BADGE_KILL);
-		g.drawString(killText, tx, ty);
-	}
-
 	/**
 	 * Paints the FUMBLE or MISSILE dice this counter threw across the bottom of its portrait, once
 	 * the attacks have been resolved.  A counter that attacked more than once shows a roll each, in

@@ -14,11 +14,17 @@ import com.robin.magic_realm.components.attribute.ChatStyle;
 public class CharacterChatPanel extends CharacterFramePanel {
 	
 	private static ArrayList<CharacterChatPanel> allChatPanels = new ArrayList<CharacterChatPanel>();
+	private static ArrayList<ChatLine> historyBacklog = null;
+
 	public static void updateAllChatPanels(ChatLine line) {
 		if (allChatPanels==null)return;
 		for (CharacterChatPanel panel:allChatPanels) {
 			panel.addChatLine(line);
 		}
+	}
+
+	public static void setHistoryBacklog(ArrayList<ChatLine> lines) {
+		historyBacklog = lines;
 	}
 	
 	private JTextPane chatPane;
@@ -31,6 +37,11 @@ public class CharacterChatPanel extends CharacterFramePanel {
 		list = new ArrayList<ChatLine>();
 		initComponents();
 		allChatPanels.add(this);
+		if (historyBacklog != null) {
+			for (ChatLine line : historyBacklog) {
+				addChatLine(line);
+			}
+		}
 	}
 	protected void cleanup() {
 		allChatPanels.remove(this);
