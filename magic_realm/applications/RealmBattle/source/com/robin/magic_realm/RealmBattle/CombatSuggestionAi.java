@@ -45,6 +45,9 @@ public class CombatSuggestionAi {
 				break;
 			case Constants.COMBAT_TACTICS:
 				break;
+			case Constants.COMBAT_PREVIEW:
+				// This never happens
+				break;
 			case Constants.COMBAT_RESOLVING:
 				// This never happens
 				break;

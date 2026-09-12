@@ -95,20 +95,24 @@ public class Constants {
 	 */
 	public static final int COMBAT_TACTICS = 8;
 	/*
+	 * Outcome Lines preview: show predictions before resolving; skipped automatically when OL is off.
+	 */
+	public static final int COMBAT_PREVIEW = 9;
+	/*
 	 * No interaction - just a display
 	 * GOOD for 3rd
 	 */
-	public static final int COMBAT_RESOLVING = 9; // this happens all at once
+	public static final int COMBAT_RESOLVING = 10; // this happens all at once
 	/*
 	 * Characters only - fatigue/wound chits
 	 * GOOD for 3rd
 	 */
-	public static final int COMBAT_FATIGUE = 10;
+	public static final int COMBAT_FATIGUE = 11;
 	/*
 	 * No interaction or display - happens on host end
 	 * GOOD for 3rd
 	 */
-	public static final int COMBAT_DISENGAGE = 11;// this happens all at once
+	public static final int COMBAT_DISENGAGE = 12;// this happens all at once
 	
 	public static final int COMBAT_DONE = 100;
 	
