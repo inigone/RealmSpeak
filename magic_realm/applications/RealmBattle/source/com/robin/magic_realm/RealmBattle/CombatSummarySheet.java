@@ -38,6 +38,7 @@ public class CombatSummarySheet extends JPanel {
 		"Assign Targets",
 		"Positioning",
 		"Change Tactics (rare)",
+		"Preview",
 		"Resolving",
 		"Fatigue",
 		"Disengage",
@@ -47,6 +48,19 @@ public class CombatSummarySheet extends JPanel {
 	private final ArrayList<CoupMarker> coupMarkers = new ArrayList<>();
 	private CoupMarker hoveredCoup;
 	private Point hoverPoint;
+
+	/** Where each portrait was drawn this paint, for plain-image hover. */
+	private final ArrayList<PortraitHitBox> portraitHitBoxes = new ArrayList<>();
+	private RealmComponent hoveredPortrait;
+
+	private static class PortraitHitBox {
+		private final Rectangle bounds;
+		private final RealmComponent rc;
+		private PortraitHitBox(int x, int y, RealmComponent rc) {
+			this.bounds = new Rectangle(x, y, PORTRAIT_SIZE, PORTRAIT_SIZE);
+			this.rc = rc;
+		}
+	}
 
 	/** One drawn coup marker - everything needed to paint it again at any size. */
 	private static class CoupMarker {
@@ -114,97 +128,13 @@ public class CombatSummarySheet extends JPanel {
 		
 		int x,y,s;
 		coupMarkers.clear();
+		portraitHitBoxes.clear();
 		attackOrder = resolveAttackOrder();
 		cacheOutcomeLines();
 		
-		// Draw name sections
-		g.setColor(NAME_SECTION_COLOR);
-		x = 5;
-		y = 182;
-		s = 145 + (COMBAT_STAGES.length*30) - 20;
-		for (int i=0;i<characters.size();i++) {
-			g.fillRect(x,y-20,s,25);
-			y += 30;
-		}
-		
-		// Draw names
-		g.setColor(Color.black);
-		x = 10;
-		y = 180;
-		for (CharacterWrapper character : characters) {
-			String name = character.getGameObject().getName();
-			g.drawString(name,x,y);
-			y += 30;
-		}
-		int listBottom = y;
-		
-		// Draw stage sections
-		g.setColor(STAGE_SECTION_COLOR);
-		x = 150;
-		y = 5;
-		s = 150 + (characters.size()*30);
-		for (int i=0;i<COMBAT_STAGES.length;i++) {
-			g.fillRect(x-18,y,25,s);
-			x+=30;
-		}
-		
-		// Draw Combat Stage Titles
-		AffineTransform rotated = new AffineTransform(normal);
-		rotated.rotate(Math.toRadians(-90),150,150);
-		g.setTransform(rotated);
-		g.setColor(Color.black);
-		x = 150;
-		y = 150;
-		for (int i=0;i<COMBAT_STAGES.length;i++) {
-			g.drawString(COMBAT_STAGES[i],x,y);
-			y += 30;
-		}
-		g.setTransform(normal);
-		Stroke normalStroke = g.getStroke();
-		
-		for (int r=0;r<characters.size();r++) {
-			CharacterWrapper character = characters.get(r);
-			boolean active = true;
-			int stage = character.getCombatStatus();
-			if (stage>Constants.COMBAT_WAIT) {
-				stage -= Constants.COMBAT_WAIT;
-				active = false;
-			}
-			for (int c=0;c<COMBAT_STAGES.length;c++) {
-				int n = ((c*characters.size())+r)+1;
-				int stageCompare = c+1;
-				Rectangle rect = getRectangleForPosition(r,c);
-				
-				g.setColor(NUMBER_BOX_COLOR);
-				GraphicsUtil.drawCenteredString(g,rect.x,rect.y,rect.width,rect.height,String.valueOf(n));
-				
-				g.setColor(Color.black);
-				g.draw(rect);
-				
-				g.setStroke(MARK_STROKE);				
-				if (stage==stageCompare && active) {
-					g.setColor(Color.red);
-					rect.x += 2;
-					rect.y += 2;
-					rect.width -= 4;
-					rect.height -= 4;
-					g.draw(rect);
-				}
-				else if (stage>stageCompare) {
-					rect.x += 2;
-					rect.y += 2;
-					rect.width -= 4;
-					rect.height -= 4;
-					
-					g.drawLine(rect.x,rect.y,rect.x+rect.width,rect.y+rect.height);
-				}
-				g.setStroke(normalStroke);
-			}
-		}
-		
 		// List battling natives for each character
 		x = 5;
-		y = listBottom;
+		y = 10;
 		g.setColor(Color.black);
 		for (CharacterWrapper character : characters) {
 			for (String groupName : character.getBattlingNativeGroups()) {
@@ -232,10 +162,12 @@ public class CombatSummarySheet extends JPanel {
 			y += 90;
 			int rowTop = y-40;
 			g.drawImage(battleParticipant.getImage(),x+80,y-40,80,80,null);
+			portraitHitBoxes.add(new PortraitHitBox(x+80,y-40,battleParticipant));
 			drawAttackOrderStamp(g,battleParticipant,x+80,y-40);
-			drawCombatRolls(g,battleParticipant,x+80,y-40);
+			drawOLPortraitBadge(g,battleParticipant,x+80,y-40);
 			drawDeadHorseMark(g,battleParticipant,x+80,y-40);
-			drawCoupMarkers(g,battleParticipant,x+80,y-40);		
+			drawCoupMarkers(g,battleParticipant,x+80,y-40);
+			drawCombatRolls(g,battleParticipant,x+80,y-40);		
 			JButton chartButton = new JButton("Sheet");
 			final int rcRow = row;
 			chartButton.addActionListener(new ActionListener() {
@@ -303,10 +235,12 @@ public class CombatSummarySheet extends JPanel {
 				xAttacker += 90;
 				RealmComponent attackerRc = RealmComponent.getRealmComponent(attacker);
 				g.drawImage(attackerRc.getImage(),xAttacker,y-40,80,80,null);
+				portraitHitBoxes.add(new PortraitHitBox(xAttacker,y-40,attackerRc));
 				drawAttackOrderStamp(g,attackerRc,xAttacker,y-40);
-				drawCombatRolls(g,attackerRc,xAttacker,y-40);
+				drawOLAttackerBadge(g,attackerRc,battleParticipant,xAttacker,y-40);
 				drawDeadHorseMark(g,attackerRc,xAttacker,y-40);
 				drawCoupMarkers(g,attackerRc,xAttacker,y-40);
+				drawCombatRolls(g,attackerRc,xAttacker,y-40);
 				attackerCount += 1;
 			}
 
@@ -341,8 +275,12 @@ public class CombatSummarySheet extends JPanel {
 		}
 		*/
 
-		// Last, so an enlarged coup marker sits over everything else
+		// Stage progress table at the bottom of the pane
+		drawCombatStagesTable(g, normal, y);
+
+		// Last, so hovers sit over everything else
 		drawCoupHover(g);
+		drawPortraitHover(g);
 	}
 	private static final Font STAMP_FONT = new Font("Dialog",Font.BOLD,13);
 	private static final Color STAMP_BACKING = new Color(255,255,255,225);
@@ -377,6 +315,99 @@ public class CombatSummarySheet extends JPanel {
 	private static final int PORTRAIT_SIZE = 80;
 	private static final int ROLL_DIE_SIZE = 14;
 	private static final int ROLL_DOT_SIZE = 4;
+	private static final Color ROLL_BACKING = new Color(210, 210, 210, 170);
+	private static final Color OL_BADGE_BG    = new Color(60, 60, 60, 190);
+	private static final Color OL_BADGE_MOD   = new Color(255, 220, 80);
+	private static final Color OL_BADGE_KILL  = Color.WHITE;
+	private static final Font  OL_BADGE_FONT  = new Font("Dialog", Font.BOLD, 10);
+
+	/**
+	 * During Preview, draws a compact OL badge at the right-center of this portrait showing the total
+	 * die modifier (yellow) and kill outcome (white) on a dark semi-transparent background.
+	 * Used for sheet-owner (defender) portraits — finds their first outgoing attack.
+	 */
+	private void drawOLPortraitBadge(Graphics2D g, RealmComponent participant, int x, int y) {
+		if (!showsOutcomeExtras() || combatFrame.getActionState() != Constants.COMBAT_PREVIEW) return;
+		if (outcomes == null || attackOrder == null) return;
+		ArrayList<AttackKillEstimate> estimates = outcomes.byParticipant.get(participant.getGameObject().getStringId());
+		if (estimates == null) return;
+
+		// Find the first LIVE outgoing estimate for this participant (i.e., an attack it is making)
+		AttackKillEstimate first = null;
+		String ownId = participant.getGameObject().getStringId();
+		for (AttackKillEstimate est : estimates) {
+			if (!ownId.equals(est.getTargetId())) { // outgoing attack
+				for (AttackKillEstimate.EstimateLine line : est.getLines()) {
+					if (line.emphasis == AttackKillEstimate.Emphasis.LIVE) {
+						first = est;
+						break;
+					}
+				}
+			}
+			if (first != null) break;
+		}
+		if (first == null) return;
+		drawOLBadge(g, x, y, first);
+	}
+
+	/**
+	 * During Preview, draws the OL badge for an attacker counter — finds the attacker's estimate
+	 * inside the known target's byParticipant entry by matching attack keys.
+	 */
+	private void drawOLAttackerBadge(Graphics2D g, RealmComponent attacker, RealmComponent target, int x, int y) {
+		if (!showsOutcomeExtras() || combatFrame.getActionState() != Constants.COMBAT_PREVIEW) return;
+		if (outcomes == null || attackOrder == null) return;
+		ArrayList<AttackKillEstimate> targetEstimates = outcomes.byParticipant.get(target.getGameObject().getStringId());
+		if (targetEstimates == null) return;
+
+		ArrayList<String> myKeys = attackOrder.attackKeysFor(attacker.getGameObject());
+		if (myKeys.isEmpty()) return;
+		HashSet<String> myKeySet = new HashSet<>(myKeys);
+
+		AttackKillEstimate first = null;
+		for (AttackKillEstimate est : targetEstimates) {
+			if (myKeySet.contains(est.getAttackKey())) {
+				for (AttackKillEstimate.EstimateLine line : est.getLines()) {
+					if (line.emphasis == AttackKillEstimate.Emphasis.LIVE) {
+						first = est;
+						break;
+					}
+				}
+			}
+			if (first != null) break;
+		}
+		if (first == null) return;
+		drawOLBadge(g, x, y, first);
+	}
+
+	/** Shared badge painter for both defender and attacker portraits. */
+	private void drawOLBadge(Graphics2D g, int x, int y, AttackKillEstimate estimate) {
+		String killText = estimate.getKillSummary();
+		int    modifier = estimate.getTotalModifier();
+		String modText  = modifier == 0 ? "" : (modifier > 0 ? "+" + modifier : String.valueOf(modifier));
+
+		g.setFont(OL_BADGE_FONT);
+		FontMetrics fm = g.getFontMetrics();
+		int killW  = fm.stringWidth(killText);
+		int modW   = modText.isEmpty() ? 0 : fm.stringWidth(modText) + 2;
+		int totalW = killW + (modW > 0 ? modW + 4 : 0) + 6;
+		int bh     = fm.getHeight() + 2;
+		int bx     = x + PORTRAIT_SIZE - totalW;
+		int by     = y + (PORTRAIT_SIZE - bh) / 2;
+
+		g.setColor(OL_BADGE_BG);
+		g.fillRoundRect(bx, by, totalW, bh, 4, 4);
+
+		int tx = bx + 3;
+		int ty = by + fm.getAscent() + 1;
+		if (!modText.isEmpty()) {
+			g.setColor(OL_BADGE_MOD);
+			g.drawString(modText, tx, ty);
+			tx += modW + 2;
+		}
+		g.setColor(OL_BADGE_KILL);
+		g.drawString(killText, tx, ty);
+	}
 
 	/**
 	 * Paints the FUMBLE or MISSILE dice this counter threw across the bottom of its portrait, once
@@ -384,7 +415,7 @@ public class CombatSummarySheet extends JPanel {
 	 * the order they were thrown.
 	 */
 	private void drawCombatRolls(Graphics2D g,RealmComponent participant,int x,int y) {
-		if (attackOrder==null || combatFrame.getActionState()<Constants.COMBAT_RESOLVING) return;
+		if (attackOrder==null || combatFrame.getActionState()<Constants.COMBAT_PREVIEW) return;
 		CombatWrapper combat = new CombatWrapper(participant.getGameObject());
 		ArrayList<String> rolls = combat.getFumbleRolls();
 		if (rolls==null) {
@@ -394,16 +425,23 @@ public class CombatSummarySheet extends JPanel {
 
 		ArrayList<DieRoller> rollers = new ArrayList<>();
 		int totalWidth = 0;
+		int maxHeight = 0;
 		for (String roll : rolls) {
 			DieRoller roller = new DieRoller(roll,ROLL_DIE_SIZE,ROLL_DOT_SIZE);
 			rollers.add(roller);
-			totalWidth += roller.getPreferredSize().width+2;
+			Dimension ps = roller.getPreferredSize();
+			totalWidth += ps.width+2;
+			maxHeight = Math.max(maxHeight, ps.height);
 		}
-		int rollX = x+((PORTRAIT_SIZE-totalWidth)/2);
+		if (totalWidth > 2) totalWidth -= 2; // remove trailing gap
+		int PAD = 2;
+		int rollX = x + PORTRAIT_SIZE - totalWidth - PAD;
+		int rollY = y + (PORTRAIT_SIZE - maxHeight) / 2;
+		g.setColor(ROLL_BACKING);
+		g.fillRoundRect(rollX-PAD, rollY-PAD, totalWidth+PAD*2, maxHeight+PAD*2, 4, 4);
 		for (DieRoller roller : rollers) {
 			Dimension size = roller.getPreferredSize();
-			int rollY = y+PORTRAIT_SIZE-size.height;
-			roller.paintComponent(g.create(rollX,rollY,size.width,size.height));
+			roller.paintComponent(g.create(rollX, rollY, size.width, size.height));
 			rollX += size.width+2;
 		}
 	}
@@ -465,6 +503,29 @@ public class CombatSummarySheet extends JPanel {
 			hoveredCoup = found;
 			repaint();
 		}
+		// Portrait hover is suppressed when a coup marker takes priority
+		RealmComponent foundPortrait = null;
+		if (found==null) {
+			for (PortraitHitBox ph : portraitHitBoxes) {
+				if (ph.bounds.contains(point)) {
+					foundPortrait = ph.rc;
+					break;
+				}
+			}
+		}
+		if (hoveredPortrait!=foundPortrait) {
+			hoveredPortrait = foundPortrait;
+			repaint();
+		}
+	}
+	private void drawPortraitHover(Graphics2D g) {
+		if (hoveredPortrait==null || hoverPoint==null) return;
+		Image img = getPlainImage(hoveredPortrait);
+		Dimension nat = hoveredPortrait.getComponentSize();
+		int size = Math.max(nat.width, nat.height);
+		int hx = Math.max(0, Math.min(hoverPoint.x+14, getWidth()-size));
+		int hy = Math.max(0, Math.min(hoverPoint.y+14, getHeight()-size));
+		g.drawImage(img, hx, hy, size, size, null);
 	}
 	private void drawCoupHover(Graphics2D g) {
 		if (hoveredCoup==null || hoverPoint==null) return;
@@ -628,6 +689,95 @@ public class CombatSummarySheet extends JPanel {
 		if (!hostPrefs.hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES) || !lines.outcomesSettled()) return null;
 		return battleModel.getAttackOrder(combatFrame.getCurrentRound());
 	}
+	private void drawCombatStagesTable(Graphics2D g, AffineTransform normal, int topY) {
+		g.setFont(STAGE_FONT);
+		int dy = topY - 5;
+		int x, y, s;
+
+		// Name section background bars
+		g.setColor(NAME_SECTION_COLOR);
+		x = 5;
+		y = 182 + dy;
+		s = 145 + (COMBAT_STAGES.length*30) - 20;
+		for (int i=0;i<characters.size();i++) {
+			g.fillRect(x,y-20,s,25);
+			y += 30;
+		}
+
+		// Character names in left column
+		g.setColor(Color.black);
+		x = 10;
+		y = 180 + dy;
+		for (CharacterWrapper character : characters) {
+			g.drawString(character.getGameObject().getName(),x,y);
+			y += 30;
+		}
+
+		// Stage column background bars
+		g.setColor(STAGE_SECTION_COLOR);
+		x = 150;
+		y = topY;
+		s = 150 + (characters.size()*30);
+		for (int i=0;i<COMBAT_STAGES.length;i++) {
+			g.fillRect(x-18,y,25,s);
+			x+=30;
+		}
+
+		// Stage column titles (rotated -90 degrees)
+		AffineTransform rotated = new AffineTransform(normal);
+		rotated.rotate(Math.toRadians(-90),150,150+dy);
+		g.setTransform(rotated);
+		g.setColor(Color.black);
+		x = 150;
+		y = 150 + dy;
+		for (int i=0;i<COMBAT_STAGES.length;i++) {
+			g.drawString(COMBAT_STAGES[i],x,y);
+			y += 30;
+		}
+		g.setTransform(normal);
+		Stroke normalStroke = g.getStroke();
+
+		// Progress grid
+		for (int r=0;r<characters.size();r++) {
+			CharacterWrapper character = characters.get(r);
+			boolean active = true;
+			int stage = character.getCombatStatus();
+			if (stage>Constants.COMBAT_WAIT) {
+				stage -= Constants.COMBAT_WAIT;
+				active = false;
+			}
+			for (int c=0;c<COMBAT_STAGES.length;c++) {
+				int n = ((c*characters.size())+r)+1;
+				int stageCompare = c+1;
+				Rectangle rect = new Rectangle((c*30)+132,(r*30)+162+dy,24,24);
+
+				g.setColor(NUMBER_BOX_COLOR);
+				GraphicsUtil.drawCenteredString(g,rect.x,rect.y,rect.width,rect.height,String.valueOf(n));
+
+				g.setColor(Color.black);
+				g.draw(rect);
+
+				g.setStroke(MARK_STROKE);
+				if (stage==stageCompare && active) {
+					g.setColor(Color.red);
+					rect.x += 2;
+					rect.y += 2;
+					rect.width -= 4;
+					rect.height -= 4;
+					g.draw(rect);
+				}
+				else if (stage>stageCompare) {
+					rect.x += 2;
+					rect.y += 2;
+					rect.width -= 4;
+					rect.height -= 4;
+					g.drawLine(rect.x,rect.y,rect.x+rect.width,rect.y+rect.height);
+				}
+				g.setStroke(normalStroke);
+			}
+		}
+	}
+
 	private static Rectangle getRectangleForPosition(int row,int col) {
 		int x = (col * 30) + 132;
 		int y = (row * 30) + 162;
