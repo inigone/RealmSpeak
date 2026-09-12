@@ -66,6 +66,10 @@ public class AttackKillEstimate {
 	private int attackOrder;
 	private String targetId = "";
 	private String attackKey = "";
+	/** Total die modifier (clearing bonus + fumble modifier) for the first outcome, used for portrait badges. */
+	private int totalModifier;
+	/** Compact kill outcome text ("sure kill", "no kill", "kill 1-4") for portrait badges. */
+	private String killSummary = "";
 
 	private AttackKillEstimate() {
 	}
@@ -101,6 +105,14 @@ public class AttackKillEstimate {
 	 */
 	public ArrayList<EstimateLine> getLines() {
 		return lines;
+	}
+	/** Total die modifier (clearing + fumble) applied to the first outcome. Zero when none applies. */
+	public int getTotalModifier() {
+		return totalModifier;
+	}
+	/** Compact kill outcome: "sure kill", "no kill", "kill 1-4", or harm string for char targets. */
+	public String getKillSummary() {
+		return killSummary;
 	}
 
 	/**
@@ -195,8 +207,13 @@ public class AttackKillEstimate {
 			fumbleModifier = fumble.getValue();
 			sb.append(" ").append(fumble.getEquation());
 		}
-		sb.append("  ").append(settledKillText != null ? settledKillText : killText(bestKillingResult, fumbleModifier + dieModifier));
+		String kt = settledKillText != null ? settledKillText : killText(bestKillingResult, fumbleModifier + dieModifier);
+		sb.append("  ").append(kt);
 		lines.add(new EstimateLine(sb.toString(), Emphasis.LIVE));
+		if (lines.size() == 1) {
+			totalModifier = fumbleModifier + dieModifier;
+			killSummary = kt;
+		}
 	}
 
 	private static String killText(Integer bestKillingResult, int totalModifier) {
@@ -271,14 +288,19 @@ public class AttackKillEstimate {
 			sb.append(" ").append(fumble.getEquation());
 		}
 		sb.append("  ");
+		String harmText;
 		if (tableName == null) {
-			// Nothing is rolled, so the harm is whatever the attack already is
-			sb.append(harmString(new Harm(baseHarm)));
+			harmText = harmString(new Harm(baseHarm));
 		}
 		else {
-			sb.append(harmOutcomes(baseHarm, tableName, fumbleModifier, hostPrefs));
+			harmText = harmOutcomes(baseHarm, tableName, fumbleModifier, hostPrefs);
 		}
+		sb.append(harmText);
 		lines.add(new EstimateLine(sb.toString(), Emphasis.LIVE));
+		if (lines.size() == 1) {
+			totalModifier = fumbleModifier;
+			killSummary = harmText;
+		}
 	}
 
 	/**
