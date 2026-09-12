@@ -59,7 +59,8 @@ public class RealmBattle {
 			case Constants.COMBAT_ACTIONS:		return Constants.COMBAT_WAIT+Constants.COMBAT_ASSIGN;
 			case Constants.COMBAT_ASSIGN:			return Constants.COMBAT_WAIT+Constants.COMBAT_POSITIONING;
 			case Constants.COMBAT_POSITIONING:		return Constants.COMBAT_WAIT+Constants.COMBAT_TACTICS;
-			case Constants.COMBAT_TACTICS:		return Constants.COMBAT_WAIT+Constants.COMBAT_RESOLVING;
+			case Constants.COMBAT_TACTICS:		return Constants.COMBAT_WAIT+Constants.COMBAT_PREVIEW;
+			case Constants.COMBAT_PREVIEW:		return Constants.COMBAT_WAIT+Constants.COMBAT_RESOLVING;
 			case Constants.COMBAT_RESOLVING:		return Constants.COMBAT_WAIT+Constants.COMBAT_FATIGUE;
 			case Constants.COMBAT_FATIGUE:		return Constants.COMBAT_WAIT+Constants.COMBAT_DISENGAGE;
 			case Constants.COMBAT_DISENGAGE:		return Constants.COMBAT_WAIT+Constants.COMBAT_LURE;
@@ -307,6 +308,9 @@ public class RealmBattle {
 							LogStage("Reposition/Tactics");
 							repositionTactics(currentCombatLocation,data);
 							break;
+						case Constants.COMBAT_PREVIEW:
+							// No server-side action: pause for clients to review OL predictions before resolution
+							break;
 						case Constants.COMBAT_RESOLVING:
 							// need to resolve attacks before informing players of the resolution
 							LogStage("Resolve Combat");
@@ -553,14 +557,6 @@ public class RealmBattle {
 			case Constants.COMBAT_POSITIONING: // playing attacks and manuevers
 				return true; // Show positioning every round - this allows hidden characters to extend combat by fatiguing on purpose...
 			case Constants.COMBAT_TACTICS: // flips denizens, repositions, allows characters that *can* to replace MOVE or FIGHT
-				if (HostPrefWrapper.findHostPrefs(character.getGameObject().getGameData()).hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES)) {
-					// Show tactics every round.  Repositioning and change-of-tactics have already
-					// been applied by the time this stage is displayed, and no attack has been rolled
-					// yet, so this is the one point where a player can read the final combat boxes -
-					// and the outcome lines derived from them - before the FUMBLE and MISSILE dice
-					// are thrown.
-					return true;
-				}
 				Collection<RealmComponent> tacticsAttackers = model.getAttackersFor(charRc);
 				RealmComponent tacticsTarget = charRc.getTarget();
 				RealmComponent tacticsTarget2 = charRc.get2ndTarget();
@@ -568,6 +564,8 @@ public class RealmBattle {
 						&& ( character.canReplaceMove(tacticsAttackers))
 								|| (tacticsTarget!=null && (character.canReplaceFight(tacticsTarget) || character.canReplaceParry(tacticsTarget)))
 								|| (tacticsTarget2!=null && (character.canReplaceFight(tacticsTarget2) || character.canReplaceParry(tacticsTarget2))));
+			case Constants.COMBAT_PREVIEW: // show OL predictions; skip automatically when OL is off
+				return HostPrefWrapper.findHostPrefs(character.getGameObject().getGameData()).hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES);
 			case Constants.COMBAT_RESOLVING: // determines hits, show results
 				return true; // Show resolution every round - this guarantees that everything is cleaned up properly.
 			case Constants.COMBAT_FATIGUE:

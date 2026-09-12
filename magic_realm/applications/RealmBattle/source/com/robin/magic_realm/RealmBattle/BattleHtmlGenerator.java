@@ -101,6 +101,9 @@ public class BattleHtmlGenerator extends HtmlGenerator {
 			case Constants.COMBAT_TACTICS:
 				action = "Change Tactics";
 				break;
+			case Constants.COMBAT_PREVIEW:
+				action = "Preview";
+				break;
 			case Constants.COMBAT_RESOLVING:
 				action = "Combat Resolution";
 				break;
