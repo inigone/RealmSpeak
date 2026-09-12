@@ -206,6 +206,13 @@ public class RealmHostPanel extends JPanel {
 						lholder.setString(layoutData);
 						ev.getServer().addInfoDirect(new InfoObject(clientName, lholder.getInfo()));
 					}
+					ArrayList<String> chatHistory = host.getChatHistory();
+					if (!chatHistory.isEmpty()) {
+						RealmDirectInfoHolder cholder = new RealmDirectInfoHolder(host.getGameData(), clientName);
+						cholder.setCommand(RealmDirectInfoHolder.CHAT_HISTORY);
+						cholder.setStrings(chatHistory);
+						ev.getServer().addInfoDirect(new InfoObject(clientName, cholder.getInfo()));
+					}
 				}
 			}
 			
