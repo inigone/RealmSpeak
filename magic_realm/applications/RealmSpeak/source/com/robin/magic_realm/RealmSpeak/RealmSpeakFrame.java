@@ -564,7 +564,12 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 		StringBuffer text = new StringBuffer();
 		text.append("<html><body><font face=\"Helvetical, Arial, sans-serif\">");
 		text.append("<font size=\"+1\"><b>RealmSpeak Java Application</b></font><br>");
-		text.append("<font size=\"+1\">Version "+Constants.REALM_SPEAK_VERSION+"</font></font><br><br>");
+		String fullTag = com.robin.magic_realm.RealmSpeak.update.AppUpdater.readCurrentTag();
+		String versionLine = Constants.REALM_SPEAK_VERSION;
+		if (!fullTag.equals(Constants.REALM_SPEAK_VERSION.replace(".", ""))) {
+			versionLine += " (" + fullTag + ")";
+		}
+		text.append("<font size=\"+1\">Version "+versionLine+"</font></font><br><br>");
 		text.append("<table>");
 		text.append("<tr><td align=\"right\"><b>Compiled Java Version:</b></td><td border=1 align=\"center\" width=150>");
 		text.append("OpenJDK 8: 1.8.0_482");
