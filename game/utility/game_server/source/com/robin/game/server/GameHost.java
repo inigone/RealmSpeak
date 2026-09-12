@@ -40,6 +40,9 @@ public class GameHost {
 	private Map<String, String> clientLayouts = new HashMap<>();
 	private Path layoutPersistFile = null;
 
+	private Path chatLogFile = null;
+	private PrintWriter chatLogWriter = null;
+
 	public GameHost(String dataPath,String gameTitle,String password) {
 		mostRecentHost = this;
 		masterData = new GameData();
@@ -94,6 +97,40 @@ public class GameHost {
 		}
 		return success;
 	}
+	/** Opens (appending) the chat log file for this hosting session. */
+	public void setChatLogFile(Path file) {
+		this.chatLogFile = file;
+		try {
+			chatLogWriter = new PrintWriter(new BufferedWriter(new FileWriter(file.toFile(), true)));
+		} catch (IOException ex) {
+			logger.warning("Could not open chat log: " + ex.getMessage());
+		}
+	}
+
+	public void logChatLine(String characterId, String message) {
+		if (chatLogWriter == null) return;
+		chatLogWriter.println(characterId + "\t" + message);
+		chatLogWriter.flush();
+	}
+
+	public ArrayList<String> getChatHistory() {
+		ArrayList<String> result = new ArrayList<>();
+		if (chatLogFile == null || !Files.exists(chatLogFile)) return result;
+		try (BufferedReader reader = new BufferedReader(new FileReader(chatLogFile.toFile()))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				int tab = line.indexOf('\t');
+				if (tab > 0) {
+					result.add(line.substring(0, tab));
+					result.add(line.substring(tab + 1));
+				}
+			}
+		} catch (IOException ex) {
+			logger.warning("Could not read chat log: " + ex.getMessage());
+		}
+		return result;
+	}
+
 	/** Sets the file used to persist client layouts across server restarts, and loads any saved layouts from it. */
 	public void setLayoutPersistFile(Path file) {
 		this.layoutPersistFile = file;

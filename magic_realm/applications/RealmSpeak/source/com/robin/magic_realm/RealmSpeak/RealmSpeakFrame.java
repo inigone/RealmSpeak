@@ -2166,6 +2166,8 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 				hostPrefs.getGameTitle(),
 				hostPrefs.getGamePass());
 		host.setLayoutPersistFile(com.robin.magic_realm.RealmSpeak.update.AppUpdater.getInstallDir().resolve("client-layouts.properties"));
+		String chatLogName = "chat-" + hostPrefs.getGameTitle().replaceAll("[^a-zA-Z0-9_-]", "_") + ".log";
+		host.setChatLogFile(com.robin.magic_realm.RealmSpeak.update.AppUpdater.getInstallDir().resolve(chatLogName));
 
 		// Launch a game connection frame
 		realmHostFrame = new RealmHostPanel(host,netConnect);
