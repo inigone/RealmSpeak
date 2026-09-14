@@ -2491,11 +2491,40 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 			File file = new File(gamePath);
 			file = file.getAbsoluteFile();
 			if (file.exists()) {
-				frame.loadHostGame(file,false);
+				boolean netConnect = "true".equalsIgnoreCase(System.getProperty(DebugUtility.LAUNCH_GAME_NET));
+				frame.loadHostGame(file,netConnect);
 			}
 			else {
 				JOptionPane.showMessageDialog(frame,"Game not found on launch:\n\n   "+gamePath,"Launch Error",JOptionPane.ERROR_MESSAGE);
 			}
+		}
+
+		String autoJoinHost = System.getProperty(DebugUtility.AUTO_JOIN_HOST);
+		if (autoJoinHost != null) {
+			int autoJoinPort;
+			try {
+				autoJoinPort = Integer.parseInt(System.getProperty(DebugUtility.AUTO_JOIN_PORT,"47474"));
+			} catch (NumberFormatException e) {
+				autoJoinPort = 47474;
+			}
+			int autoJoinDelay;
+			try {
+				autoJoinDelay = Integer.parseInt(System.getProperty(DebugUtility.AUTO_JOIN_DELAY_MS,"6000"));
+			} catch (NumberFormatException e) {
+				autoJoinDelay = 6000;
+			}
+			String autoJoinName = System.getProperty(DebugUtility.AUTO_JOIN_NAME,"");
+			String autoJoinPass = System.getProperty(DebugUtility.AUTO_JOIN_PASS,"");
+			final String finalHost = autoJoinHost;
+			final int finalPort = autoJoinPort;
+			final String finalName = autoJoinName;
+			final String finalPass = autoJoinPass;
+			javax.swing.Timer joinTimer = new javax.swing.Timer(autoJoinDelay, e -> {
+				frame.startRealmGameHandler(finalHost, finalPort, finalName, finalPass, "", "", false);
+				FlashingButton.setFlashEnabled(true);
+			});
+			joinTimer.setRepeats(false);
+			joinTimer.start();
 		}
 	}
 }
