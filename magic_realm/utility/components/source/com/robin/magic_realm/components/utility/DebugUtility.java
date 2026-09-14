@@ -6,6 +6,18 @@ import javax.swing.JOptionPane;
 
 public class DebugUtility {
 	public static final String LAUNCH_GAME = "LAUNCH_GAME__";
+	/** When present alongside LAUNCH_GAME, host opens the game in network mode so clients can join. */
+	public static final String LAUNCH_GAME_NET = "LAUNCH_GAME_NET__";
+	/** Auto-join: IP address of the host to connect to. */
+	public static final String AUTO_JOIN_HOST = "AUTO_JOIN_HOST__";
+	/** Auto-join: port (default 47474). */
+	public static final String AUTO_JOIN_PORT = "AUTO_JOIN_PORT__";
+	/** Auto-join: player name — must match the character's playerName in the saved game. */
+	public static final String AUTO_JOIN_NAME = "AUTO_JOIN_NAME__";
+	/** Auto-join: game password (default empty). */
+	public static final String AUTO_JOIN_PASS = "AUTO_JOIN_PASS__";
+	/** Auto-join: milliseconds to wait after frame is visible before connecting (default 6000). */
+	public static final String AUTO_JOIN_DELAY_MS = "AUTO_JOIN_DELAY_MS__";
 	
 	public static boolean DEBUG_ON = false;
 	public static boolean CHEAT_ON = false;
@@ -80,6 +92,29 @@ public class DebugUtility {
 				}
 				else if (args[i].toUpperCase().endsWith(".RSGAME")) {
 					System.setProperty(LAUNCH_GAME,args[i]);
+				}
+				else if ("NET".equalsIgnoreCase(args[i])) {
+					System.setProperty(LAUNCH_GAME_NET,"true");
+					System.out.println("LAUNCH_GAME_NET is ON (network host mode)");
+				}
+				else if (args[i].toUpperCase().startsWith("JOIN_HOST=")) {
+					System.setProperty(AUTO_JOIN_HOST,args[i].substring(10));
+					System.out.println("AUTO_JOIN_HOST="+args[i].substring(10));
+				}
+				else if (args[i].toUpperCase().startsWith("JOIN_PORT=")) {
+					System.setProperty(AUTO_JOIN_PORT,args[i].substring(10));
+					System.out.println("AUTO_JOIN_PORT="+args[i].substring(10));
+				}
+				else if (args[i].toUpperCase().startsWith("JOIN_NAME=")) {
+					System.setProperty(AUTO_JOIN_NAME,args[i].substring(10));
+					System.out.println("AUTO_JOIN_NAME="+args[i].substring(10));
+				}
+				else if (args[i].toUpperCase().startsWith("JOIN_PASS=")) {
+					System.setProperty(AUTO_JOIN_PASS,args[i].substring(10));
+				}
+				else if (args[i].toUpperCase().startsWith("JOIN_DELAY=")) {
+					System.setProperty(AUTO_JOIN_DELAY_MS,args[i].substring(11));
+					System.out.println("AUTO_JOIN_DELAY_MS="+args[i].substring(11));
 				}
 			}
 		}
