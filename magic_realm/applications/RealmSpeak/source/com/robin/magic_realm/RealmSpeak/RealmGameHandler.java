@@ -110,6 +110,11 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	private ArrayList<String> playerWarned = new ArrayList<>();
 	private boolean addCharacterButtonEnabled = true;
 	private boolean disconnectDialogShowing = false;
+	// Coalesces rapid stateChanged events: at most one updateGameHandler() invokeLater pending at a time.
+	// Modal dialogs (fatigue, wounds) create a nested EDT loop; queued invokeLaters fire inside it and
+	// pile up. With this flag the second and later events are dropped — the one already queued runs
+	// with the latest game state anyway.
+	private final java.util.concurrent.atomic.AtomicBoolean updateHandlerPending = new java.util.concurrent.atomic.AtomicBoolean(false);
 
 	// Update listener
 	protected ChangeListener updateFrameListener = new ChangeListener() {
@@ -172,12 +177,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		final GameClient reconnectClient = client;
 		client.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent ev) {
-				SwingUtilities.invokeLater(new Runnable() {
-					public void run() {
-						if (client != reconnectClient) return;
-						updateGameHandler();
-					}
-				});
+				if (updateHandlerPending.compareAndSet(false, true)) {
+					SwingUtilities.invokeLater(new Runnable() {
+						public void run() {
+							updateHandlerPending.set(false);
+							if (client != reconnectClient) return;
+							updateGameHandler();
+						}
+					});
+				}
 			}
 		});
 		client.start();
@@ -1376,12 +1384,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		final GameClient setupClient = client;
 		client.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent ev) {
-				SwingUtilities.invokeLater(new Runnable() {
-					public void run() {
-						if (client != setupClient) return; // stale runnable from a replaced client — discard
-						updateGameHandler();
-					}
-				});
+				if (updateHandlerPending.compareAndSet(false, true)) {
+					SwingUtilities.invokeLater(new Runnable() {
+						public void run() {
+							updateHandlerPending.set(false);
+							if (client != setupClient) return; // stale runnable from a replaced client — discard
+							updateGameHandler();
+						}
+					});
+				}
 			}
 		});
 		if (host != null) { // this will happen when running a local
