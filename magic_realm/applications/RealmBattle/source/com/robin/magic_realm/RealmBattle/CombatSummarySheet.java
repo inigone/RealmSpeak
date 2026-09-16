@@ -319,7 +319,7 @@ public class CombatSummarySheet extends JPanel {
 	 * the order they were thrown.
 	 */
 	private void drawCombatRolls(Graphics2D g,RealmComponent participant,int x,int y) {
-		if (attackOrder==null || combatFrame.getActionState()<Constants.COMBAT_PREVIEW) return;
+		if (attackOrder==null || combatFrame.getActionState()<Constants.COMBAT_RESOLVING) return;
 		CombatWrapper combat = new CombatWrapper(participant.getGameObject());
 		ArrayList<String> rolls = combat.getFumbleRolls();
 		if (rolls==null) {
