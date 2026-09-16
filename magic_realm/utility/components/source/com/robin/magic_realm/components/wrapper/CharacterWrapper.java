@@ -749,7 +749,6 @@ public class CharacterWrapper extends GameObjectWrapper {
 					case Constants.COMBAT_ASSIGN:			result = "Assigning Targets"; break;
 					case Constants.COMBAT_POSITIONING:		result = "Positioning"; break;
 					case Constants.COMBAT_TACTICS:		result = "Changing Tactics"; break;
-					case Constants.COMBAT_PREVIEW:		result = "Previewing Outcome"; break;
 					case Constants.COMBAT_RESOLVING:		result = "Viewing Results"; break;
 					case Constants.COMBAT_FATIGUE:		result = "Fatigue/Wounds"; break;
 					case Constants.COMBAT_DONE:			result = "Finished Combat";  break;
