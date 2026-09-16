@@ -123,8 +123,6 @@ public class CombatFrame extends JFrame {
 	private boolean changes;
 	private boolean targetsSelected;
 	private boolean nonaffectingChanges; // this is so the reset button can be lit without disabling all the buttons
-	private boolean summaryShownForCurrentResolve = false;
-	
 	private FileManager exportFileManager;
 	
 	private JLabel[] stateLight;
@@ -137,7 +135,6 @@ public class CombatFrame extends JFrame {
 		"assign",
 		"position",
 		"tactics",
-		"preview",
 		"results",
 		"fatigue",
 		"disengage",
@@ -151,7 +148,6 @@ public class CombatFrame extends JFrame {
 		Constants.COMBAT_ASSIGN,
 		Constants.COMBAT_POSITIONING,
 		Constants.COMBAT_TACTICS,
-		Constants.COMBAT_PREVIEW,
 		Constants.COMBAT_RESOLVING,
 		Constants.COMBAT_FATIGUE,
 		Constants.COMBAT_DISENGAGE,
@@ -546,10 +542,7 @@ public class CombatFrame extends JFrame {
 			else {
 				actionState = firstState.intValue();
 				updateStateLights();
-				if (actionState != Constants.COMBAT_PREVIEW) {
-					summaryShownForCurrentResolve = false;
-				}
-				
+
 				updateDenizenPanel();
 				
 				// activeCharacter is the character that is viewing the frame, EXCEPT in the case where everyone
@@ -643,19 +636,6 @@ public class CombatFrame extends JFrame {
 		}
 		denizenScroll.setVisible(denizenPanel.getComponentCount()>0);
 		updateControls();
-
-		// Auto-switch to the embedded summary pane when entering Preview so OL predictions are front-and-center
-		if (currentCombatLocation != null
-				&& actionState == Constants.COMBAT_PREVIEW
-				&& interactiveFrame
-				&& hostPrefs != null
-				&& hostPrefs.hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES)
-				&& !summaryShownForCurrentResolve) {
-			summaryShownForCurrentResolve = true;
-			if (participantTable != null && participantTable.getRowCount() > 0) {
-				SwingUtilities.invokeLater(() -> participantTable.setRowSelectionInterval(0, 0));
-			}
-		}
 
 		// Check for ask demon questions
 		String myName = "Player";
@@ -1253,11 +1233,6 @@ public class CombatFrame extends JFrame {
 					styleStepNameLabel(instructionLabel);
 					list.add(instructionLabel);
 					break;
-				case Constants.COMBAT_PREVIEW:
-					instructionLabel = new JLabel("Review Predictions");
-					styleStepNameLabel(instructionLabel);
-					list.add(instructionLabel);
-					break;
 				case Constants.COMBAT_RESOLVING:
 					instructionLabel = new JLabel("Results");
 					styleStepNameLabel(instructionLabel);
@@ -1267,7 +1242,7 @@ public class CombatFrame extends JFrame {
 					break;
 			}
 
-			if (actionState!=Constants.COMBAT_RESOLVING && actionState!=Constants.COMBAT_PREVIEW) {
+			if (actionState!=Constants.COMBAT_RESOLVING) {
 				list.add(getSuggestButton());
 			}
 		}
@@ -2356,7 +2331,6 @@ public class CombatFrame extends JFrame {
 			case Constants.COMBAT_ASSIGN:			return "Assign";
 			case Constants.COMBAT_POSITIONING:		return "Position";
 			case Constants.COMBAT_TACTICS:		return "Tactics";
-			case Constants.COMBAT_PREVIEW:		return "Preview";
 			case Constants.COMBAT_RESOLVING:		return "Results";
 			case Constants.COMBAT_FATIGUE:		return "Fatigue";
 			case Constants.COMBAT_DISENGAGE:		return "Disengage";
@@ -2365,7 +2339,7 @@ public class CombatFrame extends JFrame {
 	}
 	private void finishAction() {
 		int nextStatus = RealmBattle.getNextWaitState(actionState);
-		if (actionState==Constants.COMBAT_RESOLVING || actionState==Constants.COMBAT_PREVIEW) {
+		if (actionState==Constants.COMBAT_RESOLVING) {
 			// Set status for ALL characters on the same client simultaneously (display-only steps)
 			Collection<RealmComponent> allCharacters = currentBattleModel.getAllOwningCharacters();
 			for (RealmComponent rc : allCharacters) {
