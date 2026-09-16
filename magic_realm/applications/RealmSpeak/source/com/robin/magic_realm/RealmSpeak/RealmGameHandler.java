@@ -175,12 +175,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 		final GameClient reconnectClient = client;
 		client.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent ev) {
-				SwingUtilities.invokeLater(new Runnable() {
-					public void run() {
-						if (client != reconnectClient) return;
-						updateGameHandler();
-					}
-				});
+				if (updateHandlerPending.compareAndSet(false, true)) {
+					SwingUtilities.invokeLater(new Runnable() {
+						public void run() {
+							updateHandlerPending.set(false);
+							if (client != reconnectClient) return;
+							updateGameHandler();
+						}
+					});
+				}
 			}
 		});
 		client.start();
