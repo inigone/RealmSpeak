@@ -180,7 +180,7 @@ public class UpdateDialog extends JDialog {
 					pack();
 				});
 				try {
-					AppUpdater.installAndRestart(tempZip, installDir);
+					AppUpdater.installAndRestart(tempZip, installDir, info.tag);
 				} catch (IOException ex2) {
 					SwingUtilities.invokeLater(() -> {
 						showError("Restart failed: " + ex2.getMessage());
