@@ -116,17 +116,22 @@ public class AppUpdater {
 	 * Windows: extract to a temp staging dir first, then let the restart script do the
 	 * swap after the JVM exits (Windows locks JARs while the process is running).
 	 *
+	 * Writes version.txt with installedTag so readCurrentTag() returns the correct value
+	 * after restart, preventing the update dialog from re-offering the same release.
+	 *
 	 * Deletes zipFile on success. Calls System.exit(0) before returning.
 	 */
-	public static void installAndRestart(Path zipFile, Path installDir) throws IOException {
+	public static void installAndRestart(Path zipFile, Path installDir, String installedTag) throws IOException {
 		boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
 		if (isWindows) {
 			Path staging = Files.createTempDirectory("rs_update_staging_");
 			extractZip(zipFile, staging);
+			Files.writeString(staging.resolve(VERSION_FILE), installedTag, StandardCharsets.UTF_8);
 			Files.deleteIfExists(zipFile);
 			launchWindowsScript(installDir, staging);
 		} else {
 			extractZip(zipFile, installDir);
+			Files.writeString(installDir.resolve(VERSION_FILE), installedTag, StandardCharsets.UTF_8);
 			Files.deleteIfExists(zipFile);
 			launchUnixScript(installDir);
 		}
@@ -140,7 +145,7 @@ public class AppUpdater {
 				"#!/bin/bash\n"
 				+ "sleep 3\n"
 				+ "cd \"" + installDir.toAbsolutePath() + "\"\n"
-				+ "java -Xms768m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 "
+				+ "java -Xms1g -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=100 "
 				+ "-cp \"" + cp + "\" com.robin.magic_realm.RealmSpeak.RealmSpeakFrame &\n",
 				StandardCharsets.UTF_8);
 		script.toFile().setExecutable(true);
@@ -159,7 +164,7 @@ public class AppUpdater {
 				+ "robocopy \"" + stage + "\" \"" + install + "\" /E /IS /IT /IM > nul\r\n"
 				+ "rd /s /q \"" + stage + "\"\r\n"
 				+ "cd /d \"" + install + "\"\r\n"
-				+ "start javaw -Xms768m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 "
+				+ "start javaw -Xms1g -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=100 "
 				+ "-cp \"" + cp + "\" com.robin.magic_realm.RealmSpeak.RealmSpeakFrame\r\n",
 				StandardCharsets.UTF_8);
 		new ProcessBuilder("cmd.exe", "/c", script.toAbsolutePath().toString()).inheritIO().start();
