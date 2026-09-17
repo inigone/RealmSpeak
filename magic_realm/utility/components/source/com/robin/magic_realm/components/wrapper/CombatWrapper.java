@@ -821,6 +821,7 @@ public class CombatWrapper extends GameObjectWrapper {
 		getGameObject().removeAttribute(COMBAT_BLOCK, USED_IDS);
 	}
 
+
 	// Attacker
 	public void addAttacker(GameObject attacker) {
 		if (isPeaceful()) { // PEACE ends if attacked

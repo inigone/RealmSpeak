@@ -209,8 +209,15 @@ public class RealmBattle {
 			}
 						
 			HashLists<Integer,CharacterWrapper> lists = findCharacterStates(currentCombatLocation,data);
+			StringBuilder sb = new StringBuilder("[COMBAT-DBG] nextCombatAction states:");
+			for (Integer st : lists.keySet()) {
+				for (CharacterWrapper cw : lists.getList(st)) {
+					sb.append(" ").append(cw.getGameObject().getName()).append("=").append(st);
+				}
+			}
+			System.err.println(sb.toString());
 			ArrayList<Integer> states = new ArrayList<>(lists.keySet());
-			
+
 			if (states.isEmpty()) { // this can happen when a character runs!  (I think...)
 				checkForHurricaneWinds(currentCombatLocation,data);
 				updateClearingOrder(data);
@@ -245,6 +252,7 @@ public class RealmBattle {
 				}
 				
 				// Check to see if everyone is on a single wait state
+				System.err.println("[COMBAT-DBG] nextCombatAction: firstState=" + firstState + " actionState=" + actionState + " lists.size=" + lists.size());
 				if (lists.size()==1) {
 					// Only one state, means everyone is the same.
 					// There is a special case where every character chooses to skip combat.  Check for this.
@@ -281,7 +289,9 @@ public class RealmBattle {
 							break;
 						case Constants.COMBAT_RANDOM_ASSIGN:
 							// need to do random assignment before moving onto RANDOM_ASSIGN stage
+							System.err.println("[COMBAT-DBG] randomAssignment BEFORE doRandomAssignment at " + currentCombatLocation);
 							randomAssignment(currentCombatLocation,data);
+							System.err.println("[COMBAT-DBG] randomAssignment AFTER doRandomAssignment");
 							break;
 						case Constants.COMBAT_DEPLOY:
 							LogStage("Deployment");
@@ -373,10 +383,14 @@ public class RealmBattle {
 				}
 				
 				// Should test whether the actionState will do anything, and if not, skip to the next action
-				if (active!=null && !requiresCombatInteraction(currentCombatLocation,active)) {
-					active.setCombatStatus(getNextWaitState(actionState));
-					logger.finer(active.getCharacterName()+" No interaction needed, moving to next state...");
-					return nextCombatAction(host,data); // recurses!
+				if (active!=null) {
+					boolean needsInteraction = requiresCombatInteraction(currentCombatLocation,active);
+					System.err.println("[COMBAT-DBG] requiresCombatInteraction: actionState=" + actionState + " char=" + active.getGameObject().getName() + " result=" + needsInteraction);
+					if (!needsInteraction) {
+						active.setCombatStatus(getNextWaitState(actionState));
+						logger.finer(active.getCharacterName()+" No interaction needed, moving to next state...");
+						return nextCombatAction(host,data); // recurses!
+					}
 				}
 			}
 			
@@ -556,10 +570,16 @@ public class RealmBattle {
 				Collection<RealmComponent> tacticsAttackers = model.getAttackersFor(charRc);
 				RealmComponent tacticsTarget = charRc.getTarget();
 				RealmComponent tacticsTarget2 = charRc.get2ndTarget();
-				return (activeCharacterIsHere
+				boolean tacticsResult = (activeCharacterIsHere
 						&& ( character.canReplaceMove(tacticsAttackers))
 								|| (tacticsTarget!=null && (character.canReplaceFight(tacticsTarget) || character.canReplaceParry(tacticsTarget)))
 								|| (tacticsTarget2!=null && (character.canReplaceFight(tacticsTarget2) || character.canReplaceParry(tacticsTarget2))));
+				System.err.println("[COMBAT-DBG] requiresCombatInteraction TACTICS: char=" + character.getGameObject().getName()
+						+ " activeCharIsHere=" + activeCharacterIsHere
+						+ " canReplaceMove=" + character.canReplaceMove(tacticsAttackers)
+						+ " target=" + tacticsTarget + " target2=" + tacticsTarget2
+						+ " result=" + tacticsResult);
+				return tacticsResult;
 			case Constants.COMBAT_RESOLVING: // determines hits, show results
 				return true; // Show resolution every round - this guarantees that everything is cleaned up properly.
 			case Constants.COMBAT_FATIGUE:
@@ -570,8 +590,14 @@ public class RealmBattle {
 					Effort effortUsed = BattleUtility.getEffortUsed(character);
 					int free = character.getEffortFreeAsterisks();
 					int weatherFatigue = character.getWeatherFatigue();
-					return (healing>0 || newWounds>0 || effortUsed.getNeedToFatigue(free)>0 || weatherFatigue>0);
+					boolean fatigueResult = (healing>0 || newWounds>0 || effortUsed.getNeedToFatigue(free)>0 || weatherFatigue>0);
+					System.err.println("[COMBAT-DBG] requiresCombatInteraction FATIGUE: char=" + character.getGameObject().getName()
+							+ " healing=" + healing + " newWounds=" + newWounds
+							+ " needToFatigue=" + effortUsed.getNeedToFatigue(free) + " weatherFatigue=" + weatherFatigue
+							+ " result=" + fatigueResult);
+					return fatigueResult;
 				}
+				System.err.println("[COMBAT-DBG] requiresCombatInteraction FATIGUE: char=" + character.getGameObject().getName() + " killedBy != null, result=false");
 				return false;
 			case Constants.COMBAT_DONE:
 				return false; // has to stop somewhere...

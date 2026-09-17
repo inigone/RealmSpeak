@@ -123,6 +123,17 @@ public class CombatFrame extends JFrame {
 	private boolean changes;
 	private boolean targetsSelected;
 	private boolean nonaffectingChanges; // this is so the reset button can be lit without disabling all the buttons
+	/** Counters whose Results-step die rolls and coup markers have been revealed on this client. */
+	final HashSet<Long> revealedInResults = new HashSet<>();
+	/** Set when the Results step first opens; refreshParticipants() consumes it to snap the table to Summary (row 0). */
+	private boolean pendingSummaryRowOnResolving = false;
+
+	/** True when go's results should be visible: always outside RESOLVING, otherwise only after player clicked to reveal. */
+	public boolean isResultRevealed(GameObject go) {
+		if (actionState != Constants.COMBAT_RESOLVING) return true;
+		return revealedInResults.contains(go.getId());
+	}
+	
 	private FileManager exportFileManager;
 	
 	private JLabel[] stateLight;
@@ -409,6 +420,10 @@ public class CombatFrame extends JFrame {
 		return Arrays.asList(denizenPanel.getComponents());
 	}
 	public void refreshParticipants() {
+		// Save before clearing, so we can restore the user's selection during Results.
+		int savedRow = participantTable.getSelectedRow();
+		System.err.println("[COMBAT-DBG] refreshParticipants: actionState=" + actionState + " (" + getActionName() + ") savedRow=" + savedRow + " pendingFlag=" + pendingSummaryRowOnResolving);
+
 		allParticipants.clear();
 		// Build BattleParticipant list by examining flag for sheetOwner
 		ArrayList<RealmComponent> chars = new ArrayList<>();
@@ -437,15 +452,34 @@ public class CombatFrame extends JFrame {
 		});
 		allParticipants.addAll(chars);
 		allParticipants.addAll(everyoneElse);
-		
+
 		participantHasHotspots = new boolean[allParticipants.size()];
 		updateHotspotIndicators();
-		
+
+		participantTable.clearSelection();
+		if (actionState == Constants.COMBAT_RESOLVING) {
+			int rowToSelect;
+			if (pendingSummaryRowOnResolving) {
+				// First refresh on entering Results: snap to Summary row.
+				pendingSummaryRowOnResolving = false;
+				rowToSelect = 0;
+				System.err.println("[COMBAT-DBG] refreshParticipants RESOLVING: first-entry, selecting Summary (row 0)");
+			} else {
+				// Results already open — preserve whatever the user was viewing.
+				rowToSelect = (savedRow >= 0 && savedRow < participantTable.getRowCount()) ? savedRow : 0;
+				System.err.println("[COMBAT-DBG] refreshParticipants RESOLVING: preserve user row=" + rowToSelect + " (tableRows=" + participantTable.getRowCount() + ")");
+			}
+			if (rowToSelect < participantTable.getRowCount()) {
+				participantTable.setRowSelectionInterval(rowToSelect, rowToSelect);
+			}
+			return;
+		}
+
 		int row = allParticipants.indexOf(activeParticipant);
 		if (row<0 || row>=participantTable.getRowCount()) {
 			// Set a default in case none are found
 			row = 1;
-			
+
 			// Didn't find one?  Try checking to see if activeParticipant is the owner of one of the participants
 			for (int i=0;i<allParticipants.size();i++) {
 				RealmComponent rc = allParticipants.get(i);
@@ -460,7 +494,6 @@ public class CombatFrame extends JFrame {
 		else {
 			row += 1;
 		}
-		participantTable.clearSelection();
 		if (row<participantTable.getRowCount()) {
 			participantTable.setRowSelectionInterval(row,row);
 		}
@@ -542,7 +575,13 @@ public class CombatFrame extends JFrame {
 			else {
 				actionState = firstState.intValue();
 				updateStateLights();
-
+				GameClient _dbgClient = GameClient.GetMostRecentClient();
+				System.err.println("[COMBAT-DBG] updateFrame: actionState=" + actionState + " (" + getActionName() + ") client=" + (_dbgClient != null ? _dbgClient.getClientName() : "null"));
+				if (actionState == Constants.COMBAT_RESOLVING) {
+					revealedInResults.clear();
+					pendingSummaryRowOnResolving = true;
+				}
+				
 				updateDenizenPanel();
 				
 				// activeCharacter is the character that is viewing the frame, EXCEPT in the case where everyone
@@ -591,6 +630,7 @@ public class CombatFrame extends JFrame {
 					panel.add(component,"Center");
 					controlPanel.add(panel);
 				}
+				controlPanel.revalidate();
 			}
 			
 			// Character Table and controls
@@ -683,6 +723,7 @@ public class CombatFrame extends JFrame {
 			}
 			broadcastMessage(RealmLogging.BATTLE,myName+" got information by a Demon.");
 		}
+		repaint();
 	}
 	public void setVisible(boolean val) {
 		super.setVisible(val);
@@ -1749,6 +1790,12 @@ public class CombatFrame extends JFrame {
 		}
 		
 		if (activeCharacterIsHere) activeCharacter.testQuestRequirements(this);
+		if (actionState == Constants.COMBAT_RESOLVING) {
+			for (RealmComponent rc : currentBattleModel.getAllBattleParticipants(true)) {
+				revealedInResults.add(rc.getGameObject().getId());
+			}
+			combatSheetPanel.repaint();
+		}
 		if (okayToContinue()) {
 			if (ambushRollAtEndOfCombatRound && actionState==Constants.COMBAT_RESOLVING) {
 				ambushRoll = DieRollBuilder.getDieRollBuilder(this,activeCharacter).createHideRoller();
@@ -1802,7 +1849,7 @@ public class CombatFrame extends JFrame {
 			lockNextButton.setVisible(false);
 			if (row>=0) {
 				if (row==0) {
-					CombatSummarySheet combatSummarySheet = new CombatSummarySheet(this);
+					CombatSummarySheet combatSummarySheet = new CombatSummarySheet(this, revealedInResults);
 					int height = 400+allParticipants.size()*(PARTICIPANT_ROW_HEIGHT+PARTICIPANT_ROW_HEIGHT/2);
 					int width = 600;
 					if (hostPrefs!=null && hostPrefs.hasPref(Constants.OPT_COMBAT_OUTCOME_PROBABILITIES)) {
@@ -2340,7 +2387,7 @@ public class CombatFrame extends JFrame {
 	private void finishAction() {
 		int nextStatus = RealmBattle.getNextWaitState(actionState);
 		if (actionState==Constants.COMBAT_RESOLVING) {
-			// Set status for ALL characters on the same client simultaneously (display-only steps)
+			// Set status for ALL characters on the same client as activeCharacter on RESOLVING
 			Collection<RealmComponent> allCharacters = currentBattleModel.getAllOwningCharacters();
 			for (RealmComponent rc : allCharacters) {
 				CharacterWrapper character = new CharacterWrapper(rc.getGameObject());
@@ -4872,6 +4919,10 @@ public class CombatFrame extends JFrame {
 	}
 	private synchronized static void doFatigueWounds(JFrame parent,CharacterWrapper character) {
 		CombatWrapper combat = new CombatWrapper(character.getGameObject());
+		System.err.println("[COMBAT-DBG] doFatigueWounds ENTRY: char=" + character.getGameObject().getName()
+				+ " healing=" + combat.getHealing() + " newWounds=" + combat.getNewWounds()
+				+ " weatherFatigue=" + character.getWeatherFatigue()
+				+ " killedBy=" + combat.getKilledBy());
 
 		// Read and immediately clear HEALING and NEW_WOUNDS before showing any dialogs.
 		//
@@ -4949,6 +5000,7 @@ public class CombatFrame extends JFrame {
 	 */
 	private static boolean doDisplay(JFrame parent,GameData data,String playerName,ActionListener listener,boolean interactive,boolean local,boolean isHost) {
 		logger.fine("Display new combat frame");
+		System.err.println("[COMBAT-DBG] doDisplay: interactive=" + interactive + " playerName=" + playerName + " local=" + local);
 		
 		isGameHost = isHost;
 		
@@ -4992,6 +5044,7 @@ public class CombatFrame extends JFrame {
 			// But what to do here?
 			return false;
 		}
+		System.err.println("[COMBAT-DBG] doDisplay: firstState=" + firstState + " interactive=" + interactive);
 		if (firstState.intValue()==Constants.COMBAT_PREBATTLE) {
 			logger.finer("handling prebattle");
 			ArrayList<CharacterWrapper> list = lists.getList(firstState);

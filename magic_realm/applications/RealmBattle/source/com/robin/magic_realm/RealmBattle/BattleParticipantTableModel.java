@@ -4,6 +4,7 @@ import javax.swing.ImageIcon;
 import javax.swing.table.AbstractTableModel;
 
 import com.robin.general.swing.*;
+import com.robin.magic_realm.components.ChitComponent;
 import com.robin.magic_realm.components.RealmComponent;
 import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.wrapper.CombatWrapper;
@@ -56,11 +57,11 @@ public class BattleParticipantTableModel extends AbstractTableModel {
 						return null;
 					case 1:
 						if (owner==null) {
-							return participant.getSmallIcon();
+							return isUnrevealed(participant) ? getPlainSmallIcon(participant) : participant.getSmallIcon();
 						}
-						return participant.getOwner().getSmallIcon();
+						return isUnrevealed(owner) ? getPlainSmallIcon(owner) : owner.getSmallIcon();
 					case 2:
-						return participant.getMediumIcon();
+						return isUnrevealed(participant) ? getPlainMediumIcon(participant) : participant.getMediumIcon();
 					case 3:
 						if (parent.getParticipantHasHotspots(row)) {
 							return parent.getActionName();
@@ -73,15 +74,42 @@ public class BattleParticipantTableModel extends AbstractTableModel {
 		}
 		return null;
 	}
-	private static ImageIcon getAttackersIcon(CombatWrapper combat) {
+	private boolean isUnrevealed(RealmComponent rc) {
+		return parent.getActionState() == Constants.COMBAT_RESOLVING
+			&& !parent.isResultRevealed(rc.getGameObject());
+	}
+	private static ImageIcon getPlainSmallIcon(RealmComponent rc) {
+		if (rc instanceof ChitComponent) {
+			ChitComponent chit = (ChitComponent)rc;
+			boolean was = chit.isIgnoreDamage();
+			chit.setIgnoreDamage(true);
+			ImageIcon icon = rc.getSmallIcon();
+			chit.setIgnoreDamage(was);
+			return icon;
+		}
+		return rc.getSmallIcon();
+	}
+	private static ImageIcon getPlainMediumIcon(RealmComponent rc) {
+		if (rc instanceof ChitComponent) {
+			ChitComponent chit = (ChitComponent)rc;
+			boolean was = chit.isIgnoreDamage();
+			chit.setIgnoreDamage(true);
+			ImageIcon icon = rc.getMediumIcon();
+			chit.setIgnoreDamage(was);
+			return icon;
+		}
+		return rc.getMediumIcon();
+	}
+	private ImageIcon getAttackersIcon(CombatWrapper combat) {
 		int attackerCount = combat.getAttackerCount();
 		if (attackerCount==1) {
-			return combat.getAttackersAsComponents().get(0).getMediumIcon();
+			RealmComponent rc = combat.getAttackersAsComponents().get(0);
+			return isUnrevealed(rc) ? getPlainMediumIcon(rc) : rc.getMediumIcon();
 		}
 		else if (attackerCount>0 && attackerCount<=6) {
 			IconGroup group = new IconGroup(IconGroup.HORIZONTAL,1,100,0);
 			for (RealmComponent rc:combat.getAttackersAsComponents()) {
-				group.addIcon(rc.getMediumIcon());
+				group.addIcon(isUnrevealed(rc) ? getPlainMediumIcon(rc) : rc.getMediumIcon());
 			}
 			return group;
 		}
@@ -94,7 +122,7 @@ public class BattleParticipantTableModel extends AbstractTableModel {
 					iconRow = new IconGroup(IconGroup.HORIZONTAL,1,100-4,0);
 					rowCount=0;
 				}
-				iconRow.addIcon(rc.getMediumIcon());
+				iconRow.addIcon(isUnrevealed(rc) ? getPlainMediumIcon(rc) : rc.getMediumIcon());
 				rowCount++;
 				if (rowCount==6) {
 					group.addIcon(iconRow);
