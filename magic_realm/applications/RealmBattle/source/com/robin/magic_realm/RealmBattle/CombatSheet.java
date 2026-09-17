@@ -232,6 +232,7 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 		return countAttacks(index, false);
 	}
 	protected void updateBattleChitsWithRolls(CombatWrapper combat) {
+		if (!combatFrame.isResultRevealed(combat.getGameObject())) return;
 		if ((combat.getMissileRolls()!=null && combat.getMissileRolls().size()>0)
 				|| (combat.getFumbleRolls()!=null && combat.getFumbleRolls().size()>0)) {
 			BattleChit bc = (BattleChit)RealmComponent.getRealmComponent(combat.getGameObject());
@@ -305,6 +306,12 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 	}
 	public boolean hasBattleRolls() {
 		return !getBattleRolls().isEmpty();
+	}
+	/** True when in RESOLVING and this sheet's owner has not yet been clicked to reveal. */
+	protected boolean isResultsHidden() {
+		return combatFrame.getActionState() == Constants.COMBAT_RESOLVING
+				&& sheetOwner != null
+				&& !combatFrame.isResultRevealed(sheetOwner.getGameObject());
 	}
 	protected void updateRollerResults() {
 		if (combatFrame.getRollerResults()!=null) {
@@ -617,6 +624,7 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 				return true;
 			}
 			else if (combatFrame.getActionState()==Constants.COMBAT_RESOLVING) {
+				if (!combatFrame.isResultRevealed(rc.getGameObject())) return false;
 				if (!combat.hasCombatBox()) {
 					layoutHash.put(Integer.valueOf(getDeadBoxIndex()),rc);
 					return true;
@@ -626,7 +634,7 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 		return false;
 	}
 	protected void placeAllAttacks(int attackBox1,int weaponBox1,Collection<RealmComponent> excludeList) {
-		boolean reveal = combatFrame.getActionState()>=Constants.COMBAT_RESOLVING;
+		boolean reveal = combatFrame.getActionState()>Constants.COMBAT_RESOLVING;
 		
 		ArrayList<RealmComponent> all = new ArrayList<>(model.getAllBattleParticipants(true));
 		
@@ -697,7 +705,7 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 						CharacterChitComponent characterChit = (CharacterChitComponent)rc;
 						if (spell==null || battleMage) {
 							// Attack chits (and the weapons placed with them, BSS rule 5) are secret from the other players until revealed (BSS model rule 2)
-							if (combatFrame.isChitRevealed(rc)) {
+							if (combatFrame.isChitRevealed(rc) && combatFrame.isResultRevealed(rc.getGameObject())) {
 								
 								MonsterChitComponent transmorph = characterChit.getTransmorphedComponent();
 								if (transmorph==null) {
@@ -991,7 +999,16 @@ public abstract class CombatSheet extends JLabel implements Scrollable {
 		return outcomeLines().getSheetOwnerTargetEstimates();
 	}
 	private void paintRealmComponent(Graphics g,RealmComponent rc,int index) {
-		ImageIcon icon = rc.getIcon();
+		ImageIcon icon;
+		if (isResultsHidden() && rc instanceof ChitComponent) {
+			ChitComponent chit = (ChitComponent)rc;
+			boolean was = chit.isIgnoreDamage();
+			chit.setIgnoreDamage(true);
+			icon = rc.getIcon();
+			chit.setIgnoreDamage(was);
+		} else {
+			icon = rc.getIcon();
+		}
 		Point p = positions[index];
 		int x = p.x - (icon.getIconWidth()>>1) - offset[index];
 		int y = p.y - (icon.getIconHeight()>>1) - offset[index];
