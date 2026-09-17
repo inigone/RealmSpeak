@@ -3,6 +3,7 @@ package com.robin.magic_realm.RealmBattle;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.AffineTransform;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import javax.swing.JButton;
 import javax.swing.JPanel;
@@ -81,11 +83,14 @@ public class CombatSummarySheet extends JPanel {
 	private ArrayList<CharacterWrapper> characters;
 	private BattleModel battleModel;
 	private CombatFrame combatFrame;
-	
-	public CombatSummarySheet(CombatFrame combatFrame) {
+	/** Shared with CombatFrame; counters whose Results-step overlays have been revealed on this client. */
+	private final HashSet<Long> revealedCounters;
+
+	public CombatSummarySheet(CombatFrame combatFrame, HashSet<Long> revealedCounters) {
 		super();
 		this.battleModel = combatFrame.getBattleModel();
 		this.combatFrame = combatFrame;
+		this.revealedCounters = revealedCounters;
 		ArrayList<CharacterWrapper> characters = new ArrayList<>();
 		for (RealmComponent rc : battleModel.getAllParticipatingCharacters()) {
 			characters.add(new CharacterWrapper(rc.getGameObject()));
@@ -110,7 +115,125 @@ public class CombatSummarySheet extends JPanel {
 				updateCoupHover(ev.getPoint());
 			}
 		});
+		addMouseListener(new MouseAdapter() {
+			public void mousePressed(MouseEvent ev) {
+				if (!inRevealStep()) return;
+				if (ev.getClickCount() >= 2) {
+					revealAll();
+					repaint();
+				} else {
+					Long last = computeLastRevealId();
+					Long nxt = computeNextRevealId();
+					if (last != null) {
+						for (PortraitHitBox ph : portraitHitBoxes) {
+							if (ph.rc.getGameObject().getId() == last.longValue() && ph.bounds.contains(ev.getPoint())) {
+								revealAll();
+								repaint();
+								return;
+							}
+						}
+					}
+					if (nxt == null) return;
+					for (PortraitHitBox ph : portraitHitBoxes) {
+						if (ph.rc.getGameObject().getId() == nxt.longValue() && ph.bounds.contains(ev.getPoint())) {
+							revealedCounters.add(nxt);
+							repaint();
+							break;
+						}
+					}
+				}
+			}
+		});
 	}
+	private static final Color REVEAL_OUTLINE = new Color(100, 220, 100);
+	private static final Color LAST_REVEAL_OUTLINE = Color.yellow;
+	private static final Stroke REVEAL_OUTLINE_STROKE = new BasicStroke(5f);
+
+	private boolean inRevealStep() {
+		return combatFrame.getActionState() == Constants.COMBAT_RESOLVING;
+	}
+	private boolean isRevealed(RealmComponent participant) {
+		return !inRevealStep() || revealedCounters.contains(participant.getGameObject().getId());
+	}
+	/** Defender kill X shows when any attacker targeting this defender has been revealed. */
+	private boolean isDefenderKillVisible(RealmComponent defender) {
+		if (!inRevealStep()) return true;
+		CombatWrapper cr = new CombatWrapper(defender.getGameObject());
+		GameObject killer = cr.getKilledBy();
+		if (killer != null) {
+			// Killed: show dead image only when the killing attacker is revealed.
+			return revealedCounters.contains(killer.getId());
+		}
+		// Wounded but not killed: show damage when any attacking counter is revealed.
+		// (getPlainImage uses ignoreDamage=true, so wounds are hidden until then.)
+		for (GameObject attacker : cr.getAttackers()) {
+			if (revealedCounters.contains(attacker.getId())) return true;
+		}
+		return false;
+	}
+	private boolean hasRollsOrCoups(RealmComponent participant) {
+		CombatWrapper combat = new CombatWrapper(participant.getGameObject());
+		ArrayList<String> rolls = combat.getFumbleRolls();
+		if (rolls == null) rolls = combat.getMissileRolls();
+		if (rolls != null && !rolls.isEmpty()) return true;
+		if (showOutcomeExtras) {
+			ArrayList<String> coups = combat.getCoups();
+			if (coups != null && !coups.isEmpty()) return true;
+		}
+		return false;
+	}
+	/** Returns the id of the next unrevealed counter in attack order, or null if all are revealed. */
+	private Long computeNextRevealId() {
+		if (attackOrder == null) return null;
+		int minPos = Integer.MAX_VALUE;
+		Long minId = null;
+		for (PortraitHitBox ph : portraitHitBoxes) {
+			long id = ph.rc.getGameObject().getId();
+			if (revealedCounters.contains(id)) continue;
+			if (!hasRollsOrCoups(ph.rc)) continue;
+			ArrayList<Integer> positions = attackOrder.positionsFor(ph.rc.getGameObject());
+			if (positions.isEmpty()) continue;
+			int min = Collections.min(positions);
+			if (min < minPos) {
+				minPos = min;
+				minId = id;
+			}
+		}
+		return minId;
+	}
+	/** Returns the id of the last unrevealed counter in attack order, or null if all are revealed. */
+	private Long computeLastRevealId() {
+		if (attackOrder == null) return null;
+		int maxPos = Integer.MIN_VALUE;
+		Long maxId = null;
+		for (PortraitHitBox ph : portraitHitBoxes) {
+			long id = ph.rc.getGameObject().getId();
+			if (revealedCounters.contains(id)) continue;
+			if (!hasRollsOrCoups(ph.rc)) continue;
+			ArrayList<Integer> positions = attackOrder.positionsFor(ph.rc.getGameObject());
+			if (positions.isEmpty()) continue;
+			int max = Collections.max(positions);
+			if (max > maxPos) {
+				maxPos = max;
+				maxId = id;
+			}
+		}
+		return maxId;
+	}
+	/** Reveals all counters that have rolls or coups. */
+	void revealAll() {
+		for (PortraitHitBox ph : portraitHitBoxes) {
+			if (hasRollsOrCoups(ph.rc)) revealedCounters.add(ph.rc.getGameObject().getId());
+		}
+	}
+	private void drawRevealOutline(Graphics2D g, int x, int y, Color color) {
+		Stroke old = g.getStroke();
+		g.setStroke(REVEAL_OUTLINE_STROKE);
+		g.setColor(color);
+		g.drawRect(x, y, PORTRAIT_SIZE, PORTRAIT_SIZE);
+		g.setStroke(old);
+	}
+
 	private Font STAGE_FONT = new Font("Dialog",Font.BOLD,12);
 	private Color STAGE_SECTION_COLOR = new Color(200,255,200,150);
 	private Color NAME_SECTION_COLOR = new Color(200,200,255,150);
@@ -160,10 +283,12 @@ public class CombatSummarySheet extends JPanel {
 			row+=1;
 			y += 90;
 			int rowTop = y-40;
-			g.drawImage(battleParticipant.getImage(),x+80,y-40,80,80,null);
+			boolean defKillVisible = isDefenderKillVisible(battleParticipant);
+			Image defImg = defKillVisible ? battleParticipant.getImage() : getPlainImage(battleParticipant);
+			g.drawImage(defImg,x+80,y-40,80,80,null);
 			portraitHitBoxes.add(new PortraitHitBox(x+80,y-40,battleParticipant));
 			drawAttackOrderStamp(g,battleParticipant,x+80,y-40);
-			drawDeadHorseMark(g,battleParticipant,x+80,y-40);
+			drawDeadHorseMark(g,battleParticipant,x+80,y-40,defKillVisible);
 			drawCoupMarkers(g,battleParticipant,x+80,y-40);
 			drawCombatRolls(g,battleParticipant,x+80,y-40);		
 			JButton chartButton = new JButton("Sheet");
@@ -232,10 +357,12 @@ public class CombatSummarySheet extends JPanel {
 				}
 				xAttacker += 90;
 				RealmComponent attackerRc = RealmComponent.getRealmComponent(attacker);
-				g.drawImage(attackerRc.getImage(),xAttacker,y-40,80,80,null);
+				boolean attKillVisible = isDefenderKillVisible(attackerRc);
+				Image attImg = attKillVisible ? attackerRc.getImage() : getPlainImage(attackerRc);
+				g.drawImage(attImg,xAttacker,y-40,80,80,null);
 				portraitHitBoxes.add(new PortraitHitBox(xAttacker,y-40,attackerRc));
 				drawAttackOrderStamp(g,attackerRc,xAttacker,y-40);
-				drawDeadHorseMark(g,attackerRc,xAttacker,y-40);
+				drawDeadHorseMark(g,attackerRc,xAttacker,y-40,attKillVisible);
 				drawCoupMarkers(g,attackerRc,xAttacker,y-40);
 				drawCombatRolls(g,attackerRc,xAttacker,y-40);
 				attackerCount += 1;
@@ -249,7 +376,21 @@ public class CombatSummarySheet extends JPanel {
 			g.setFont(STAGE_FONT);
 		}
 		y += 80;
-		
+
+		// Draw green outline on the next counter to reveal, yellow on the last (clicking it reveals all)
+		if (inRevealStep()) {
+			Long last = computeLastRevealId();
+			Long nxt = computeNextRevealId();
+			for (PortraitHitBox ph : portraitHitBoxes) {
+				long id = ph.rc.getGameObject().getId();
+				if (last != null && id == last.longValue()) {
+					drawRevealOutline(g, ph.bounds.x, ph.bounds.y, LAST_REVEAL_OUTLINE);
+				} else if (nxt != null && id == nxt.longValue()) {
+					drawRevealOutline(g, ph.bounds.x, ph.bounds.y, REVEAL_OUTLINE);
+				}
+			}
+		}
+
 		/*
 		int yUnassignedHeadline = y;
 		y += 50;
@@ -320,6 +461,7 @@ public class CombatSummarySheet extends JPanel {
 	 */
 	private void drawCombatRolls(Graphics2D g,RealmComponent participant,int x,int y) {
 		if (attackOrder==null || combatFrame.getActionState()<Constants.COMBAT_RESOLVING) return;
+		if (!isRevealed(participant)) return;
 		CombatWrapper combat = new CombatWrapper(participant.getGameObject());
 		ArrayList<String> rolls = combat.getFumbleRolls();
 		if (rolls==null) {
@@ -339,8 +481,14 @@ public class CombatSummarySheet extends JPanel {
 		}
 		if (totalWidth > 2) totalWidth -= 2; // remove trailing gap
 		int PAD = 2;
-		int rollX = x + PORTRAIT_SIZE - totalWidth - PAD;
-		int rollY = y + (PORTRAIT_SIZE - maxHeight) / 2;
+		int rollX, rollY;
+		if (participant.isCharacter()) {
+			rollX = x + (PORTRAIT_SIZE - totalWidth) / 2;
+			rollY = y + PORTRAIT_SIZE - maxHeight - PAD;
+		} else {
+			rollX = x + PORTRAIT_SIZE - totalWidth - PAD;
+			rollY = y + (PORTRAIT_SIZE - maxHeight) / 2;
+		}
 		g.setColor(ROLL_BACKING);
 		g.fillRoundRect(rollX-PAD, rollY-PAD, totalWidth+PAD*2, maxHeight+PAD*2, 4, 4);
 		for (DieRoller roller : rollers) {
@@ -365,6 +513,7 @@ public class CombatSummarySheet extends JPanel {
 	 */
 	private void drawCoupMarkers(Graphics2D g,RealmComponent participant,int x,int y) {
 		if (!showsOutcomeExtras()) return;
+		if (!isRevealed(participant)) return;
 		ArrayList<String> coups = new CombatWrapper(participant.getGameObject()).getCoups();
 		if (coups==null || coups.isEmpty()) return;
 
@@ -495,9 +644,10 @@ public class CombatSummarySheet extends JPanel {
 		g.drawRect(x,y,size,size);
 	}
 	/** Crosses out a native's or monster's steed symbol once it has been killed. */
-	private void drawDeadHorseMark(Graphics2D g,RealmComponent participant,int x,int y) {
+	private void drawDeadHorseMark(Graphics2D g,RealmComponent participant,int x,int y,boolean revealed) {
 		if (!(participant instanceof SquareChitComponent)) return;
 		if (!showsOutcomeExtras()) return;
+		if (!revealed) return;
 		((SquareChitComponent)participant).paintDeadHorseMark(g,x,y,PORTRAIT_SIZE);
 	}
 	/** Matches the colour of the line this attack is listed on, or grey when it produced none. */
