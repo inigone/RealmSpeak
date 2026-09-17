@@ -5,6 +5,51 @@ MERGED UPSTREAM and OBSOLETE tags are omitted — those are upstream changes, no
 Update this file before creating each new IL-commit tag.
 
 ------------------------------------------------------------------------------
+IL-commit-063
+UPDATER:
+# Raise AppUpdater restart heap from -Xms768m -Xmx768m to -Xms1g -Xmx4g so large
+#   games don't run out of memory after an in-app update and restart
+# Fix update loop: write version.txt after install so the update dialog doesn't
+#   re-offer the same release on the next launch
+RELEASE BUILD:
+# release-build.xml auto-derives the version from Constants.java and the build
+#   number N by counting existing GitHub releases; pushes inigone_local + tags
+#   before building; creates the GitHub release automatically — single command:
+#   ant -buildfile build/release-build.xml
+
+------------------------------------------------------------------------------
+IL-commit-062
+NEW FEATURES:
+# Hide combat results during the Resolving step until each counter is clicked:
+#   participant icons show no damage until the player reveals that combatant;
+#   the summary sheet hides per-character die rolls until revealed
+
+------------------------------------------------------------------------------
+IL-commit-061
+CHANGES:
+# Remove the Combat Preview step (added in IL-commit-054); it sat between Tactics
+#   and Resolving and showed predicted die rolls with OL badges on counters
+
+------------------------------------------------------------------------------
+IL-commit-060
+BUGS/ISSUES:
+# Guard GetMostRecentClient() against null in CombatFrame.updateFrame() to prevent
+#   NPE when the client is disconnected during combat
+
+------------------------------------------------------------------------------
+IL-commit-059
+BUGS/ISSUES:
+# Coalesce rapid stateChanged events in CombatFrame to prevent an invokeLater
+#   backlog that made the combat UI unresponsive under fast state transitions
+
+------------------------------------------------------------------------------
+IL-commit-057
+CHANGES:
+# Auto-join test infrastructure: NET host mode accepts a save-file path on the
+#   command line; JOIN_HOST/JOIN_PORT/JOIN_NAME/JOIN_PASS args let a client
+#   auto-connect and claim a character on startup (for local multi-instance testing)
+
+------------------------------------------------------------------------------
 IL-commit-056
 NEW FEATURES:
 # Add changes-inigone.txt listing all IL-specific changes (updated before each new IL-commit)
