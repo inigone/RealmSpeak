@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="release-build" default="build-release" basedir="..">
+
+  <property name="allproject.dir" value="${basedir}"/>
+  <property name="products.dir" value="${allproject.dir}/products"/>
+  <property name="libraries.dir" value="${allproject.dir}/libraries"/>
+  <property name="release.staging.dir" value="${allproject.dir}/build/temp-release"/>
+  <property name="release.zip" value="${products.dir}/RealmSpeak.zip"/>
+
+  <target name="build-release" description="Assemble RealmSpeak.zip release package">
+    <!-- Push inigone_local + reachable IL-commit tags to origin before building -->
+    <exec executable="git" failonerror="true">
+      <arg value="push"/>
+      <arg value="origin"/>
+      <arg value="inigone_local"/>
+      <arg value="--follow-tags"/>
+    </exec>
+
+    <!-- Derive base version from Constants.java (e.g. "1.2.6.6" -> "1266") -->
+    <loadfile property="realm.speak.version"
+              srcFile="${allproject.dir}/magic_realm/utility/components/source/com/robin/magic_realm/components/utility/Constants.java">
+      <filterchain>
+        <linecontains><contains value="REALM_SPEAK_VERSION"/></linecontains>
+        <tokenfilter>
+          <replaceregex pattern='.*"([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)".*'
+                        replace="\1\2\3\4"/>
+        </tokenfilter>
+        <striplinebreaks/>
+      </filterchain>
+    </loadfile>
+    <!-- Auto-derive N as (highest existing N for this version) + 1 -->
+    <exec executable="bash" outputproperty="release.n" failonerror="true">
+      <arg value="-c"/>
+      <arg value="LAST=$(gh release list --repo inigone/RealmSpeak --limit 100 | grep -o 'RealmSpeak${realm.speak.version}-inigone\.[0-9]*' | grep -o '[0-9]*$' | sort -n | tail -1); [ -z &quot;$LAST&quot; ] &amp;&amp; echo 1 || echo $((LAST + 1))"/>
+    </exec>
+    <property name="release.tag" value="RealmSpeak${realm.speak.version}-inigone.${release.n}"/>
+    <echo message="Building release: ${release.tag}"/>
+    <delete dir="${release.staging.dir}"/>
+    <mkdir dir="${release.staging.dir}"/>
+
+    <!-- Core JARs -->
+    <copy todir="${release.staging.dir}">
+      <fileset dir="${products.dir}">
+        <include name="RealmSpeakFull.jar"/>
+        <include name="RealmSpeak.jar"/>
+        <include name="RealmBattle.jar"/>
+        <include name="RealmCharacterBuilder.jar"/>
+        <include name="RealmGm.jar"/>
+        <include name="RealmQuestBuilder.jar"/>
+      </fileset>
+    </copy>
+
+    <!-- Mail/activation libraries needed at runtime -->
+    <copy todir="${release.staging.dir}">
+      <fileset dir="${libraries.dir}">
+        <include name="activation.jar"/>
+        <include name="mail.jar"/>
+      </fileset>
+    </copy>
+
+    <!-- Launcher scripts and readme files -->
+    <copy todir="${release.staging.dir}">
+      <fileset dir="${products.dir}">
+        <include name="*.bat"/>
+        <include name="*.txt"/>
+        <include name="MacRealmSpeak.zip"/>
+        <include name="LinuxRealmSpeak.zip"/>
+        <include name="MacLaunchersNew.zip"/>
+      </fileset>
+    </copy>
+
+    <!-- changes.txt from repo root -->
+    <copy todir="${release.staging.dir}" file="${allproject.dir}/changes.txt"/>
+
+    <!-- version.txt: full release tag for the in-app updater (e.g. "1264-inigone.3") -->
+    <echo file="${release.staging.dir}/version.txt">${release.tag}</echo>
+
+    <!-- Game data directories -->
+    <copy todir="${release.staging.dir}/characters">
+      <fileset dir="${products.dir}/characters"/>
+    </copy>
+    <copy todir="${release.staging.dir}/quests">
+      <fileset dir="${products.dir}/quests"/>
+    </copy>
+    <copy todir="${release.staging.dir}/gameData">
+      <fileset dir="${products.dir}/gameData"/>
+    </copy>
+
+    <!-- Create the release zip -->
+    <delete file="${release.zip}"/>
+    <zip destfile="${release.zip}" basedir="${release.staging.dir}" compress="true"/>
+
+    <!-- Clean up staging -->
+    <delete dir="${release.staging.dir}"/>
+
+    <!-- Copy to named release zip -->
+    <property name="named.zip" value="${products.dir}/${release.tag}.zip"/>
+    <copy file="${release.zip}" tofile="${named.zip}"/>
+    <echo message="Release zip created: ${named.zip}"/>
+
+    <!-- Publish to GitHub -->
+    <exec executable="gh" failonerror="true">
+      <arg value="release"/>
+      <arg value="create"/>
+      <arg value="${release.tag}"/>
+      <arg value="${named.zip}"/>
+      <arg value="--repo"/>
+      <arg value="inigone/RealmSpeak"/>
+      <arg value="--title"/>
+      <arg value="${release.tag}"/>
+      <arg value="--notes-file"/>
+      <arg value="${allproject.dir}/release-notes.md"/>
+    </exec>
+    <echo message="GitHub release published: ${release.tag}"/>
+  </target>
+
+</project>
