@@ -49,7 +49,7 @@ public class SetupCardUtility {
 		keyVals.add("!monster"); // no monsters (just their summon boxes)
 		keyVals.add("!rank"); // no natives (just their summon boxes)
 		ArrayList<GameObject> summons = pool.find(keyVals);
-		
+
 		// Break out the objects into three groups
 		ArrayList<GameObject> goldSpecials = new ArrayList<>(); // Visitor/Mission chit boxes
 		ArrayList<GameObject> dwellingSpecific = new ArrayList<>(); // Native groups
@@ -70,12 +70,12 @@ public class SetupCardUtility {
 				// make sure this location is actually in this tile
 				if (go.getHeldBy()!=null && go.getHeldBy().equals(tl.tile.getGameObject())) {
 					// and that it has anything to summon...
+					// getHoldCount()>0 is sufficient: once guardians leave the hold it drops to zero,
+					// so no double-summon is possible. hasSummonedToday must NOT gate this path —
+					// runDailyGeneratorPhase() sets that flag on generator chits (e.g. Tomb) which
+					// are also treasure-location guardian hosts, and would suppress the guardian summon.
 					if (go.getHoldCount()>0) {
-						// and that it is face down (rule 12.5/3) - this is probably unnecessary (all tls only have 1 box of monsters anyway)
-						TreasureLocationChitComponent tlChit = (TreasureLocationChitComponent)RealmComponent.getRealmComponent(go);
-						if (!tlChit.hasSummonedToday(monsterDie) || hostPrefs.hasPref(Constants.HOUSE2_MULTIPLE_SUMMONING)) {
-							treasureLocations.add(go);
-						}
+						treasureLocations.add(go);
 					}
 				}
 			}
