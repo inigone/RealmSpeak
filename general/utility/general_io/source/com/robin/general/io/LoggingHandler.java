@@ -13,6 +13,13 @@ public class LoggingHandler extends Handler {
 	
 	private static int ERR_LEVEL_VALUE_THRESHOLD = Level.WARNING.intValue(); // at this level and above, output sent to System.err; below sent to System.out
 	private boolean doneHeader = false; // has formatter header been printed
+
+	// LogManager holds Loggers by weak reference, so a level set on a Logger that nobody keeps a
+	// strong reference to is lost at the next GC - the following getLogger() for that name hands back
+	// a fresh Logger at the inherited default.  Classes whose static logger field happens to load
+	// before initLogging() survive that; everything else silently ignores its -Dcom.foo.Bar=LEVEL.
+	// Holding the configured Loggers here is what makes the property mechanism actually work.
+	private static final java.util.List<Logger> configuredLoggers = new java.util.ArrayList<>();
 	
 	public void publish(LogRecord record) {
         if (!isLoggable(record)) {
@@ -81,6 +88,7 @@ public class LoggingHandler extends Handler {
 				Logger aLogger = Logger.getLogger(propertyKey);
 				String property = System.getProperty(propertyKey);
 				aLogger.setLevel(Level.parse(property));
+				configuredLoggers.add(aLogger);
 System.out.println("Logging for "+propertyKey+": "+property);
 			}
 		}
