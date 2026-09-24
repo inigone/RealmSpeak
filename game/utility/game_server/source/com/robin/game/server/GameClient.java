@@ -457,6 +457,13 @@ public abstract class GameClient extends GameNet {
 		// GameServer in the list and rejects a reconnect (or same-name re-login) attempt.
 		closeConnection();
 		if (!reconnectEnabled) {
+			// UPSTREAM_FIX_CANDIDATE: without this line, isConnected() returns true after the socket
+			// dies (when reconnect is disabled), so any UI stateChanged handler that guards on
+			// isConnected() never triggers disconnect handling - the client thread exits silently while
+			// the game continues trying to submit changes to the dead client.  Symptom: game appears
+			// frozen/stuck after a network drop with no disconnect dialog and no recovery path.
+			connected = false;
+			logger.warning("DISCONNECT: ["+clientName+"] lost connection (reconnect disabled); connected=false fix prevented frozen game");
 			unexpectedDisconnect = true;
 			fireStateChanged();
 			return false;
