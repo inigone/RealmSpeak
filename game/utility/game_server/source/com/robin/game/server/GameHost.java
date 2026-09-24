@@ -64,10 +64,23 @@ public class GameHost {
 		for (GameServer server:servers) {
 			String clientName = server.getClientName();
 			if (!server.equals(ignoreServer) && clientName!=null && clientName.equals(name)) {
+				// A reconnecting client races the teardown of its own previous GameServer: until that
+				// one is removed from the list its name is still taken, and the reconnect is refused.
+				logger.warning("LOGIN REFUSED for \""+name+"\": a GameServer still holds that name ("
+					+servers.size()+" registered: "+describeServers()+")");
 				return false;
 			}
 		}
+		logger.info("LOGIN name \""+name+"\" is free ("+servers.size()+" registered: "+describeServers()+")");
 		return true;
+	}
+	private String describeServers() {
+		StringBuilder sb = new StringBuilder();
+		for (GameServer server:servers) {
+			if (sb.length()>0) sb.append(", ");
+			sb.append(server.getClientName()==null ? "<unnamed>" : server.getClientName());
+		}
+		return sb.length()==0 ? "none" : sb.toString();
 	}
 	private void init(String title,String pass) {
 		this.connector = null;
@@ -238,11 +251,13 @@ public class GameHost {
 		server.setClientHostName(hostName);
 		server.start();
 		servers.add(server);
+		logger.info("SERVER ADDED for a new connection ("+servers.size()+" registered: "+describeServers()+")");
 		fireHostModified(new GameHostEvent(this,server,GameHostEvent.NOTICE_NEW_CONNECTION));
 	}
 	public void removeServer(GameServer server) {
 		if (servers.remove(server)) {
-			logger.info("Removing server for client "+server.getClientName());
+			logger.info("SERVER REMOVED for client "+server.getClientName()
+				+" ("+servers.size()+" still registered: "+describeServers()+")");
 			fireServerLost(server);
 		}
 //		else {
