@@ -84,7 +84,6 @@ public abstract class GameClient extends GameNet {
 //		System.out.println("Client dies");
 //	}
 	private void init(GameData data,String ipAddress,String clientName,String clientPass,int port) {
-		mostRecentClient = this;
 		gameData = data;
 		gameData.setDataName(DATA_NAME);
 		gameData.setTracksChanges(true);
@@ -92,6 +91,7 @@ public abstract class GameClient extends GameNet {
 		this.port = port;
 		this.clientName = clientName;
 		this.clientPass = clientPass;
+		registerMostRecentClient();
 		if (ipAddress==null) {
 			myIpAddress = "Direct";
 		}
@@ -338,7 +338,7 @@ public abstract class GameClient extends GameNet {
 		if (connection == null) {
 			if (!connectSocket()) {
 				fireStateChanged();
-				mostRecentClient = null;
+				clearMostRecentClient("run/connect-failed");
 				return;
 			}
 		}
@@ -413,14 +413,14 @@ public abstract class GameClient extends GameNet {
 		}
 
 		clientDead = true;
-		mostRecentClient = null;
+		clearMostRecentClient("run/exit");
 	}
 
 	private boolean connectSocket() {
 		int attempts = 0;
 		while (connection==null && (attempts++)<5) {
 			if (ipAddress==null) {
-				mostRecentClient = null;
+				clearMostRecentClient("connectSocket/null-ip");
 				throw new IllegalStateException("Can't start an unconnected GameClient with a null ipAddress!!!");
 			}
 			logger.info("attempt "+attempts);
@@ -437,7 +437,7 @@ public abstract class GameClient extends GameNet {
 				}
 				catch(InterruptedException iex) {
 					iex.printStackTrace();
-					mostRecentClient = null;
+					clearMostRecentClient("connectSocket/interrupted");
 					return false;
 				}
 			}
@@ -633,6 +633,32 @@ public abstract class GameClient extends GameNet {
 			throw new RuntimeException("mostRecentClient is DEAD");
 		}
 		return mostRecentClient;
+	}
+	/**
+	 * mostRecentClient is static, but more than one GameClient can be alive at once: on reconnect
+	 * the replacement is constructed while the outgoing client's thread is still unwinding.  All
+	 * registration goes through these two methods so a dying client can never unregister its
+	 * successor.
+	 *
+	 * UPSTREAM_FIX_CANDIDATE: without the identity check in clearMostRecentClient(), the old
+	 * thread's cleanup nulls out the static field after the new client has already registered it.
+	 * Every subsequent GetMostRecentClient() call returns null.  Symptom: after a successful
+	 * reconnect the UI appears to come back (data loads, windows open) but then freezes or goes
+	 * blank because all code paths that route through GetMostRecentClient() silently do nothing.
+	 * No error dialog appears; the game is permanently broken for that session.
+	 */
+	private void registerMostRecentClient() {
+		mostRecentClient = this;
+	}
+	private void clearMostRecentClient(String site) {
+		if (mostRecentClient == this) {
+			mostRecentClient = null;
+		} else {
+			// Seeing this line means the guard is doing its job: this client has already been
+			// superseded and clearing here would unregister the live successor.
+			logger.warning("mostRecentClient CLEAR SUPPRESSED at "+site+": ["+clientName
+				+"] is stale; NOT clearing live successor — without this guard UI would strand after reconnect");
+		}
 	}
 	public static void main(String[] args) {
 		launchBaddie();
