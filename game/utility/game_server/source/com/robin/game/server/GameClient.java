@@ -22,6 +22,11 @@ public abstract class GameClient extends GameNet {
 	
 	private static GameClient mostRecentClient = null;
 
+	// Unique per instance so the logs can tell an outgoing client from the one replacing it: during
+	// reconnect both are briefly alive and share a clientName, which makes name-only traces useless.
+	private static final java.util.concurrent.atomic.AtomicInteger CLIENT_SEQUENCE = new java.util.concurrent.atomic.AtomicInteger();
+	private final int clientId = CLIENT_SEQUENCE.incrementAndGet();
+
 	public enum DisconnectAction { RECONNECT, RESTART, EXIT }
 
 	// PROMOTE-TO-DEFAULT: remove this flag and the setReconnectEnabled/isReconnectEnabled methods,
@@ -413,6 +418,7 @@ public abstract class GameClient extends GameNet {
 		}
 
 		clientDead = true;
+		logger.info("GameClient "+clientTag()+": main loop exited, client marked dead");
 		clearMostRecentClient("run/exit");
 	}
 
@@ -463,7 +469,7 @@ public abstract class GameClient extends GameNet {
 			// the game continues trying to submit changes to the dead client.  Symptom: game appears
 			// frozen/stuck after a network drop with no disconnect dialog and no recovery path.
 			connected = false;
-			logger.warning("DISCONNECT: ["+clientName+"] lost connection (reconnect disabled); connected=false fix prevented frozen game");
+			logger.warning("DISCONNECT: "+clientTag()+" lost connection (reconnect disabled); connected=false fix prevented frozen game");
 			unexpectedDisconnect = true;
 			fireStateChanged();
 			return false;
@@ -635,10 +641,11 @@ public abstract class GameClient extends GameNet {
 		return mostRecentClient;
 	}
 	/**
-	 * mostRecentClient is static, but more than one GameClient can be alive at once: on reconnect
-	 * the replacement is constructed while the outgoing client's thread is still unwinding.  All
+	 * mostRecentClient is static, but more than one client can be alive at once: on reconnect the
+	 * replacement is constructed while the outgoing client's thread is still unwinding.  All
 	 * registration goes through these two methods so a dying client can never unregister its
-	 * successor.
+	 * successor - without the identity check the old thread's cleanup nulls out the live client and
+	 * every GetMostRecentClient() caller gets null, which is what strands the UI after a reconnect.
 	 *
 	 * UPSTREAM_FIX_CANDIDATE: without the identity check in clearMostRecentClient(), the old
 	 * thread's cleanup nulls out the static field after the new client has already registered it.
@@ -648,17 +655,26 @@ public abstract class GameClient extends GameNet {
 	 * No error dialog appears; the game is permanently broken for that session.
 	 */
 	private void registerMostRecentClient() {
+		GameClient previous = mostRecentClient;
 		mostRecentClient = this;
+		logger.info("mostRecentClient REGISTERED to "+clientTag()
+			+(previous==null ? "" : ", replacing "+previous.clientTag()));
 	}
 	private void clearMostRecentClient(String site) {
-		if (mostRecentClient == this) {
+		GameClient current = mostRecentClient;
+		if (current==this) {
 			mostRecentClient = null;
-		} else {
-			// Seeing this line means the guard is doing its job: this client has already been
-			// superseded and clearing here would unregister the live successor.
-			logger.warning("mostRecentClient CLEAR SUPPRESSED at "+site+": ["+clientName
-				+"] is stale; NOT clearing live successor — without this guard UI would strand after reconnect");
+			logger.info("mostRecentClient CLEARED by "+clientTag()+" at "+site);
 		}
+		else {
+			// Seeing this line is the guard doing its job, not a fault: this client has already been
+			// superseded, and clearing here would unregister the live successor.
+			logger.warning("mostRecentClient CLEAR SUPPRESSED at "+site+": "+clientTag()
+				+" is stale; registration belongs to "+(current==null ? "nobody" : current.clientTag()));
+		}
+	}
+	private String clientTag() {
+		return "client#"+clientId+"["+clientName+"]";
 	}
 	public static void main(String[] args) {
 		launchBaddie();
