@@ -150,6 +150,8 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 	}
 
 	public void reconnect() {
+		logger.info("RECONNECT: tearing down client and sub-windows");
+		boolean wasLocal = local;
 		getMainFrame().resetStatus();
 		layoutRestoreAttempted = false;
 		pendingLayoutData = null;
@@ -186,7 +188,15 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 				}
 			}
 		});
+		if (local != wasLocal) {
+			// UPSTREAM_FIX_CANDIDATE: reconnect() cleared the local flag mid-body; restored here.
+			// Symptom: host-only code paths (layout save/restore, hostPlayer guards) silently
+			// misbehave after a host reconnect because local=false makes the host look like a client.
+			logger.warning("RECONNECT: local flag was cleared during reconnect (was "+wasLocal+", became "+local+"); restored — host-only paths would have misbehaved");
+		}
+		local = wasLocal;
 		client.start();
+		logger.info("RECONNECT: replacement client started, awaiting sync to rebuild sub-windows");
 	}
 	public void removeAllCharacterFrames() {
 		for (CharacterFrame frame : characterFrames.values()) {
@@ -1424,7 +1434,13 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			if (client.isUnexpectedDisconnect()) {
 				client.clearUnexpectedDisconnect();
 				if (hostPlayer) {
-					return; // host's own client connection broke; game continues, serverLost() handles cleanup
+					// UPSTREAM_FIX_CANDIDATE: old code returned here, leaving the host with a dead
+					// client and a frozen game.  Loopback sockets can time out under load or on some
+					// OS/JVM combinations.  Symptom: host UI stops responding after an unexplained
+					// disconnect; no dialog appears and the game cannot continue.
+					logger.warning("RECONNECT: host loopback socket disconnected unexpectedly; auto-reconnecting — without this fix the host game would freeze");
+					reconnect();
+					return;
 				}
 				for (CharacterFrame frame : characterFrames.values()) {
 					frame.getCharacter().setMissingInAction(true);
