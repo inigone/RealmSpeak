@@ -577,8 +577,21 @@ public class RealmBattle {
 				System.err.println("[COMBAT-DBG] requiresCombatInteraction TACTICS: char=" + character.getGameObject().getName()
 						+ " activeCharIsHere=" + activeCharacterIsHere
 						+ " canReplaceMove=" + character.canReplaceMove(tacticsAttackers)
-						+ " target=" + tacticsTarget + " target2=" + tacticsTarget2
+						+ " target=" + (tacticsTarget==null ? "null" : tacticsTarget.getGameObject().getName()+"("+tacticsTarget.getClass().getSimpleName()+")")
+						+ " target2=" + (tacticsTarget2==null ? "null" : tacticsTarget2.getGameObject().getName()+"("+tacticsTarget2.getClass().getSimpleName()+")")
 						+ " result=" + tacticsResult);
+				if (tacticsTarget!=null) {
+					System.err.println("[COMBAT-DBG]   target1: canReplaceFight=" + character.canReplaceFight(tacticsTarget)
+							+ " canReplaceParryThrust=" + character.canReplaceParryThrustAttacks(tacticsTarget)
+							+ " canReplaceParrySwing=" + character.canReplaceParrySwingAttacks(tacticsTarget)
+							+ " canReplaceParrySmash=" + character.canReplaceParrySmashAttacks(tacticsTarget));
+				}
+				if (tacticsTarget2!=null) {
+					System.err.println("[COMBAT-DBG]   target2: canReplaceFight=" + character.canReplaceFight(tacticsTarget2)
+							+ " canReplaceParryThrust=" + character.canReplaceParryThrustAttacks(tacticsTarget2)
+							+ " canReplaceParrySwing=" + character.canReplaceParrySwingAttacks(tacticsTarget2)
+							+ " canReplaceParrySmash=" + character.canReplaceParrySmashAttacks(tacticsTarget2));
+				}
 				return tacticsResult;
 			case Constants.COMBAT_RESOLVING: // determines hits, show results
 				return true; // Show resolution every round - this guarantees that everything is cleaned up properly.
