@@ -447,7 +447,8 @@ public class CharacterActionChitComponent extends StateChitComponent implements 
 			tt.draw(g, 2, y, Alignment.Center);
 		}
 		else {
-			tt = new TextType(action.toUpperCase(), getChitSize() - 4, textTypeName);
+			String label = getGameObject().hasThisAttribute(Constants.CHIT_LABEL) ? getGameObject().getThisAttribute(Constants.CHIT_LABEL) : action.toUpperCase();
+			tt = new TextType(label, getChitSize() - 4, textTypeName);
 			tt.draw(g, 2, y, Alignment.Center);
 		}
 
@@ -480,6 +481,9 @@ public class CharacterActionChitComponent extends StateChitComponent implements 
 		}
 		else {
 			mod = getStrength().toString();
+			if ("neg".equals(mod) && getGameObject().hasThisAttribute(Constants.FINAL_CHIT_HARM)) {
+				mod = getStrength().toShortString(); // playable negligible chit (e.g. Thief Stab): show N and speed
+			}
 		}
 		// Need to look at usingAlteredAttributes to determine what color to show the attributes
 		// I'd like them to be blue, or red, or something that indicates they are "modified"

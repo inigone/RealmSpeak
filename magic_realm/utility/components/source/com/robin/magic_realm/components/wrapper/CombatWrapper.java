@@ -103,6 +103,7 @@ public class CombatWrapper extends GameObjectWrapper {
 	private static final String WAS_FATIGUE = "WAS_FATIGUE";
 	private static final String WAS_SPELL_CASTING = "WAS_SPELL_CASTING";
 	private static final String WAS_UNHIDING = "WAS_UNHIDING";
+	private static final String HIDDEN_AT_ROUND_START = "HIDDEN_AT_ROUND_START";
 	private static final String T_MONSTER_FLIPPED_RED_SIDE_UP = "T_MONSTER_FLIPPED_RED_SIDE_UP";
 	
 	private static final String TELEPORT_TO = "TELEPORT_TO";
@@ -624,6 +625,13 @@ public class CombatWrapper extends GameObjectWrapper {
 	}
 	public boolean getWasUnhiding() {
 		return getBoolean(WAS_UNHIDING);
+	}
+	// Not part of clearRoundCombatInfo: some of those calls happen mid-round. Set each round in BattleModel.doPreparation().
+	public void setHiddenAtRoundStart(boolean val) {
+		setBoolean(HIDDEN_AT_ROUND_START,val);
+	}
+	public boolean getHiddenAtRoundStart() {
+		return getBoolean(HIDDEN_AT_ROUND_START);
 	}
 	public void setTremendousMonsterFlippedRedSideUp(boolean val) {
 		setBoolean(T_MONSTER_FLIPPED_RED_SIDE_UP,val);
