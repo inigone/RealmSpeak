@@ -2332,7 +2332,14 @@ public class CombatFrame extends JFrame {
 			
 			// Find all active chits that have less than (effortLimit-totalEffort) asterisks
 			for (CharacterActionChitComponent chit :  activeCharacter.getActiveFightChits()) {
-				if (chit.getEffortAsterisks()<=effortLeft && chit.getStrength().strongerOrEqualTo(weaponWeight) && !chit.getStrength().isNegligible()) {
+				// Negligible chits can't fight unless they define their own harm (e.g. Thief Stab)
+				boolean negligible = chit.getStrength().isNegligible() && !chit.getGameObject().hasThisAttribute(Constants.FINAL_CHIT_HARM);
+				if (chit.getGameObject().hasThisAttribute(Constants.FIGHT_REQUIRES_HIDDEN)) {
+					if (!(new CombatWrapper(activeCharacter.getGameObject())).getHiddenAtRoundStart()) continue;
+					RealmComponent target = RealmComponent.getRealmComponent(activeCharacter.getGameObject()).getTarget();
+					if (target!=null && target.isCharacter() && new CharacterWrapper(target.getGameObject()).foundHiddenEnemies()) continue;
+				}
+				if (chit.getEffortAsterisks()<=effortLeft && chit.getStrength().strongerOrEqualTo(weaponWeight) && !negligible) {
 					// Check the box_constraint (for fight_lock type options - custom characters only)
 					int constraint = chit.getGameObject().getThisInt("box_constraint");
 					if (constraint==0 || constraint==box) {

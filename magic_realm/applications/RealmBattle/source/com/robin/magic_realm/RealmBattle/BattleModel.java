@@ -269,6 +269,13 @@ public class BattleModel {
 				combat.setSheetOwner(true);
 			}
 		}
+		
+		// Snapshot hidden status now: targeting later in the round unhides the attacker before attacks are chosen
+		for (BattleGroup bg : characterBattleGroups) {
+			RealmComponent rc = bg.getOwningCharacter();
+			CombatWrapper combat = new CombatWrapper(rc.getGameObject());
+			combat.setHiddenAtRoundStart(rc.isHidden());
+		}
 	}
 
 	/**

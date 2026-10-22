@@ -64368,11 +64368,15 @@
         <attribute rw_expansion_1="" />
       </AttributeBlock>
     </GameObject>
-    <GameObject id="2486" name="Thief Stab T2**">
+    <GameObject id="2486" name="Thief Stab N2**">
       <AttributeBlock blockName="this">
         <attribute character_chit="" />
         <attribute action="fight" />
         <attribute speed="2" />
+        <attribute strength="N" />
+        <attribute final_chit_harm="H" />
+        <attribute fight_requires_hidden="" />
+        <attribute chit_label="STAB" />
         <attribute effort="2" />
         <attribute character_level="4" />
         <attribute stage="10" />
