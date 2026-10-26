@@ -1,0 +1,68 @@
+definitions:
+    magic_chit.is_paired():
+        True if magic_chit is currently paired with an active spell, e.g., a Type VI Magic chit currently
+            being used to enchant a Transform spell.
+
+    character.has_available_color_chit(target_color):
+        True if character has a color chit of color target_color available in their Chits tab.  If target_color
+            is ANY, check for any color.
+
+    character.has_color_source_item(target_color):
+        True if the character has an item which is a source of target_color color.  If target_color is ANY,
+            check for any color source item.
+
+    character.has_prospective_color_chit(target_color):
+        True if character has an unpaired active, fatigued, or wounded Magic chit in their Chits tab of the type
+            which could prospectively be enchanted into target_color.  E.g., a fatigued Type IV Magic chit could
+            be rested and then enchanted into a purple color chit.  If target_color is ANY, check for any color.
+
+    clearing.is_color_source(target_color):
+        True if the clearing is currently a source of target_color color.  If target_color is ANY, check for
+            any color source item.  The color source could be anything providing color magic to the clearing,
+            such as an item, an enchanted tile, a color producing day of the week, etc.
+
+    character.has_available_color(target_color):
+        True if character.has_available_color_chit(target_color) OR
+                character.has_color_source_item(target_color) OR
+                character.get_clearing().is_color_source(target_color)
+
+    character.has_available_magic_chit(target_type):
+        True if character has an unpaired Magic chit of type target_type available in their Chits tab.
+
+    character.has_magic_type_item(target_type):
+        True if character has an item which may be used as a Magic chit of type target_type.
+
+    chaacter.has_available_magic_type(target_type):
+        True if character.has_available_magic_chit(target_type) OR character.has_magic_type_item(target_type).
+
+    character.has_prospective_magic_chit(target_type):
+        True if character has a fatigued or wounded Magic chit of type target_type in their Chits tab.
+
+    character.available_spells():
+        The list of unpaired spells a character has available in either their Spells tab or in an artifact
+        they own.
+
+
+The spell tab button should be red IF any spell in character.available_spells(), where
+                 target_type = spell.get_magic_type() and target_color = spell.get_magic_color():
+    1. (NOT chaacter.has_available_magic_type(target_type)) AND
+       character.has_prospective_magic_chit(target_type)
+
+    AND
+
+    2. (NOT character.has_available_color(target_color)) AND
+       character.has_prospective_color_chit(target_color)
+
+ELSE
+
+The spell tab button should be yellow if any spell in character.available_spells(), where
+                 target_type = spell.get_magic_type() and target_color = spell.get_magic_color():
+    1. chaacter.has_available_magic_type(target_type)    AND
+       (NOT character.has_available_color(target_color)) AND
+       character.has_prospective_color_chit(target_color)
+
+    OR
+
+    2. character.has_available_color(target_color)          AND
+       (NOT chaacter.has_available_magic_type(target_type)) AND
+       character.has_prospective_magic_chit(target_type)
