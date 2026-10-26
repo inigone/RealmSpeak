@@ -10,6 +10,8 @@ import javax.swing.text.*;
 
 import com.robin.magic_realm.components.attribute.ChatLine;
 import com.robin.magic_realm.components.attribute.ChatStyle;
+import com.robin.magic_realm.components.utility.RealmCalendar;
+import com.robin.magic_realm.components.wrapper.GameWrapper;
 
 public class CharacterChatPanel extends CharacterFramePanel {
 	
@@ -31,6 +33,7 @@ public class CharacterChatPanel extends CharacterFramePanel {
 	private JTextField chatField;
 	private StyledDocument chatDoc;
 	private ArrayList<ChatLine> list;
+	int lastLineDayKey = -1;
 	
 	public CharacterChatPanel(CharacterFrame parent) {
 		super(parent);
@@ -112,9 +115,17 @@ public class CharacterChatPanel extends CharacterFramePanel {
 	private void addChatLine(ChatLine line) {
 		list.add(line);
 		try {
-			chatDoc.insertString(chatDoc.getLength(),line.getHeader(),chatDoc.getStyle(line.getHeaderStyleName()));
+			GameWrapper game = GameWrapper.findGame(getCharacter().getGameObject().getGameData());
+			String datePrefix = "";
+			if (game != null && game.getDay() > 0) {
+				int month = game.getMonth();
+				int day = game.getDay();
+				datePrefix = "[" + month + "-" + day + "] ";
+				lastLineDayKey = (month - 1) * RealmCalendar.DAYS_IN_A_MONTH + day;
+			}
+			chatDoc.insertString(chatDoc.getLength(), datePrefix, chatDoc.getStyle("regular"));
+			chatDoc.insertString(chatDoc.getLength(), line.getHeader(), chatDoc.getStyle(line.getHeaderStyleName()));
 			chatDoc.insertString(chatDoc.getLength(), " - " + line.getText() + "\n", chatDoc.getStyle(line.getTextStyleName()));
-
 			scrollToEnd();
 		}
 		catch (BadLocationException e) {
