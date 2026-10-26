@@ -29,7 +29,6 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 	private static final Font EMBOSS_FONT = new Font("Dialog",Font.ITALIC|Font.BOLD,28);
 	private static final Color EMBOSS_COLOR = new Color(0,0,0,20);
-	
 	protected long lastVersion;
 
 	protected RealmGameHandler gameHandler;
@@ -138,6 +137,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 	// Tab panels
 	protected JTabbedPane tabs;
+	private CharacterTabViewWarningsManager charTabWarningsManager;
 	protected CharacterActionPanel actionPanel;
 	protected CharacterChitPanel chitPanel;
 	protected CharacterInventoryPanel inventoryPanel;
@@ -170,6 +170,10 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		});
 	}
 	public void cleanup() {
+		if (charTabWarningsManager != null) {
+			charTabWarningsManager.stopRecordBlink();
+			charTabWarningsManager.stopYourTurnBlink();
+		}
 		getChatPanel().cleanup();
 	}
 	public CharacterWrapper getCharacter() {
@@ -1724,6 +1728,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			// In case chitPanel is not called
 			updateControls();
 		}
+		if (charTabWarningsManager != null) charTabWarningsManager.updateAll();
 		if (turnPanel!=null) {
 			turnPanel.updatePanel();
 		}
@@ -2368,6 +2373,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		// Build GUI		
 		layoutPanel.add(getCharacterDetailPanel(), "North");
 		tabs = new JTabbedPane(SwingConstants.BOTTOM);
+		charTabWarningsManager = new CharacterTabViewWarningsManager(this);
 		tabs.addTab(null, ImageCache.getIcon("tab/record"), getActionPanel(), "Record Actions");
 		if (character.isCharacter())
 			tabs.addTab(null, ImageCache.getIcon("tab/chits"), getChitPanel(), "Toggle Chits View");
@@ -2391,7 +2397,13 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		tabs.addTab(null, ImageCache.getIcon("tab/chat"), getChatPanel(),"Toggle Chat View");
 
 		boolean[] tabChangedByThisPress = {false};
-		tabs.addChangeListener(e -> tabChangedByThisPress[0] = true);
+		tabs.addChangeListener(e -> {
+			tabChangedByThisPress[0] = true;
+			if (charTabWarningsManager != null) {
+				charTabWarningsManager.updateRecordTab();
+				charTabWarningsManager.updateYourTurnTab();
+			}
+		});
 		tabs.addMouseListener(new MouseAdapter() {
 			public void mousePressed(MouseEvent e) {
 				int clicked = tabs.indexAtLocation(e.getX(), e.getY());
@@ -2408,6 +2420,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 
 		layoutPanel.add(tabs, "Center");
 
+		if (charTabWarningsManager != null) charTabWarningsManager.updateAll();
 		//		updateCharacter(); // no need to do this here
 	}
 
@@ -3923,42 +3936,42 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		return actionPanel;
 	}
 
-	private CharacterChitPanel getChitPanel() {
+	CharacterChitPanel getChitPanel() {
 		if (chitPanel == null) {
 			chitPanel = new CharacterChitPanel(this);
 		}
 		return chitPanel;
 	}
 
-	private CharacterInventoryPanel getInventoryObjectPanel() {
+	CharacterInventoryPanel getInventoryObjectPanel() {
 		if (inventoryPanel == null) {
 			inventoryPanel = new CharacterInventoryPanel(this);
 		}
 		return inventoryPanel;
 	}
 
-	private CharacterFramePanel getSpellsPanel() {
+	CharacterFramePanel getSpellsPanel() {
 		if (spellsPanel == null) {
 			spellsPanel = new CharacterSpellsPanel(this);
 		}
 		return spellsPanel;
 	}
 
-	private CharacterDiscoveriesPanel getDiscoveriesPanel() {
+	CharacterDiscoveriesPanel getDiscoveriesPanel() {
 		if (discoveriesPanel == null) {
 			discoveriesPanel = new CharacterDiscoveriesPanel(this);
 		}
 		return discoveriesPanel;
 	}
 
-	private CharacterRelationshipPanel getRelationshipPanel() {
+	CharacterRelationshipPanel getRelationshipPanel() {
 		if (relationshipPanel == null) {
 			relationshipPanel = new CharacterRelationshipPanel(this);
 		}
 		return relationshipPanel;
 	}
 
-	private JPanel getHirelingPanel() {
+	JPanel getHirelingPanel() {
 		if (hirelingPanel == null) {
 			hirelingPanel = new CharacterHirelingPanel(this);
 		}
@@ -3972,28 +3985,28 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 		return victoryPanel;
 	}
 
-	private CharacterQuestPanel getQuestPanel() {
+	CharacterQuestPanel getQuestPanel() {
 		if (questPanel == null) {
 			questPanel = new CharacterQuestPanel(this);
 		}
 		return questPanel;
 	}
 	
-	private CharacterNotesPanel getNotesPanel() {
+	CharacterNotesPanel getNotesPanel() {
 		if (notesPanel == null) {
 			notesPanel = new CharacterNotesPanel(this);
 		}
 		return notesPanel;
 	}
 
-	private CharacterExpansionOnePanel getExpansionOnePanel() {
+	CharacterExpansionOnePanel getExpansionOnePanel() {
 		if (expansionOnePanel == null) {
 			expansionOnePanel = new CharacterExpansionOnePanel(this);
 		}
 		return expansionOnePanel;
 	}
 	
-	private CharacterChatPanel getChatPanel() {
+	CharacterChatPanel getChatPanel() {
 		if (chatPanel==null) {
 			chatPanel = new CharacterChatPanel(this);
 		}
@@ -4041,6 +4054,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			tabs.addTab(null,ImageCache.getIcon("tab/turn"),panel,RealmTurnPanel.TAB_NAME);
 			tabs.setSelectedIndex(tabs.getTabCount()-1);
 			updateControls();
+			if (charTabWarningsManager != null) charTabWarningsManager.updateAll();
 		}
 	}
 
@@ -4054,6 +4068,7 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 	}
 
 	public void hideYourTurn() {
+		if (charTabWarningsManager != null) charTabWarningsManager.stopYourTurnBlink();
 		for (int i = 0; i < tabs.getTabCount(); i++) {
 			if (RealmTurnPanel.TAB_NAME.equals(tabs.getToolTipTextAt(i))) {
 				tabs.removeTabAt(i);
