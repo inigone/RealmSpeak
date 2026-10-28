@@ -165,6 +165,7 @@ public class RealmGameHandler extends RealmSpeakInternalFrame {
 			inspector = null;
 		}
 		game = null;
+		RealmCalendar.reset(); // stale singleton would bind to old GameData after reconnect
 		client = new GameClient(RealmLoader.DATA_PATH, reconnectIp, reconnectName, reconnectPass, reconnectPort) {
 			public void receiveInfoDirect(ArrayList inList) {
 				RealmDirectInfoHolder info = new RealmDirectInfoHolder(client.getGameData(), inList);
