@@ -18,7 +18,7 @@ public abstract class GameNet extends Thread {
 	 * GameClient.run() drops the socket back to DEFAULT_TIMEOUT_MS as soon as that request returns,
 	 * so ordinary play keeps the short timeout.
 	 */
-	public static int CLIENT_LOGIN_TIMEOUT_MS = 120000; // 2 minutes
+	public static int CLIENT_LOGIN_TIMEOUT_MS = 600000; // 10 minutes — allows large master→game diffs on reconnect after long sessions
 	
 	protected Socket connection;
 	protected ObjectOutputStream out = null;
