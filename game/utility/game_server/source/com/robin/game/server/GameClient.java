@@ -3,6 +3,7 @@ package com.robin.game.server;
 import java.net.*;
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -52,7 +53,7 @@ public abstract class GameClient extends GameNet {
 	
 	private static final RequestObject IDLE_REQ_OBJ = new RequestObject(REQUEST_IDLE);
 	
-	protected ArrayList<RequestObject> requestQueue = new ArrayList<RequestObject>();
+	protected ConcurrentLinkedDeque<RequestObject> requestQueue = new ConcurrentLinkedDeque<>();
 	
 	boolean clientDead = false;
 	boolean unexpectedDisconnect = false;
@@ -219,9 +220,9 @@ public abstract class GameClient extends GameNet {
 		return waitingSubmit;
 	}
 	private RequestObject getNextInQueue() {
-		if (requestQueue.size()>0) {
+		if (!requestQueue.isEmpty()) {
 			// Get next
-			return requestQueue.remove(0);
+			return requestQueue.removeFirst();
 		}
 		return IDLE_REQ_OBJ;
 	}
@@ -378,7 +379,7 @@ public abstract class GameClient extends GameNet {
 							initialSyncDone = true;
 							try { connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); } catch(SocketException ex) { /* keep the login value */ }
 						}
-						while(requestQueue.size()>0) {
+						while(!requestQueue.isEmpty()) {
 							doRequest(getNextInQueue());
 						}
 					}

@@ -157,6 +157,7 @@ public class GameServer extends GameNet {
 				
 				if (objectChanges==null || !objectChanges.isEmpty()) {
 					getOutputStream().writeInt(RESPOND_NEED_UPDATE);
+					flush(); // deliver the response code before writing the (potentially large) payload
 					if (objectChanges==null) {
 						// If objectChanges is null, then we haven't grabbed the master-to-game changes.  Do that now!
 						objectChanges = new ArrayList<>(host.getMasterToGameChanges());
