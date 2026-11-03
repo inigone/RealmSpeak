@@ -170,7 +170,11 @@ public class RealmHostPanel extends JPanel {
 						}
 					}
 				}
-				updateGame(); // This should be the only call to this method.
+				// Skip save on NOTICE_NEW_CONNECTION: a bare TCP accept does not change game state,
+				// and saving here races with applyChanges() on GameServer threads (uncommitted objects).
+				if (ev.getNotice() != GameHostEvent.NOTICE_NEW_CONNECTION) {
+					updateGame();
+				}
 				if (ev.getNotice()==GameHostEvent.NOTICE_NEW_CONNECTION) {
 					RealmDirectInfoHolder holder;
 					

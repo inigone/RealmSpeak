@@ -68,8 +68,11 @@ public class GameConnector extends Thread {
 						connection.setKeepAlive(true);
 						host.addConnection(connection);
 					}
-					catch(SocketException ex) {
-						System.out.println("Rejected connection from " + connection.getInetAddress() + ": " + ex.getMessage());
+					catch(Exception ex) {
+						// Catch all exceptions (not just SocketException) so a failure in addConnection()
+						// or its listeners (e.g. a save error) never kills the accept loop.
+						System.out.println("Error handling connection from " + connection.getInetAddress() + ": " + ex.getMessage());
+						ex.printStackTrace();
 						closeQuietly(connection);
 					}
 				}
