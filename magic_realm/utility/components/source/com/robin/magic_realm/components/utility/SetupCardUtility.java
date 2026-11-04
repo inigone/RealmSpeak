@@ -1519,6 +1519,7 @@ public class SetupCardUtility {
 		if (paths == null) return;
 		for (PathDetail path:paths) {
 			ClearingDetail other = path.findConnection(current.clearing);
+			if (other == null) continue; // roadway/edge path has no connected clearing
 			if (other.isEdge()) continue; // travelers don't leave the map
 
 			// if clearing has characters in it, make it MORE interesting
