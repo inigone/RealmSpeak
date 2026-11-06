@@ -7,7 +7,7 @@ import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Set;
 
-import javax.swing.*;
+import javax.swing.JTabbedPane;
 
 import com.robin.game.objects.GameObject;
 import com.robin.magic_realm.components.*;
@@ -19,13 +19,8 @@ public class CharacterTabViewWarningsManager {
 
 	static final Color CHIT_CRITICAL_TAB_COLOR = new Color(190, 55, 55);
 	static final Color CHIT_WARNING_TAB_COLOR = new Color(210, 150, 40);
-	static final Color RECORD_TAB_ALERT_COLOR = new Color(255, 215, 45);
 
 	private final CharacterFrame frame;
-	private javax.swing.Timer recordTabBlinkTimer;
-	private boolean recordTabBlinkOn;
-	private javax.swing.Timer yourTurnTabBlinkTimer;
-	private boolean yourTurnTabBlinkOn;
 
 	public CharacterTabViewWarningsManager(CharacterFrame frame) {
 		this.frame = frame;
@@ -47,52 +42,19 @@ public class CharacterTabViewWarningsManager {
 	}
 
 	public void stopRecordBlink() {
-		if (recordTabBlinkTimer != null) {
-			recordTabBlinkTimer.stop();
-			recordTabBlinkTimer = null;
-		}
 	}
 
 	public void stopYourTurnBlink() {
-		if (yourTurnTabBlinkTimer != null) {
-			yourTurnTabBlinkTimer.stop();
-			yourTurnTabBlinkTimer = null;
-		}
-		yourTurnTabBlinkOn = false;
 	}
 
 	void updateYourTurnTab() {
 		JTabbedPane tabs = frame.tabs;
-		if (tabs == null) return;
-
-		if (frame.turnPanel == null) {
-			stopYourTurnBlink();
-			return;
-		}
+		if (tabs == null || frame.turnPanel == null) return;
 
 		int yourTurnTab = tabs.indexOfComponent(frame.turnPanel);
-		if (yourTurnTab < 0) {
-			stopYourTurnBlink();
-			return;
-		}
-
-		if (tabs.getSelectedIndex() == yourTurnTab) {
-			if (yourTurnTabBlinkTimer != null) yourTurnTabBlinkTimer.stop();
-			yourTurnTabBlinkOn = false;
+		if (yourTurnTab >= 0) {
 			tabs.setBackgroundAt(yourTurnTab, CHIT_CRITICAL_TAB_COLOR);
-			return;
 		}
-
-		if (yourTurnTabBlinkTimer == null) {
-			yourTurnTabBlinkTimer = new javax.swing.Timer(600, event -> {
-				if (frame.turnPanel == null) { stopYourTurnBlink(); return; }
-				int t = tabs.indexOfComponent(frame.turnPanel);
-				if (t < 0 || tabs.getSelectedIndex() == t) { updateYourTurnTab(); return; }
-				yourTurnTabBlinkOn = !yourTurnTabBlinkOn;
-				tabs.setBackgroundAt(t, yourTurnTabBlinkOn ? CHIT_CRITICAL_TAB_COLOR : null);
-			});
-		}
-		if (!yourTurnTabBlinkTimer.isRunning()) yourTurnTabBlinkTimer.start();
 	}
 
 	public void updateRecordTab() {
@@ -108,8 +70,6 @@ public class CharacterTabViewWarningsManager {
 			&& !frame.gameHandler.getGame().getGameEnded()
 			&& !frame.singleButtonManager.hasMandatoryShowing();
 		if (!awaitingActionInput) {
-			if (recordTabBlinkTimer != null) recordTabBlinkTimer.stop();
-			recordTabBlinkOn = false;
 			if (recordTab >= 0) {
 				tabs.setBackgroundAt(recordTab, null);
 				tabs.setToolTipTextAt(recordTab, "Record Actions");
@@ -118,27 +78,8 @@ public class CharacterTabViewWarningsManager {
 		}
 		if (recordTab < 0) return;
 
+		tabs.setBackgroundAt(recordTab, CHIT_CRITICAL_TAB_COLOR);
 		tabs.setToolTipTextAt(recordTab, "Awaiting action input - open Record Actions tab");
-		if (tabs.getSelectedIndex() == recordTab) {
-			if (recordTabBlinkTimer != null) recordTabBlinkTimer.stop();
-			recordTabBlinkOn = false;
-			tabs.setBackgroundAt(recordTab, RECORD_TAB_ALERT_COLOR);
-			return;
-		}
-		if (recordTabBlinkTimer == null) {
-			recordTabBlinkTimer = new javax.swing.Timer(600, event -> {
-				int currentRecordTab = tabs.indexOfComponent(frame.getActionPanel());
-				if (currentRecordTab < 0 || tabs.getSelectedIndex() == currentRecordTab
-					|| !frame.gameHandler.getGame().isRecording() || !frame.character.isDoRecord()
-					|| frame.singleButtonManager.hasMandatoryShowing()) {
-					updateRecordTab();
-					return;
-				}
-				recordTabBlinkOn = !recordTabBlinkOn;
-				tabs.setBackgroundAt(currentRecordTab, recordTabBlinkOn ? RECORD_TAB_ALERT_COLOR : null);
-			});
-		}
-		if (!recordTabBlinkTimer.isRunning()) recordTabBlinkTimer.start();
 	}
 
 	private void updateChitTab() {
