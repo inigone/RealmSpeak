@@ -967,6 +967,9 @@ public class TreasureSetupCardView extends JComponent {
 			
 			view.addMouseListener(mil);
 			view.addMouseMotionListener(mil);
+			addWindowListener(new WindowAdapter() {
+				public void windowActivated(WindowEvent e) { view.repaint(); }
+			});
 		}
 		public void cleanup() {
 			view.removeMouseListener(mil);
