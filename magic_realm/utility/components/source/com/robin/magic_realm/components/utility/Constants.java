@@ -1059,15 +1059,10 @@ public class Constants {
 	public static final String SR_OPT_REGROUPING = "Regrouping";
 	
 	// Guilds
-	public static final String GUILDS_QUESTS_FOR_MEMBERS_ONLY = "GuildsQuestsForMembersOnly";
-	public static final String GUILDS_JOIN_REQUIREMENT = "GuildsJoinRequirement";
-	public static final String GUILDS_LEAVING = "GuildsLeaving";
-	public static final String GUILDS_HIDEOUT = "GuildsHideout";
-	public static final String GUILDS_NO_SERVICES = "GuildsNoServices";
-	public static final String GUILDS_NO_ADVANCEMENT_SERVICE = "GuildsNoAdvancementService";
-	public static final String GUILDS_LOOSE_BENEFITS = "GuildsLooseBenefits";
-	public static final String GUILDS_BENEFITS = "GuildsBenefits";
-	public static final String GUILDS_FINAL_BENEFIT = "GuildsFinalBenefit";
+
+
+
+
 
 
 

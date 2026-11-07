@@ -636,9 +636,7 @@ public class CharacterEditRibbon extends JPanel {
 				character.setCurrentGuild(chosenGuild.getThisAttribute(RealmComponent.GUILD));
 				character.setCurrentGuildLevel(guildLevel);
 			}
-			if (HostPrefWrapper.findHostPrefs(character.getGameData()).hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {
-				character.discardNonEligibleGuildQuests();
-			}
+			character.discardNonEligibleGuildQuests();
 		}
 	}
 	private GuildLevel chooseGuildLevel() {

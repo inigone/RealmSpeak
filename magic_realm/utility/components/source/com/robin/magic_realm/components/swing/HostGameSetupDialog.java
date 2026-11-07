@@ -30,7 +30,6 @@ public class HostGameSetupDialog extends AggressiveDialog {
 	private static final String COMBAT_RULES2_TAB = "Combat Weapon Rules";	
 	private static final String EXPANDING_REALM_TAB = "Expanded Realm";
 	private static final String QUESTS_AND_VP = "Quests and VPs";
-	private static final String GUILDS = "Guilds";
 	
 	private static final String OPTIONAL_CHAR_RULES_TAB = "Characters";
 	private static final String REVISED_RULES_TAB = "Revised Rules";
@@ -1216,16 +1215,10 @@ public class HostGameSetupDialog extends AggressiveDialog {
 		newOptionPane.addOption(QUESTS_AND_VP,new GameOption(Constants.EXP_BOUNTY_POINTS_FOR_DISCOVERIES,"BOUNTY POINTS FOR DISCOVERIES (Book of Quests Variant) - A character gains points for recording certain discoveries.",false));
 		newOptionPane.addOption(QUESTS_AND_VP,new GameOption(Constants.HOUSE3_QUEST_HAND_LIMIT_ONE,"QUEST LIMIT ONE - Hand card size limit for quests is always one.",false));
 		
-		newOptionPane.setTabHtmlDescription(GUILDS,"<html><body><font face=\"Helvetica, Arial, sans-serif\">Guilds</font></body></html>");
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY,"QUESTS FOR MEMBERS ONLY - Characters can only draw guild quests, if already member of the corresponding guild.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_JOIN_REQUIREMENT,"JOIN REQUIREMENT - Characters must fulfill a requirement to join a guild.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_LEAVING,"LEAVING - Characters can leave a guild.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_HIDEOUT,"HIDEOUT - Characters are safe at guilds, if you are a member (always hidden at the start of a combat).",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_NO_SERVICES,"NO SERVICES - Guild do not provide any services.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_NO_ADVANCEMENT_SERVICE,"NO ADVANCEMENT SERVICE - Characters cannot pay for guild level advancement.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_LOOSE_BENEFITS,"LOOSE BENEFITS - If character looses a guild level or exits a guild, corresponding guild benefits are lost.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_BENEFITS,"BENEFITS 1+2 - Characters can get benefits for guild level one and two.",false));
-		newOptionPane.addOption(GUILDS,new GameOption(Constants.GUILDS_FINAL_BENEFIT,"FINAL BENEFIT - Only a single character can hold the final benefit.",false));
+
+
+
+
 
 
 

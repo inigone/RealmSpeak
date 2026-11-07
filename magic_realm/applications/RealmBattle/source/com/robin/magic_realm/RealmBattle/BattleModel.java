@@ -525,7 +525,6 @@ public class BattleModel {
 	}
 	
 	public void checkForGuildHideout() {
-		if (!hostPrefs.hasPref(Constants.GUILDS_HIDEOUT)) return;
 		RealmComponent guild = null;
 		if (battleLocation.hasClearing()) {
 			guild = battleLocation.clearing.getGuild();
@@ -533,7 +532,7 @@ public class BattleModel {
 		if (guild==null) return;
 		for (CharacterChitComponent rc : getAllParticipatingCharacters()) {
 			CharacterWrapper character = new CharacterWrapper(rc.getGameObject());
-			if (character.isGuildMember(guild.getGameObject().getThisAttribute(RealmComponent.GUILD))) {
+			if (character.isGuildMember(guild.getGameObject().getThisAttribute(RealmComponent.GUILD)) && character.getCurrentGuildLevel()>=1) {
 				character.setHidden(true);
 			}
 		}

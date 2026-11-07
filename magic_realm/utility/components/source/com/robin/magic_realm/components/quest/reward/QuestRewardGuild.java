@@ -5,9 +5,7 @@ import javax.swing.JFrame;
 import com.robin.game.objects.GameObject;
 import com.robin.magic_realm.components.quest.QuestConstants;
 import com.robin.magic_realm.components.store.GuildStore;
-import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
-import com.robin.magic_realm.components.wrapper.HostPrefWrapper;
 
 public class QuestRewardGuild extends QuestReward {
 	public static final String GUILD = "_guild";
@@ -27,30 +25,21 @@ public class QuestRewardGuild extends QuestReward {
 	}
 
 	public void processReward(JFrame frame,CharacterWrapper character) {
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
 		if (getGuildName().matches(QuestConstants.REMOVE)) {
 			character.clearGuild();
-			if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {
-				character.discardNonEligibleGuildQuests();
-			}
-			if (hostPrefs.hasPref(Constants.GUILDS_LOOSE_BENEFITS)) {
-				GuildStore guild = character.getCurrentGuildStore();
-				guild.unapplyAllGuildBenefits(frame, character);
-			}
+			character.discardNonEligibleGuildQuests();
+			GuildStore guild = character.getCurrentGuildStore();
+			guild.unapplyAllGuildBenefits(frame, character);
 			return;
 		}
 		if (!getGuildName().matches(QuestConstants.CURRENT)) {
 			if (resetGuildLevelForGuildChange() && !getGuildName().matches(character.getCurrentGuild())) {
 				character.setCurrentGuildLevel(0);
-				if (hostPrefs.hasPref(Constants.GUILDS_LOOSE_BENEFITS)) {
-					GuildStore guild = character.getCurrentGuildStore();
-					guild.unapplyAllGuildBenefits(frame, character);
-				}
+				GuildStore guild = character.getCurrentGuildStore();
+				guild.unapplyAllGuildBenefits(frame, character);
 			}
 			character.setCurrentGuild(getGuildName());
-			if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {
-				character.discardNonEligibleGuildQuests();
-			}
+			character.discardNonEligibleGuildQuests();
 		}
 		
 		switch (getGuildChange()) {
@@ -59,20 +48,16 @@ public class QuestRewardGuild extends QuestReward {
 					return;
 				}
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()+1);
-				if (hostPrefs.hasPref(Constants.GUILDS_BENEFITS) || character.getCurrentGuildLevel()==3) {
-					GuildStore guild = character.getCurrentGuildStore();
-					guild.applyGuildBenefit(frame,character,character.getCurrentGuildLevel());
-				}
+				GuildStore guildStore = character.getCurrentGuildStore();
+				guildStore.applyGuildBenefit(frame,character,character.getCurrentGuildLevel());
 				break;
 			case Decrease:
 				if (character.getCurrentGuildLevel()<=0) {
 					return;
 				}
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()-1);
-				if (hostPrefs.hasPref(Constants.GUILDS_LOOSE_BENEFITS)) {
-					GuildStore guild = character.getCurrentGuildStore();
-					guild.unapplyGuildBenefit(frame,character,character.getCurrentGuildLevel()+1);
-				}
+				guildStore = character.getCurrentGuildStore();
+				guildStore.unapplyGuildBenefit(frame,character,character.getCurrentGuildLevel()+1);
 				break;
 			case Set:
 				int lvlBefore = character.getCurrentGuildLevel();
@@ -83,22 +68,18 @@ public class QuestRewardGuild extends QuestReward {
 				} else {
 					character.setCurrentGuildLevel(getGuildLevel());
 				}
-				if (hostPrefs.hasPref(Constants.GUILDS_LOOSE_BENEFITS) || character.getCurrentGuildLevel()==3) {
-					if (lvlBefore>character.getCurrentGuildLevel()) {
-						GuildStore guild = character.getCurrentGuildStore();
-						while (lvlBefore>character.getCurrentGuildLevel()) {
-							guild.unapplyGuildBenefit(frame,character,lvlBefore);
-							lvlBefore--;
-						}
+				if (lvlBefore>character.getCurrentGuildLevel()) {
+					GuildStore guildStore = character.getCurrentGuildStore();
+					while (lvlBefore>character.getCurrentGuildLevel()) {
+						guildStore.unapplyGuildBenefit(frame,character,lvlBefore);
+						lvlBefore--;
 					}
 				}
-				if (hostPrefs.hasPref(Constants.GUILDS_BENEFITS) || character.getCurrentGuildLevel()==3) {
-					if (lvlBefore<character.getCurrentGuildLevel()) {
-						GuildStore guild = character.getCurrentGuildStore();
-						while (lvlBefore<character.getCurrentGuildLevel()) {
-							guild.applyGuildBenefit(frame,character,lvlBefore+1);
-							lvlBefore++;
-						}
+				if (lvlBefore<character.getCurrentGuildLevel()) {
+					GuildStore guildStore = character.getCurrentGuildStore();
+					while (lvlBefore<character.getCurrentGuildLevel()) {
+						guildStore.applyGuildBenefit(frame,character,lvlBefore+1);
+						lvlBefore++;
 					}
 				}
 			case NoChange:

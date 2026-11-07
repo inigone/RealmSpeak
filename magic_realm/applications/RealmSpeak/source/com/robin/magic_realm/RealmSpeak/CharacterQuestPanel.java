@@ -280,7 +280,7 @@ public class CharacterQuestPanel extends CharacterFramePanel {
 			boolean gameStarted = getGame().getGameStarted();
 			boolean isBirdsong = getGameHandler().getGame().isRecording();
 			activateQuestButton.setEnabled(gameStarted && selQuest != null && selQuest.getState() == QuestState.Assigned && !selQuest.isAllPlay()
-					&& (!hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY) || selQuest.getGuild()==null || selQuest.getGuild().toLowerCase().matches(getCharacter().getCurrentGuild().toLowerCase())));
+					&& (selQuest.getGuild()==null || selQuest.getGuild().toLowerCase().matches(getCharacter().getCurrentGuild().toLowerCase())));
 			TileLocation loc = getCharacter().getCurrentLocation();
 			
 			boolean canDiscardQuests = !getCharacter().alreadyDiscardedQuests() && gameStarted;
@@ -299,7 +299,7 @@ public class CharacterQuestPanel extends CharacterFramePanel {
 			drawQuestsButton.setEnabled(isBirdsong && hasAvailableSlots && getCharacter().isCharacter() &&
 					((hostPrefs.hasPref(Constants.QST_QUEST_CARDS) && characterIsAtDwelling)
 							|| (hostPrefs.isUsingGuildQuests() && characterIsAtDwelling && (hostPrefs.hasPref(Constants.HOUSE3_GUILD_QUESTS_ADD_QTR) || hostPrefs.hasPref(Constants.HOUSE3_GUILD_QUESTS_ADD_SR)))
-							|| (hostPrefs.isUsingGuildQuests() && characterIsAtGuild && (!hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY) || characterIsMemberOfGuild))));
+							|| (hostPrefs.isUsingGuildQuests() && characterIsAtGuild && characterIsMemberOfGuild)));
 		}
 	}
 

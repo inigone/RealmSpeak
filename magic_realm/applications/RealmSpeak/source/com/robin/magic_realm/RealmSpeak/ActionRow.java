@@ -2635,7 +2635,6 @@ public class ActionRow {
 	private static final String TRADE_REPAIR_BLACKSMITH = "Repair Armor (Blacksmith)";
 	private static final String TRADE_CLERIC = "Cleric Services";
 	private static final String TRADE_JOIN = "Join Guild";
-	private static final String TRADE_LEAVE = "Leave Guild";
 	private static final String TRADE_SERVICES = "Guild Services";
 	private void doTradeAction() {
 		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
@@ -2657,13 +2656,8 @@ public class ActionRow {
 						if (character.isGuildMember(rc)) {
 							key = chooser.generateOption(TRADE_SERVICES);
 						}
-						else if ((character.getCurrentGuild()==null && !character.hasGuildJoinRequirement()) || hostPrefs.hasPref(Constants.GUILDS_LEAVING)) {
+						else if (character.getCurrentGuild()==null && !character.hasGuildJoinRequirement()) {
 							key = chooser.generateOption(TRADE_JOIN);
-						}
-						else if (hostPrefs.hasPref(Constants.GUILDS_LEAVING) && (character.getCurrentGuild()!=null || character.hasGuildJoinRequirement())) {
-							if (character.getCurrentGuild(false).matches(rc.getGameObject().getThisAttribute(RealmComponent.GUILD))) {
-								key = chooser.generateOption(TRADE_LEAVE);
-							}
 						}
 						if (key!=null) {
 							chooser.addRealmComponentToOption(key,rc,RealmComponentOptionChooser.DisplayOption.Darkside);
@@ -2730,31 +2724,13 @@ public class ActionRow {
 				}
 				else if (trader.isGuild() && selText.equals(TRADE_JOIN)) {
 					character.setCurrentGuild(trader.getGameObject().getThisAttribute(RealmComponent.GUILD));
-					if (hostPrefs.hasPref(Constants.GUILDS_JOIN_REQUIREMENT)) {
-						character.setGuildJoinRequirement(true);
-						result = "Accepted the guild join requirement of "+trader.getGameObject().getName();
-					} else {
-						character.setCurrentGuildLevel(0);
-						result = "Joined the "+trader.getGameObject().getName();
-					}
-					if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {
-						character.discardNonEligibleGuildQuests();
-					}
-				}
-				else if (trader.isGuild() && selText.equals(TRADE_LEAVE)) {
-					character.clearGuild();
-					result = "Left the "+trader.getGameObject().getName();
-					if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {
-						character.discardNonEligibleGuildQuests();
-					}
+					character.setGuildJoinRequirement(true);
+					result = "Accepted the guild join requirement of "+trader.getGameObject().getName();
+					character.discardNonEligibleGuildQuests();
 				}
 				else if (trader.isGuild() && selText.equals(TRADE_SERVICES)) {
 					GuildStore store = Store.getGuildStore((GuildChitComponent)trader,character);
-					if (hostPrefs.hasPref(Constants.GUILDS_NO_SERVICES)) {
-						JOptionPane.showMessageDialog(gameHandler.getMainFrame(),"No Guild Services","Store Not Available!",JOptionPane.PLAIN_MESSAGE,trader.getIcon());
-						completed = false;
-					}
-					else if (store!=null && store.canUseStore()) {
+					if (store!=null && store.canUseStore()) {
 						result = store.doService(gameHandler.getMainFrame());
 						if (result==null) completed = false;
 					}

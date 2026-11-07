@@ -16,11 +16,8 @@ import com.robin.magic_realm.components.wrapper.HostPrefWrapper;
 
 public class FightersGuild extends GuildStore {
 	
-	private static int FAME_PRICE = 60;
-	
 	private static String REST_SERVICE = "Rest all fatigued FIGHT/MOVE chits for 5 gold.";
 	private static String REPAIR_SERVICE = "Repair all active armor for 10 gold.";
-	private static String ADVANCEMENT_SERVICE = "Pay "+FAME_PRICE+" FAME to advance to next level.";
 	public static String JOIN_GUILD_LOG_MESSAGE = "Fulfilled the join requirement for the Fighters Guild.";
 	
 	private ArrayList<CharacterActionChitComponent> restableChits;
@@ -54,21 +51,13 @@ public class FightersGuild extends GuildStore {
 	}
 	protected String doGuildService(JFrame frame,int level) {
 		int gold = (int)character.getGold();
-		int fame = (int)character.getFame();
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-		
 		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Which service?",getTraderName()+" Services",true);
-		if (!hostPrefs.hasPref(Constants.GUILDS_NO_ADVANCEMENT_SERVICE)) {
-			if (level<3) chooser.addSelectionObject(ADVANCEMENT_SERVICE,fame>=FAME_PRICE);
-			updateButtonChooser(chooser,level);
-		}
 		if (level>=1) chooser.addSelectionObject(REST_SERVICE,(gold>=5) && !restableChits.isEmpty());
 		if (level>=2) chooser.addSelectionObject(REPAIR_SERVICE,(gold>=10) && !repairableArmor.isEmpty());
 		chooser.setVisible(true);
-		
+
 		String selected = (String)chooser.getSelectedObject();
 		if (selected!=null) {
-			boolean freeAdvancement = isFreeAdvancement(selected);
 			if (REST_SERVICE.equals(selected)) {
 				character.addGold(-5);
 				for (CharacterActionChitComponent chit:restableChits) {
@@ -83,21 +72,8 @@ public class FightersGuild extends GuildStore {
 				}
 				return "Repaired all active armor.";
 			}
-			else if (freeAdvancement || ADVANCEMENT_SERVICE.equals(selected)) {
-				if (!freeAdvancement) character.addFame(-FAME_PRICE);
-				int newLevel = character.getCurrentGuildLevel()+1;
-				character.setCurrentGuildLevel(newLevel);
-				chooseFriendlinessGain(frame);
-				if (newLevel!=3 && hostPrefs.hasPref(Constants.GUILDS_BENEFITS)) {
-					applyGuildBenefit(frame,character,newLevel);
-				}
-				if (newLevel==3) {
-					applyGuildBenefit3(frame,character);
-				}
-				return "Advanced to "+character.getCurrentGuildLevelName()+"!";
-			}
 		}
-		
+
 		return null;
 	}
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
@@ -126,14 +102,11 @@ public class FightersGuild extends GuildStore {
 	}
 	public void applyGuildBenefit3(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3")) {
-			HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-			if (hostPrefs.hasPref(Constants.GUILDS_FINAL_BENEFIT)) {
-				for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
-					String guildLivingCharacter = new CharacterWrapper(livingCharacter).getCurrentGuild();
-					if (guildLivingCharacter!=null && guildLivingCharacter.matches(FIGHTERS_GUILD)) {
-						if (livingCharacter.getId()!=character.getGameObject().getId() && (livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
-							return;
-						}
+			for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
+				String guildLivingCharacter = new CharacterWrapper(livingCharacter).getCurrentGuild();
+				if (guildLivingCharacter!=null && guildLivingCharacter.matches(FIGHTERS_GUILD)) {
+					if (livingCharacter.getId()!=character.getGameObject().getId() && (livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
+						return;
 					}
 				}
 			}

@@ -17,12 +17,9 @@ import com.robin.magic_realm.components.wrapper.*;
 
 public class MagicGuild extends GuildStore {
 	
-	private static int GT_PRICE = 2;
-	
 	private static String CURE_SERVICE = "Cancel curse or spell for 5 gold.";
 	private static String CURE_FREE_SERVICE = "Cancel curse or spell for free.";
 	private static String GENERATE_COLOR_SERVICE = "Generate any color for a day for 5 gold.";
-	private static String ADVANCEMENT_SERVICE = "Pay "+GT_PRICE+" Great Treasures to advance to next level.";
 	public static String JOIN_GUILD_TEXT = "You have fulfilled the join requirement for the Magic Guild. You are now a member of the Magic Guild.";
 	public static String JOIN_GUILD_TITLE = "Joining Magic Guild";
 	
@@ -126,23 +123,15 @@ public class MagicGuild extends GuildStore {
 	}
 	protected String doGuildService(JFrame frame,int level) {
 		int gold = (int)character.getGold();
-		int gtCount = greatTreasures.size();
 		int activeCursesOrSpells = activeCurses.size() + bewitchingSpells.size();
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-		
 		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Which service?",getTraderName()+" Services",true);
-		if (!hostPrefs.hasPref(Constants.GUILDS_NO_ADVANCEMENT_SERVICE)) {
-			if (level<3) chooser.addSelectionObject(ADVANCEMENT_SERVICE,gtCount>=GT_PRICE);
-			updateButtonChooser(chooser,level);
-		}
 		if (level==1) chooser.addSelectionObject(CURE_SERVICE,(gold>=5) && activeCursesOrSpells>0);
 		if (level>=2) chooser.addSelectionObject(CURE_FREE_SERVICE,(gold>=10) && activeCursesOrSpells>0);
 		if (level>=2) chooser.addSelectionObject(GENERATE_COLOR_SERVICE,gold>=5);
 		chooser.setVisible(true);
-		
+
 		String selected = (String)chooser.getSelectedObject();
 		if (selected!=null) {
-			boolean freeAdvancement = isFreeAdvancement(selected);
 			if (CURE_SERVICE.equals(selected)) {
 				character.addGold(-5);
 				return cureSpellOrCurse(frame);
@@ -154,24 +143,8 @@ public class MagicGuild extends GuildStore {
 				character.addGold(-5);
 				return generateColor(frame);
 			}
-			else if (freeAdvancement || ADVANCEMENT_SERVICE.equals(selected)) {
-				if (!freeAdvancement && !madePayment()) {
-					return null;
-				}
-				
-				int newLevel = character.getCurrentGuildLevel()+1;
-				character.setCurrentGuildLevel(newLevel);
-				chooseFriendlinessGain(frame);
-				if (newLevel!=3 && hostPrefs.hasPref(Constants.GUILDS_BENEFITS)) {
-					applyGuildBenefit(frame,character,newLevel);
-				}
-				if (newLevel==3) {
-					applyGuildBenefit3(frame,character);
-				}
-				return "Advanced to "+character.getCurrentGuildLevelName()+"!";
-			}
 		}
-		
+
 		return null;
 	}
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
@@ -200,14 +173,11 @@ public class MagicGuild extends GuildStore {
 	}
 	public void applyGuildBenefit3(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3")) {
-			HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-			if (hostPrefs.hasPref(Constants.GUILDS_FINAL_BENEFIT)) {
-				for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
-					String guildLivingCharacter = new CharacterWrapper(livingCharacter).getCurrentGuild();
-					if (guildLivingCharacter!=null && guildLivingCharacter.matches(MAGIC_GUILD)) {
-						if (livingCharacter.getId()!=character.getGameObject().getId() && (livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
-							return;
-						}
+			for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
+				String guildLivingCharacter = new CharacterWrapper(livingCharacter).getCurrentGuild();
+				if (guildLivingCharacter!=null && guildLivingCharacter.matches(MAGIC_GUILD)) {
+					if (livingCharacter.getId()!=character.getGameObject().getId() && (livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
+						return;
 					}
 				}
 			}

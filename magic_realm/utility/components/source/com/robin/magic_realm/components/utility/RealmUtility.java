@@ -608,9 +608,7 @@ public class RealmUtility {
 		}
 	}
 	public static void passOnFinalGuildBenefit(CharacterWrapper character) {
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-		if (hostPrefs.hasPref(Constants.GUILDS_FINAL_BENEFIT)) {
-			if (character.getCurrentGuild()!=null && (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
+		if (character.getCurrentGuild()!=null && (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
 				character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR);
 				String guild = character.getCurrentGuild();
 				HashLists<CharacterWrapper,Integer> possibleSuccessors = new HashLists<>();
