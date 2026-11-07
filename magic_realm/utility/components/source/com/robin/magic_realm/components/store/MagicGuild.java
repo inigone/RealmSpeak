@@ -241,15 +241,7 @@ public class MagicGuild extends GuildStore {
 		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
 		if (character.hasGuildJoinRequirement()) {
 			character.setGuildJoinRequirement(false);
-			if (hostPrefs.hasPref(Constants.GUILDS_START_LEVEL)) {
-				character.setCurrentGuildLevel(0);
-			}
-			else {
-				character.setCurrentGuildLevel(1);
-				if (hostPrefs.hasPref(Constants.GUILDS_BENEFITS)) {
-					character.getCurrentGuildStore().applyGuildBenefit1(frame, character);
-				}
-			}
+			character.setCurrentGuildLevel(0);
 			return true;
 		}
 		return false;

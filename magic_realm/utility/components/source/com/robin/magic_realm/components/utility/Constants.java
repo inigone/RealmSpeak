@@ -1068,12 +1068,9 @@ public class Constants {
 	public static final String GUILDS_LOOSE_BENEFITS = "GuildsLooseBenefits";
 	public static final String GUILDS_BENEFITS = "GuildsBenefits";
 	public static final String GUILDS_FINAL_BENEFIT = "GuildsFinalBenefit";
-	public static final String GUILDS_START_LEVEL = "GuildsStartLevel";
-	public static final String GUILDS_MIN_LVL_0 = "GuildsMinLevel0";
-	public static final String GUILDS_MIN_LVL_1 = "GuildsMinLevel1";
-	public static final String GUILDS_MAX_LVL_3 = "GuildsMaxLevel3";
-	public static final String GUILDS_FACE_UP = "GuildsFaceUp";
-	
+
+
+
 	// Events
 	public static final String SR_EVENTS = "Events";
 	public static final String EVENT = "event";

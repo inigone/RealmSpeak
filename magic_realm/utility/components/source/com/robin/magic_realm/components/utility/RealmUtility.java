@@ -182,7 +182,7 @@ public class RealmUtility {
 	public static int getRelationshipBetween(CharacterWrapper character,RealmComponent trader) {
 		int relationship;
 		if (trader.isGuild()) {
-			relationship = character.isGuildMember(trader) ? character.getCurrentGuildLevel()-1 : -1; // UNFRIENDLY if not a guild member.
+			relationship = character.isGuildMember(trader) ? Math.max(RelationshipType.NEUTRAL, character.getCurrentGuildLevel()-1) : RelationshipType.UNFRIENDLY;
 		}
 		else if (trader.isTraveler()) {
 			relationship = 0;
