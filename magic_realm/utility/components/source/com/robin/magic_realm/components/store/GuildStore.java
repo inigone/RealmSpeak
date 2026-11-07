@@ -14,10 +14,7 @@ import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
 public abstract class GuildStore extends Store {
 	
-	protected static String FREE_ADVANCEMENT = "Advance to next level by giving item to guild: ";
-	
 	protected CharacterWrapper character;
-	protected ArrayList<GameObject> advancementObjects; 
 	
 	protected abstract void setupGuildSpecific();
 	protected abstract String doGuildService(JFrame frame,int level);
@@ -60,33 +57,7 @@ public abstract class GuildStore extends Store {
 	}
 
 	private void setupStore() {
-		advancementObjects = new ArrayList<GameObject>();
-		for (GameObject go:character.getInventory()) {
-			if (go.hasThisAttribute(Constants.ADVANCEMENT)) {
-				advancementObjects.add(go);
-			}
-		}
 		setupGuildSpecific();
-	}
-	
-	protected boolean isFreeAdvancement(String selected) {
-		if (selected.startsWith(FREE_ADVANCEMENT)) {
-			String item = selected.substring(FREE_ADVANCEMENT.length());
-			for (GameObject go:advancementObjects) {
-				if (item.equals(go.getName())) {
-					go.getHeldBy().remove(go); // Make object disappear
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	protected void updateButtonChooser(ButtonOptionDialog chooser,int level) {
-		if (level>=3) return;
-		for (GameObject go:advancementObjects) {
-			chooser.addSelectionObject(FREE_ADVANCEMENT+go.getName());
-		}
 	}
 	
 	public String doService(JFrame frame) {

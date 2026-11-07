@@ -191,7 +191,7 @@ public class QuestDeck extends GameObjectWrapper {
 					return null;
 				}
 				
-				if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY) && card.getGuild()!=null) {
+				if (card.getGuild()!=null) {
 					boolean characterIsMemberOfCorrectGuild = guildName!=null && character.getCurrentGuild()!=null && loc.clearing.getGuild().getGameObject().getThisAttribute(RealmComponent.GUILD).toLowerCase().matches(character.getCurrentGuild().toLowerCase());
 					if (!characterIsMemberOfCorrectGuild) {
 						discardCard(card);
