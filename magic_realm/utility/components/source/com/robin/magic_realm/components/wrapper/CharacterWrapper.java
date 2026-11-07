@@ -8428,9 +8428,8 @@ public class CharacterWrapper extends GameObjectWrapper {
     	return getString(CURRENT_GUILD);
     }
     public void setCurrentGuildLevel(int level) {
-    	if (level<=3) {
-    		RealmUtility.passOnFinalGuildBenefit(this);
-    	}
+    	level = Math.max(0, Math.min(level, 3));
+    	RealmUtility.passOnFinalGuildBenefit(this);
     	setInt(CURRENT_GUILD_LEVEL,level);
     }
     public int getCurrentGuildLevel() {

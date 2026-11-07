@@ -2734,16 +2734,7 @@ public class ActionRow {
 						character.setGuildJoinRequirement(true);
 						result = "Accepted the guild join requirement of "+trader.getGameObject().getName();
 					} else {
-						if (hostPrefs.hasPref(Constants.GUILDS_START_LEVEL)) {
-							character.setCurrentGuildLevel(0);
-						}
-						else {
-							character.setCurrentGuildLevel(1);
-							if (hostPrefs.hasPref(Constants.GUILDS_BENEFITS)) {
-								GuildStore store = Store.getGuildStore((GuildChitComponent)trader,character);
-								store.applyGuildBenefit1(gameHandler.getMainFrame(), character);
-							}
-						}
+						character.setCurrentGuildLevel(0);
 						result = "Joined the "+trader.getGameObject().getName();
 					}
 					if (hostPrefs.hasPref(Constants.GUILDS_QUESTS_FOR_MEMBERS_ONLY)) {

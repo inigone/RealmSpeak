@@ -41,11 +41,7 @@ public class QuestRewardGuild extends QuestReward {
 		}
 		if (!getGuildName().matches(QuestConstants.CURRENT)) {
 			if (resetGuildLevelForGuildChange() && !getGuildName().matches(character.getCurrentGuild())) {
-				if (hostPrefs.hasPref(Constants.GUILDS_START_LEVEL)) {
-					character.setCurrentGuildLevel(0);
-				} else {
-					character.setCurrentGuildLevel(1);
-				}
+				character.setCurrentGuildLevel(0);
 				if (hostPrefs.hasPref(Constants.GUILDS_LOOSE_BENEFITS)) {
 					GuildStore guild = character.getCurrentGuildStore();
 					guild.unapplyAllGuildBenefits(frame, character);
@@ -59,7 +55,7 @@ public class QuestRewardGuild extends QuestReward {
 		
 		switch (getGuildChange()) {
 			case Increase:
-				if (hostPrefs.hasPref(Constants.GUILDS_MAX_LVL_3) && character.getCurrentGuildLevel()>=3) {
+				if (character.getCurrentGuildLevel()>=3) {
 					return;
 				}
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()+1);
@@ -69,10 +65,7 @@ public class QuestRewardGuild extends QuestReward {
 				}
 				break;
 			case Decrease:
-				if (hostPrefs.hasPref(Constants.GUILDS_MIN_LVL_1) && character.getCurrentGuildLevel()<=1) {
-					return;
-				}
-				if (hostPrefs.hasPref(Constants.GUILDS_MIN_LVL_0) && character.getCurrentGuildLevel()<=0) {
+				if (character.getCurrentGuildLevel()<=0) {
 					return;
 				}
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()-1);
@@ -83,11 +76,9 @@ public class QuestRewardGuild extends QuestReward {
 				break;
 			case Set:
 				int lvlBefore = character.getCurrentGuildLevel();
-				if (hostPrefs.hasPref(Constants.GUILDS_MAX_LVL_3) && getGuildLevel()>=3) {
+				if (getGuildLevel()>=3) {
 					character.setCurrentGuildLevel(3);
-				} else if (hostPrefs.hasPref(Constants.GUILDS_MIN_LVL_1) && getGuildLevel()<=1) {
-					character.setCurrentGuildLevel(1);
-				} else if (hostPrefs.hasPref(Constants.GUILDS_MIN_LVL_0) && getGuildLevel()<=0) {
+				} else if (getGuildLevel()<=0) {
 					character.setCurrentGuildLevel(0);
 				} else {
 					character.setCurrentGuildLevel(getGuildLevel());

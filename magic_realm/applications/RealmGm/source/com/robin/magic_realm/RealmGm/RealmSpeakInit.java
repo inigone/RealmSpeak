@@ -168,14 +168,6 @@ public class RealmSpeakInit {
 			RealmUtility.doMatchGoldSpecials(data);
 		}
 		
-		if (hostPrefs.hasPref(Constants.GUILDS_FACE_UP)) {
-			GamePool pool = new GamePool(data.getGameObjects());
-			for (GameObject guild : pool.find(Constants.GUILD)) {
-				GuildChitComponent guildChit = (GuildChitComponent) RealmComponent.getRealmComponent(guild);
-				guildChit.setFaceUp();
-			}
-		}
-		
 		// Some items require a spell be cast (Flying Carpet)
 		doItemSpellCasting();
 		
