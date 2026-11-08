@@ -31,6 +31,7 @@ import com.robin.magic_realm.components.events.RealmEvents;
 import com.robin.magic_realm.components.quest.GamePhaseType;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
 import com.robin.magic_realm.components.swing.RealmLogWindow;
+import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.*;
 
@@ -377,6 +378,19 @@ public class RealmHostPanel extends JPanel {
 		}
 		logger.fine("Exiting updateGameState");
 	}
+	private void expireGuildTrainingBonus(CharacterWrapper character) {
+		String expiryAttr = character.getGameObject().getThisAttribute(Constants.GUILD_TRAINING_EXPIRES);
+		if (expiryAttr == null) return;
+		int expiryDay;
+		try { expiryDay = Integer.parseInt(expiryAttr); } catch (NumberFormatException e) { return; }
+		if (game.getDay() >= expiryDay) {
+			GuildStore guildStore = character.getCurrentGuildStore(false);
+			if (guildStore != null) {
+				guildStore.unapplyGuildTrainingBonus(null, character);
+			}
+			character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_EXPIRES);
+		}
+	}
 	private void updateGameStateRecording(RealmCalendar cal) { // BIRDSONG
 		logger.fine("BIRDSONG");
 		int recordingCount = 0;
@@ -462,6 +476,7 @@ public class RealmHostPanel extends JPanel {
 				else if (current!=null && !character.isGone()) {
 					// Setup BIRDSONG
 					character.setDoRecord(true);
+					expireGuildTrainingBonus(character);
 					character.setCurrentMonth(game.getMonth());
 					character.setCurrentDay(game.getDay());
 					character.setBasicPhases(cal.getBasicPhases(game.getMonth()));

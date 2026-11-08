@@ -134,6 +134,18 @@ public class FightersGuild extends GuildStore {
 		}
 	}
 	
+	public void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			character.getGameObject().addThisAttributeListItem(Constants.EXTRA_ACTIONS,"A");
+			character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
+	public void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			character.getGameObject().removeThisAttributeListItem(Constants.EXTRA_ACTIONS,"A");
+			character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
 	public boolean validateRequirementAndJoin(CharacterWrapper character, RealmComponent victim, boolean spellUsed) {
 		if (spellUsed) return false;
 		String nativeGroup = victim.getGameObject().getThisAttribute("native");

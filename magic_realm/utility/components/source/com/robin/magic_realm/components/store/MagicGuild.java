@@ -207,6 +207,18 @@ public class MagicGuild extends GuildStore {
 		}
 	}
 	
+	public void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:ReadRunes:all");
+			character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
+	public void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:ReadRunes:all");
+			character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
 	public boolean validateRequirementAndJoin(JFrame frame, CharacterWrapper character, GameObject spell) {
 		if (character.hasGuildJoinRequirement()) {
 			character.setGuildJoinRequirement(false);

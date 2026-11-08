@@ -49,6 +49,8 @@ public abstract class GuildStore extends Store {
 	public abstract void unapplyGuildBenefit2(JFrame frame, CharacterWrapper character);
 	public abstract void applyGuildBenefit3(JFrame frame, CharacterWrapper character);
 	public abstract void unapplyGuildBenefit3(JFrame frame, CharacterWrapper character);
+	public abstract void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
+	public abstract void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
 
 	public GuildStore(GuildChitComponent guild,CharacterWrapper character) {
 		super(guild);
