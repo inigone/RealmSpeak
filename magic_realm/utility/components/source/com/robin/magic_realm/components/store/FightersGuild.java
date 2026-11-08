@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import javax.swing.JFrame;
 
 import com.robin.game.objects.GameObject;
-import com.robin.general.swing.ButtonOptionDialog;
 import com.robin.magic_realm.components.*;
 import com.robin.magic_realm.components.attribute.Strength;
 import com.robin.magic_realm.components.utility.Constants;
@@ -14,13 +13,10 @@ import com.robin.magic_realm.components.utility.RealmUtility;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
 public class FightersGuild extends GuildStore {
-	
-	private static String REST_SERVICE = "Rest all fatigued FIGHT/MOVE chits for 5 gold.";
-	private static String REPAIR_SERVICE = "Repair all active armor for 10 gold.";
+
+	// Level 1+ REST service is now passive (3 REST actions per phase at the guild — see CharacterWrapper.getRestBonus)
+	// Level 2+ repair is auto-triggered at day-end when member stays at the guild (see RealmTurnPanel)
 	public static String JOIN_GUILD_LOG_MESSAGE = "Fulfilled the join requirement for the Fighters Guild.";
-	
-	private ArrayList<CharacterActionChitComponent> restableChits;
-	private ArrayList<ArmorChitComponent> repairableArmor;
 	
 	public FightersGuild(GuildChitComponent guild, CharacterWrapper character) {
 		super(guild, character);
@@ -34,46 +30,24 @@ public class FightersGuild extends GuildStore {
 			reasonStoreNotAvailable = "The "+getTraderName()+" does not like your DISGUST curse!";
 			return;
 		}
-		
-		restableChits = new ArrayList<CharacterActionChitComponent>();
-		if (!character.hasCurse(Constants.WITHER)) {
-			restableChits.addAll(character.getFatiguedChits());
-		}
-		
-		repairableArmor = new ArrayList<ArmorChitComponent>();
-		for(GameObject go:character.getActiveInventory()) {
-			RealmComponent rc = RealmComponent.getRealmComponent(go);
-			if (rc.isArmor()) {
-				repairableArmor.add((ArmorChitComponent)rc);
-			}
-		}
 	}
 	protected String doGuildService(JFrame frame,int level) {
-		int gold = (int)character.getGold();
-		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Which service?",getTraderName()+" Services",true);
-		if (level>=1) chooser.addSelectionObject(REST_SERVICE,(gold>=5) && !restableChits.isEmpty());
-		if (level>=2) chooser.addSelectionObject(REPAIR_SERVICE,(gold>=10) && !repairableArmor.isEmpty());
-		chooser.setVisible(true);
-
-		String selected = (String)chooser.getSelectedObject();
-		if (selected!=null) {
-			if (REST_SERVICE.equals(selected)) {
-				character.addGold(-5);
-				for (CharacterActionChitComponent chit:restableChits) {
-					chit.makeActive();
-				}
-				return "Rested all MOVE/FIGHT chits.";
-			}
-			else if (REPAIR_SERVICE.equals(selected)) {
-				character.addGold(-10);
-				for (ArmorChitComponent armor:repairableArmor) {
-					armor.setIntact(true);
-				}
-				return "Repaired all active armor.";
+		return null; // Level 1+ REST bonus is passive; Level 2+ armor repair triggers at day end
+	}
+	public String doGuildDayEndService(JFrame frame, CharacterWrapper character) {
+		if (character.getCurrentGuildLevel() < 2) return null;
+		ArrayList<ArmorChitComponent> damaged = new ArrayList<>();
+		for (GameObject go : character.getActiveInventory()) {
+			RealmComponent rc = RealmComponent.getRealmComponent(go);
+			if (rc.isArmor() && ((ArmorChitComponent)rc).isDamaged()) {
+				damaged.add((ArmorChitComponent)rc);
 			}
 		}
-
-		return null;
+		if (damaged.isEmpty()) return null;
+		for (ArmorChitComponent armor : damaged) {
+			armor.setIntact(true);
+		}
+		return "Fighters Guild: repaired "+damaged.size()+" damaged armor piece"+(damaged.size()==1?"":"s")+".";
 	}
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
