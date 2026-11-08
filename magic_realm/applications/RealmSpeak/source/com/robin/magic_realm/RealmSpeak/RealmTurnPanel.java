@@ -1509,7 +1509,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		if (guildName == null || current == null || current.clearing == null) return;
 		for (RealmComponent rc : current.clearing.getClearingComponents()) {
 			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
-				int expiryDay = game.getDay() + 14;
+				int expiryDay = game.getDay() + 15; // bonus applied at end of day N; first usable day N+1; 14 days = expires BIRDSONG of N+15
 				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_EXPIRES, String.valueOf(expiryDay));
 				GuildStore guildStore = character.getCurrentGuildStore(false);
 				if (guildStore != null) {
