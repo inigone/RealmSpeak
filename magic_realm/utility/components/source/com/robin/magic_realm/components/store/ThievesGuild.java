@@ -11,7 +11,6 @@ import com.robin.magic_realm.components.attribute.Strength;
 import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
-import com.robin.magic_realm.components.wrapper.HostPrefWrapper;
 
 public class ThievesGuild extends GuildStore {
 	
@@ -135,23 +134,26 @@ public class ThievesGuild extends GuildStore {
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
 			character.getGameObject().addThisAttributeListItem(Constants.EXTRA_ACTIONS,"H");
+			character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
 			character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_1");
 		}
 	}
 	public void unapplyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
 			character.getGameObject().removeThisAttributeListItem(Constants.EXTRA_ACTIONS,"H");
+			character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
 			character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_1");
 		}
 	}
 	public void applyGuildBenefit2(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_2")) {
-			character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:loot:all");
+			character.getGameObject().setThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
 			character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_2");
 		}
 	}
 	public void unapplyGuildBenefit2(JFrame frame, CharacterWrapper character) {
 		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_2")) {
+			character.getGameObject().removeThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
 			character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_2");
 		}
 	}
@@ -191,7 +193,6 @@ public class ThievesGuild extends GuildStore {
 	}
 	
 	public boolean validateRequirementAndJoin(CharacterWrapper character, GameObject loot) {
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
 		if (character.hasGuildJoinRequirement() && RealmComponent.getRealmComponent(loot).isTreasure()) {
 			character.setGuildJoinRequirement(false);
 			character.setCurrentGuildLevel(0);

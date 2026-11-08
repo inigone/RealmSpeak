@@ -208,7 +208,6 @@ public class MagicGuild extends GuildStore {
 	}
 	
 	public boolean validateRequirementAndJoin(JFrame frame, CharacterWrapper character, GameObject spell) {
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
 		if (character.hasGuildJoinRequirement()) {
 			character.setGuildJoinRequirement(false);
 			character.setCurrentGuildLevel(0);

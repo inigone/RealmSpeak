@@ -69,14 +69,14 @@ public class QuestRewardGuild extends QuestReward {
 					character.setCurrentGuildLevel(getGuildLevel());
 				}
 				if (lvlBefore>character.getCurrentGuildLevel()) {
-					GuildStore guildStore = character.getCurrentGuildStore();
+					guildStore = character.getCurrentGuildStore();
 					while (lvlBefore>character.getCurrentGuildLevel()) {
 						guildStore.unapplyGuildBenefit(frame,character,lvlBefore);
 						lvlBefore--;
 					}
 				}
 				if (lvlBefore<character.getCurrentGuildLevel()) {
-					GuildStore guildStore = character.getCurrentGuildStore();
+					guildStore = character.getCurrentGuildStore();
 					while (lvlBefore<character.getCurrentGuildLevel()) {
 						guildStore.applyGuildBenefit(frame,character,lvlBefore+1);
 						lvlBefore++;

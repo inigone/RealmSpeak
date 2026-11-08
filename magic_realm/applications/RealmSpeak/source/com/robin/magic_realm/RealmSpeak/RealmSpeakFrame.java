@@ -337,8 +337,12 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 		detail.setText(sb.toString());
 		JScrollPane sp = new JScrollPane(detail);
 		detail.setCaretPosition(0);
-		ComponentTools.lockComponentSize(sp,800,600);
-		JOptionPane.showMessageDialog(this,sp);
+		JDialog dialog = new JDialog(this,"Rules",true);
+		dialog.setContentPane(sp);
+		dialog.setSize(800,600);
+		dialog.setResizable(true);
+		dialog.setLocationRelativeTo(this);
+		dialog.setVisible(true);
 	}
 	private void showMemory() {
 		StringBuffer sb = new StringBuffer();
