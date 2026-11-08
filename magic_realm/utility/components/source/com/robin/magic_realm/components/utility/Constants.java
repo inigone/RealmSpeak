@@ -327,6 +327,7 @@ public class Constants {
 	public static final String TASK_COMPLETED = "task_completed";
 	public static final String GUILD_BENEFIT = "guild_benefit";
 	public static final String GUILD_BENEFIT_SUCESSOR = "guild_benefit_sucessor";
+	public static final String THIEVES_GUILD_PVP_STEAL = "thieves_guild_pvp_steal";
 	// Spoils of War needed action
 	public static final String SPOILS_ = "spoils_";
 	public static final String SPOILS_DONE = "spoils_done";						// A tag to indicate spoils processed already

@@ -62,7 +62,7 @@ public class RelationshipTable extends JTable {
 				boolean guild = ret.length>=4&&ret[3]!=null&&ret[3].matches(Constants.GUILD)?true:false;
 				int rel = 0;
 				if (guild) {
-					rel = character.isGuildMember(groupName.toLowerCase()) ? character.getCurrentGuildLevel()-1 : -1; // UNFRIENDLY if not a guild member.
+					rel = character.isGuildMember(groupName.toLowerCase()) ? Math.max(0, character.getCurrentGuildLevel()-1) : -1; // Level 0 = Neutral; non-members = UNFRIENDLY.
 				} else {
 					rel = character.getRelationship(relBlock,groupName,rovingNative);
 				}

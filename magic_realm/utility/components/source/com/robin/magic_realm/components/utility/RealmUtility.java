@@ -633,7 +633,6 @@ public class RealmUtility {
 						charactersWithMaxLevel.get(0).getGameObject().setThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR,guild);
 					}
 				}
-			}
 		}
 	}
 	public static Collection<GameObject> findInventory(RealmComponent victim) {

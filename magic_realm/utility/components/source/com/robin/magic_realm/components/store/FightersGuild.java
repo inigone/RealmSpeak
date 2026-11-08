@@ -12,7 +12,6 @@ import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.utility.RealmLogging;
 import com.robin.magic_realm.components.utility.RealmUtility;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
-import com.robin.magic_realm.components.wrapper.HostPrefWrapper;
 
 public class FightersGuild extends GuildStore {
 	
@@ -137,8 +136,9 @@ public class FightersGuild extends GuildStore {
 	
 	public boolean validateRequirementAndJoin(CharacterWrapper character, RealmComponent victim, boolean spellUsed) {
 		if (spellUsed) return false;
-		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(character.getGameData());
-		if (character.hasGuildJoinRequirement() && victim.isMonster() && ((MonsterChitComponent)victim).getVulnerability().equalTo(new Strength("H"))) {
+		String nativeGroup = victim.getGameObject().getThisAttribute("native");
+		boolean forbiddenGroup = "soldiers".equals(nativeGroup) || "guard".equals(nativeGroup);
+		if (character.hasGuildJoinRequirement() && victim.isNativeLeader() && !forbiddenGroup) {
 			character.setGuildJoinRequirement(false);
 			character.setCurrentGuildLevel(0);
 			return true;

@@ -4755,10 +4755,11 @@ public class CombatFrame extends JFrame {
 		TileLocation loc = currentBattleModel.getBattleLocation();
 		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(this,"Select victim to steal from:",true);
 		boolean noVictims = true;
+		boolean canStealFromCharacters = activeCharacter.getGameObject().hasThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
 		for (RealmComponent rc : loc.clearing.getClearingComponents()) {
 			if (rc.isHidden() && !activeCharacter.foundHiddenEnemy(rc.getGameObject())) continue;
 			if (rc.isCharacter() && (new CharacterWrapper(rc.getGameObject()).foundHiddenEnemy(activeCharacter.getGameObject()))) continue;
-			if (rc.isCharacter() || rc.isHiredLeader()) {
+			if (rc.isHiredLeader() || (rc.isCharacter() && canStealFromCharacters)) {
 				chooser.addRealmComponent(rc,rc.getGameObject().getName());
 				noVictims = false;
 			}
