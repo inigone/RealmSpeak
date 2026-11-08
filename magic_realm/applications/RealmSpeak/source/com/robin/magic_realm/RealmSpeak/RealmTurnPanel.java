@@ -20,6 +20,7 @@ import com.robin.magic_realm.components.quest.CharacterActionType;
 import com.robin.magic_realm.components.quest.GamePhaseType;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
 import com.robin.magic_realm.components.swing.*;
+import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.table.Loot;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.*;
@@ -1445,6 +1446,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					}
 				}
 			}
+			checkGuildTrainingBonus(current);
 		}
 
 		// PCT-Flow: step 15 — release any remaining followers now that step 14 (the PC's own EOCTMS,
@@ -1483,6 +1485,24 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		getGameHandler().submitChanges();
 	}
 	
+	private void checkGuildTrainingBonus(TileLocation current) {
+		CharacterWrapper character = getCharacter();
+		String guildName = character.getCurrentGuild();
+		if (guildName == null || current == null || current.clearing == null) return;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
+				int expiryDay = game.getDay() + 14;
+				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_EXPIRES, String.valueOf(expiryDay));
+				GuildStore guildStore = character.getCurrentGuildStore(false);
+				if (guildStore != null) {
+					guildStore.applyGuildTrainingBonus(getMainFrame(), character);
+					getGameHandler().broadcast(character.getGameObject().getName(),
+						"Trains at the "+guildName+"; bonus expires on day "+expiryDay+".");
+				}
+				break;
+			}
+		}
+	}
 	private class ActionIconRenderer extends DefaultTableCellRenderer {
 		public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
 			setHorizontalAlignment(SwingConstants.CENTER);

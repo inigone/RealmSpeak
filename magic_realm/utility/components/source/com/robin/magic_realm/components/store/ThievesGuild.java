@@ -192,6 +192,26 @@ public class ThievesGuild extends GuildStore {
 		}
 	}
 	
+	public void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			// Level 0 only - Level 1+ already has permanent -1:Stealing:all from benefit1
+			if (character.getCurrentGuildLevel() == 0) {
+				character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod");
+			}
+			character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
+	public void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
+			// Only remove DIEMOD if we actually added it (tracked by _diemod flag)
+			if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod")) {
+				character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+				character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod");
+			}
+			character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+	}
 	public boolean validateRequirementAndJoin(CharacterWrapper character, GameObject loot) {
 		if (character.hasGuildJoinRequirement() && RealmComponent.getRealmComponent(loot).isTreasure()) {
 			character.setGuildJoinRequirement(false);
