@@ -53,7 +53,7 @@ public class ThievesGuild extends GuildStore {
 		int hiddenFound = 0, secretFound = 0;
 		for (TileComponent tile : radius) {
 			if (tile.isEnchanted()) continue;
-			for (PathDetail path : tile.getHiddenPaths(true)) {
+			for (PathDetail path : tile.getHiddenPaths(false)) {
 				String key = path.getFullPathKey();
 				if (path.isHidden() && !character.hasHiddenPathDiscovery(key)) {
 					character.addHiddenPathDiscovery(key);
@@ -61,7 +61,7 @@ public class ThievesGuild extends GuildStore {
 				}
 			}
 			if (level >= 2) {
-				for (PathDetail path : tile.getSecretPassages(true)) {
+				for (PathDetail path : tile.getSecretPassages(false)) {
 					String key = path.getFullPathKey();
 					if (path.isSecret() && !character.hasSecretPassageDiscovery(key)) {
 						character.addSecretPassageDiscovery(key);

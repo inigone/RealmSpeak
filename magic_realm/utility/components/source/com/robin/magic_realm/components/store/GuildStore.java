@@ -80,7 +80,7 @@ public abstract class GuildStore extends Store {
 		return go;
 	}
 	
-	protected void chooseFriendlinessGain(JFrame frame) {
+	public void chooseFriendlinessGain(JFrame frame) {
 		ArrayList<String> list = trader.getGameObject().getThisAttributeList("allies");
 		
 		GamePool pool = new GamePool(trader.getGameObject().getGameData().getGameObjects());

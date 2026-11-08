@@ -50,6 +50,7 @@ public class QuestRewardGuild extends QuestReward {
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()+1);
 				GuildStore guildStore = character.getCurrentGuildStore();
 				guildStore.applyGuildBenefit(frame,character,character.getCurrentGuildLevel());
+				guildStore.chooseFriendlinessGain(frame);
 				break;
 			case Decrease:
 				if (character.getCurrentGuildLevel()<=0) {
