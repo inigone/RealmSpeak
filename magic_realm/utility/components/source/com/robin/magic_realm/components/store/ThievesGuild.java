@@ -1,28 +1,24 @@
 package com.robin.magic_realm.components.store;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import javax.swing.JFrame;
 
 import com.robin.game.objects.GameObject;
-import com.robin.general.swing.ButtonOptionDialog;
 import com.robin.magic_realm.components.*;
 import com.robin.magic_realm.components.attribute.Strength;
-import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
+import com.robin.magic_realm.components.attribute.TileLocation;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
 public class ThievesGuild extends GuildStore {
-	
-	private static String MAP_SERVICE_1 = "Learn all hidden paths on a tile (both sides) for 5 gold.";
-	private static String MAP_SERVICE_2 = "Learn all secret passages on a tile (both sides) for 10 gold.";
-	private static String UNLOCK_SERVICE = "Unlock the Chest for 50 gold.";
+
+	// Services are now passive/day-end: Level 1+ reveals hidden paths, Level 2+ secret passages,
+	// Level 3 opens one locked treasure — all within a 2-tile radius, no gold cost.
 	public static String JOIN_GUILD_TEXT = "You have fulfilled the join requirement for the Thieves Guild. You are now a member of the Thieves Guild.";
 	public static String JOIN_GUILD_TITLE = "Joining Thieves Guild";
-	
-	private ArrayList<TileComponent> tilesWithUnknownPaths;
-	private ArrayList<TileComponent> tilesWithUnknownPassages;
-	private ArrayList<GameObject> openable;
 
 	public ThievesGuild(GuildChitComponent guild, CharacterWrapper character) {
 		super(guild, character);
@@ -30,106 +26,77 @@ public class ThievesGuild extends GuildStore {
 	protected void setupGuildSpecific() {
 		if (character.hasCurse(Constants.ASHES)) {
 			reasonStoreNotAvailable = "The "+getTraderName()+" does not like your ASHES curse!";
-			return;
-		}
-		
-		tilesWithUnknownPaths = new ArrayList<TileComponent>();
-		tilesWithUnknownPassages = new ArrayList<TileComponent>();
-		RealmObjectMaster rom = RealmObjectMaster.getRealmObjectMaster(character.getGameData());
-		for (GameObject go:rom.getTileObjects()) {
-			TileComponent tile = (TileComponent)RealmComponent.getRealmComponent(go);
-			if (pathsToDiscover(tile.getHiddenPaths(true)).size()>0) {
-				tilesWithUnknownPaths.add(tile);
-			}
-			if (pathsToDiscover(tile.getSecretPassages(true)).size()>0) {
-				tilesWithUnknownPassages.add(tile);
-			}
-		}
-		
-		openable = new ArrayList<GameObject>();
-		for (GameObject go:character.getInventory()) {
-			if (go.getName().startsWith("Chest") && go.hasThisAttribute(Constants.NEEDS_OPEN)) {
-				openable.add(go);
-			}
 		}
 	}
-	protected ArrayList<String> pathsToDiscover(ArrayList<PathDetail> paths) {
-		ArrayList<String> toDiscover = new ArrayList<String>();
-		for (PathDetail path:paths) {
-			String pathKey = path.getFullPathKey();
-			if ((path.isHidden() && !character.hasHiddenPathDiscovery(pathKey))
-					|| (path.isSecret() && !character.hasSecretPassageDiscovery(pathKey))) {
-				toDiscover.add(pathKey);
-			}
-		}
-		return toDiscover;
+	protected String doGuildService(JFrame frame, int level) {
+		return null; // All services trigger at day-end (see doGuildDayEndService)
 	}
-	private String revealHidden(JFrame frame,ArrayList<TileComponent> list) {
-		return reveal(frame,list,true);
-	}
-	private String revealSecret(JFrame frame,ArrayList<TileComponent> list) {
-		return reveal(frame,list,false);
-	}
-	private String reveal(JFrame frame,ArrayList<TileComponent> list,boolean hidden) {
-		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(frame,"Which tile to reveal "+(hidden?"hidden paths":"secret passages")+"?",true);
-		for (TileComponent tile:list) {
-			chooser.addRealmComponent(tile,true);
-		}
-		chooser.setVisible(true);
-		if (chooser.getSelectedText()!=null) {
-			TileComponent tile = (TileComponent)chooser.getFirstSelectedComponent();
-			reveal(tile,hidden);
-			return tile.getGameObject().getName();
-		}
-		return null;
-	}
-	private void reveal(TileComponent tile,boolean hidden) {
-		if (hidden) {
-			for (String pathKey:pathsToDiscover(tile.getHiddenPaths(true))) {
-				if (!character.hasHiddenPathDiscovery(pathKey)) {
-					character.addHiddenPathDiscovery(pathKey);
-				}
-			}
-		}
-		else {
-			for (String pathKey:pathsToDiscover(tile.getSecretPassages(true))) {
-				if (!character.hasSecretPassageDiscovery(pathKey)) {
-					character.addSecretPassageDiscovery(pathKey);
-				}
-			}
-		}
-	}
-	protected String doGuildService(JFrame frame,int level) {
-		int gold = (int)character.getGold();
-		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Which service?",getTraderName()+" Services",true);
-		if (level>=1) chooser.addSelectionObject(MAP_SERVICE_1,(gold>=5) && !tilesWithUnknownPaths.isEmpty());
-		if (level>=2) chooser.addSelectionObject(MAP_SERVICE_2,(gold>=10) && !tilesWithUnknownPassages.isEmpty());
-		if (level==3) chooser.addSelectionObject(UNLOCK_SERVICE,(gold>=50) && !openable.isEmpty());
-		chooser.setVisible(true);
+	public String doGuildDayEndService(JFrame frame, CharacterWrapper character) {
+		int level = character.getCurrentGuildLevel();
+		if (level < 1) return null;
 
-		String selected = (String)chooser.getSelectedObject();
-		if (selected!=null) {
-			if (MAP_SERVICE_1.equals(selected)) {
-				String tileName = revealHidden(frame,tilesWithUnknownPaths);
-				if (tileName!=null) {
-					character.addGold(-5);
-					return "Learned all hidden paths in the "+tileName;
+		TileLocation loc = character.getCurrentLocation();
+		if (loc == null || loc.tile == null) return null;
+
+		// Collect tiles within 2-tile radius
+		Set<TileComponent> radius = new LinkedHashSet<>();
+		radius.add(loc.tile);
+		for (TileComponent t1 : loc.tile.getAllAdjacentTiles()) {
+			if (t1 != null) {
+				radius.add(t1);
+				for (TileComponent t2 : t1.getAllAdjacentTiles()) {
+					if (t2 != null) radius.add(t2);
 				}
-			}
-			else if (MAP_SERVICE_2.equals(selected)) {
-				String tileName = revealSecret(frame,tilesWithUnknownPassages);
-				if (tileName!=null) {
-					character.addGold(-10);
-					return "Learned all secret passages in the "+tileName;
-				}
-			}
-			else if (UNLOCK_SERVICE.equals(selected)) {
-				character.addGold(-50);
-				GameObject opened = TreasureUtility.openOneObject(frame,character,openable,null,true);
-				return "Opened the "+opened.getName();
 			}
 		}
-		return null;
+
+		int hiddenFound = 0, secretFound = 0;
+		for (TileComponent tile : radius) {
+			if (tile.isEnchanted()) continue;
+			for (PathDetail path : tile.getHiddenPaths(true)) {
+				String key = path.getFullPathKey();
+				if (path.isHidden() && !character.hasHiddenPathDiscovery(key)) {
+					character.addHiddenPathDiscovery(key);
+					hiddenFound++;
+				}
+			}
+			if (level >= 2) {
+				for (PathDetail path : tile.getSecretPassages(true)) {
+					String key = path.getFullPathKey();
+					if (path.isSecret() && !character.hasSecretPassageDiscovery(key)) {
+						character.addSecretPassageDiscovery(key);
+						secretFound++;
+					}
+				}
+			}
+		}
+
+		StringBuilder result = new StringBuilder();
+		if (hiddenFound > 0 || secretFound > 0) {
+			result.append("Thieves Guild: discovered");
+			if (hiddenFound > 0) result.append(" ").append(hiddenFound).append(" hidden path(s)");
+			if (hiddenFound > 0 && secretFound > 0) result.append(",");
+			if (secretFound > 0) result.append(" ").append(secretFound).append(" secret passage(s)");
+			result.append(" within 2 tiles.");
+		}
+
+		if (level >= 3) {
+			ArrayList<GameObject> openable = new ArrayList<>();
+			for (GameObject go : character.getInventory()) {
+				if (go.hasThisAttribute(Constants.NEEDS_OPEN)) {
+					openable.add(go);
+				}
+			}
+			if (!openable.isEmpty()) {
+				GameObject opened = TreasureUtility.openOneObject(frame, character, openable, null, true);
+				if (opened != null) {
+					if (result.length() > 0) result.append(" ");
+					result.append("Thieves Guild: opened the ").append(opened.getName()).append(".");
+				}
+			}
+		}
+
+		return result.length() > 0 ? result.toString() : null;
 	}
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {

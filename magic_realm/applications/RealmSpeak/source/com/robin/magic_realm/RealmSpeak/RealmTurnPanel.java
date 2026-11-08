@@ -1447,6 +1447,7 @@ public class RealmTurnPanel extends CharacterFramePanel {
 				}
 			}
 			checkGuildTrainingBonus(current);
+			checkGuildDayEndServices(current);
 		}
 
 		// PCT-Flow: step 15 — release any remaining followers now that step 14 (the PC's own EOCTMS,
@@ -1485,6 +1486,23 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		getGameHandler().submitChanges();
 	}
 	
+	private void checkGuildDayEndServices(TileLocation current) {
+		CharacterWrapper character = getCharacter();
+		String guildName = character.getCurrentGuild();
+		if (guildName == null || current == null || current.clearing == null) return;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
+				GuildStore guildStore = character.getCurrentGuildStore(false);
+				if (guildStore != null) {
+					String result = guildStore.doGuildDayEndService(getMainFrame(), character);
+					if (result != null) {
+						getGameHandler().broadcast(character.getGameObject().getName(), result);
+					}
+				}
+				break;
+			}
+		}
+	}
 	private void checkGuildTrainingBonus(TileLocation current) {
 		CharacterWrapper character = getCharacter();
 		String guildName = character.getCurrentGuild();

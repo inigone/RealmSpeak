@@ -8526,19 +8526,29 @@ public class CharacterWrapper extends GameObjectWrapper {
     	return val==null?"black":val;
     }
     public int getRestBonus(int rests) {
-		int advantage = 0;
+		int extraPerRest = 0;
 		if (getGameObject().hasThisAttribute(Constants.REST_DOUBLE)) {
-			// Character has special advantage
-			advantage += 1;
+			extraPerRest += 1;
 		}
-		// Check activated treasures for rest double
 		for (GameObject item:getEnhancingItemsAndNomads()) {
 			if (item.hasThisAttribute(Constants.REST_DOUBLE)) {
-				advantage += 1;
+				extraPerRest += 1;
 				break;
 			}
 		}
-		return rests * advantage;
+		// Fighters Guild Level 1+: each REST phase at the guild provides 3 REST actions
+		if (getCurrentGuildLevel() >= 1 && Store.FIGHTERS_GUILD.equals(getCurrentGuild())) {
+			TileLocation loc = getCurrentLocation();
+			if (loc != null && loc.clearing != null) {
+				for (RealmComponent rc : loc.clearing.getClearingComponents()) {
+					if (rc.isGuild() && Store.FIGHTERS_GUILD.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
+						extraPerRest += 2;
+						break;
+					}
+				}
+			}
+		}
+		return rests * extraPerRest;
     }
     public void addQuest(JFrame frame,Quest quest) {
     	if (getGameData().getDataId()!=quest.getGameData().getDataId()) {

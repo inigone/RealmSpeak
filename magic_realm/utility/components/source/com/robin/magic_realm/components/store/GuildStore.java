@@ -51,6 +51,8 @@ public abstract class GuildStore extends Store {
 	public abstract void unapplyGuildBenefit3(JFrame frame, CharacterWrapper character);
 	public abstract void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
 	public abstract void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
+	/** Called at day-end when a guild member ends their turn in this guild's clearing. Returns a log message or null. */
+	public String doGuildDayEndService(JFrame frame, CharacterWrapper character) { return null; }
 
 	public GuildStore(GuildChitComponent guild,CharacterWrapper character) {
 		super(guild);

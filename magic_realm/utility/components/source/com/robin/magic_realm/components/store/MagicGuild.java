@@ -8,7 +8,6 @@ import com.robin.game.objects.GameObject;
 import com.robin.general.swing.ButtonOptionDialog;
 import com.robin.magic_realm.components.CharacterActionChitComponent;
 import com.robin.magic_realm.components.GuildChitComponent;
-import com.robin.magic_realm.components.attribute.ColorMagic;
 import com.robin.magic_realm.components.attribute.Strength;
 import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
 import com.robin.magic_realm.components.swing.RealmObjectChooser;
@@ -16,37 +15,29 @@ import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.*;
 
 public class MagicGuild extends GuildStore {
-	
-	private static String CURE_SERVICE = "Cancel curse or spell for 5 gold.";
-	private static String CURE_FREE_SERVICE = "Cancel curse or spell for free.";
-	private static String GENERATE_COLOR_SERVICE = "Generate any color for a day for 5 gold.";
+
+	// Level 1+ cancel-spell and Level 2+ cancel-curse services now trigger at day-end (see doGuildDayEndService)
 	public static String JOIN_GUILD_TEXT = "You have fulfilled the join requirement for the Magic Guild. You are now a member of the Magic Guild.";
 	public static String JOIN_GUILD_TITLE = "Joining Magic Guild";
-	
+
 	private ArrayList<GameObject> greatTreasures;
-	private ArrayList<SpellWrapper> bewitchingSpells;
-	private ArrayList<String> activeCurses;
 	
 	public MagicGuild(GuildChitComponent guild, CharacterWrapper character) {
 		super(guild, character);
 	}
 	protected void setupGuildSpecific() {
-		boolean journeymanMage = character.isGuildMember(trader) && character.getCurrentGuildLevel()==2; 
+		boolean journeymanMage = character.isGuildMember(trader) && character.getCurrentGuildLevel()==2;
 		if (!journeymanMage && character.hasCurse(Constants.ASHES)) {
 			reasonStoreNotAvailable = "The "+getTraderName()+" does not like your ASHES curse!";
 			return;
 		}
-		
+
 		greatTreasures = new ArrayList<GameObject>();
 		for (GameObject go:character.getInventory()) {
 			if (go.hasThisAttribute("treasure") && go.hasThisAttribute("great")) {
 				greatTreasures.add(go);
 			}
 		}
-		
-		activeCurses = character.getAllCurses();
-		SpellMasterWrapper smw = SpellMasterWrapper.getSpellMaster(character.getGameData());
-		bewitchingSpells = smw.getAffectingSpells(character.getGameObject());
 	}
 	private boolean madePayment() {
 		RealmObjectChooser chooser = new RealmObjectChooser("Choose two Great Treasures to give to the Magic Guild.",character.getGameData(),false);
@@ -77,75 +68,54 @@ public class MagicGuild extends GuildStore {
 		chooser.setVisible(true);
 		return (String)chooser.getSelectedObject();
 	}
-	private String cureSpellOrCurse(JFrame frame) {
-		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(frame,"Break which spell/curse?",true);
-		for(SpellWrapper spell:bewitchingSpells) {
+	private String cancelOneSpell(JFrame frame, CharacterWrapper character) {
+		SpellMasterWrapper smw = SpellMasterWrapper.getSpellMaster(character.getGameData());
+		ArrayList<SpellWrapper> spells = smw.getAffectingSpells(character.getGameObject());
+		if (spells.isEmpty()) return null;
+		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(frame,"Cancel which spell? (optional)",true);
+		for (SpellWrapper spell : spells) {
 			String optionKey = chooser.generateOption();
-			chooser.addGameObjectToOption(optionKey,spell.getGameObject());
+			chooser.addGameObjectToOption(optionKey, spell.getGameObject());
 			for (GameObject hgo : spell.getGameObject().getHold()) {
-				chooser.addGameObjectToOption(optionKey,hgo);
+				chooser.addGameObjectToOption(optionKey, hgo);
 			}
-		}
-		for (String curse:activeCurses) {
-			chooser.generateOption(curse);
 		}
 		chooser.setVisible(true);
-		
-		String selText = chooser.getSelectedText();
-		if (selText!=null) {
-			if (character.hasCurse(selText)) {
-				character.removeCurse(selText);
-				return "Removed "+selText+" curse.";
-			}
+		if (chooser.getSelectedText() != null) {
 			GameObject go = chooser.getFirstSelectedComponent().getGameObject();
-			SpellWrapper spell = new SpellWrapper(go);
-			spell.expireSpell();
-			return "Breaked "+go.getName()+" spell.";
+			new SpellWrapper(go).expireSpell();
+			return "Magic Guild: cancelled "+go.getName()+" spell.";
 		}
 		return null;
 	}
-	protected String generateColor(JFrame frame) {
-		String colorAlready = trader.getGameObject().getThisAttribute("color_source");
-		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Generate which color?","Generate Color",true);
-		for (int i=1;i<=5;i++) {
-			ColorMagic cm = new ColorMagic(i,true);
-			if (!cm.getColorName().toLowerCase().equals(colorAlready)) {
-				chooser.addSelectionObject(cm.getColorName());
-			}
+	private String cancelOneCurse(JFrame frame, CharacterWrapper character) {
+		ArrayList<String> curses = character.getAllCurses();
+		if (curses.isEmpty()) return null;
+		ButtonOptionDialog chooser = new ButtonOptionDialog(frame, trader.getIcon(), "Cancel which curse? (optional)", getTraderName()+" Service", true);
+		for (String curse : curses) {
+			chooser.addSelectionObject(curse, true);
 		}
 		chooser.setVisible(true);
-		String chosenColor = (String)chooser.getSelectedObject();
-		if (chosenColor!=null) {
-			trader.getGameObject().setThisAttribute("color_source",chosenColor.toLowerCase());
-			return "Generated "+chosenColor+" magic.";
-		}
-		return null;
-	}
-	protected String doGuildService(JFrame frame,int level) {
-		int gold = (int)character.getGold();
-		int activeCursesOrSpells = activeCurses.size() + bewitchingSpells.size();
-		ButtonOptionDialog chooser = new ButtonOptionDialog(frame,trader.getIcon(),"Which service?",getTraderName()+" Services",true);
-		if (level==1) chooser.addSelectionObject(CURE_SERVICE,(gold>=5) && activeCursesOrSpells>0);
-		if (level>=2) chooser.addSelectionObject(CURE_FREE_SERVICE,(gold>=10) && activeCursesOrSpells>0);
-		if (level>=2) chooser.addSelectionObject(GENERATE_COLOR_SERVICE,gold>=5);
-		chooser.setVisible(true);
-
 		String selected = (String)chooser.getSelectedObject();
-		if (selected!=null) {
-			if (CURE_SERVICE.equals(selected)) {
-				character.addGold(-5);
-				return cureSpellOrCurse(frame);
-			}
-			else if (CURE_FREE_SERVICE.equals(selected)) {
-				return cureSpellOrCurse(frame);
-			}
-			else if (GENERATE_COLOR_SERVICE.equals(selected)) {
-				character.addGold(-5);
-				return generateColor(frame);
-			}
+		if (selected != null) {
+			character.removeCurse(selected);
+			return "Magic Guild: removed "+selected+" curse.";
 		}
-
 		return null;
+	}
+	protected String doGuildService(JFrame frame, int level) {
+		return null; // Services now trigger at day-end (see doGuildDayEndService)
+	}
+	public String doGuildDayEndService(JFrame frame, CharacterWrapper character) {
+		int level = character.getCurrentGuildLevel();
+		if (level < 1) return null;
+		String result = cancelOneSpell(frame, character);
+		if (level >= 2) {
+			String curseResult = cancelOneCurse(frame, character);
+			if (result == null) result = curseResult;
+			else if (curseResult != null) result = result + " " + curseResult;
+		}
+		return result;
 	}
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
