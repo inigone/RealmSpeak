@@ -582,8 +582,7 @@ public class QuestTesterFrame extends JFrame {
 				
 				character.setCurrentGuild(guildName.get(0).getName());
 				character.setCurrentGuildLevel(guildLevel);
-				character.discardNonEligibleGuildQuests();
-				
+
 				updateCharacterPanel();
 				retestQuest();
 			}

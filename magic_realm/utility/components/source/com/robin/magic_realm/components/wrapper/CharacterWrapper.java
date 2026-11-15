@@ -22,6 +22,7 @@ import com.robin.magic_realm.components.effect.SpellEffectContext;
 import com.robin.magic_realm.components.events.RealmEvents;
 import com.robin.magic_realm.components.quest.*;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
+import com.robin.magic_realm.components.store.GuildPhaseRegistry;
 import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.store.MagicGuild;
 import com.robin.magic_realm.components.store.Store;
@@ -2793,6 +2794,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 			pm.addExtraCavePhase(getGameObject());
 		}		
 		
+		GuildPhaseRegistry.migrate(this); // one-time: move old guild phase extras from EXTRA_ACTIONS to GUILD_EXTRA_ACTIONS
+
 		ArrayList<String> extra = getGameObject().getThisAttributeList(Constants.EXTRA_ACTIONS);
 		if (getGameObject().hasAttribute(Constants.OPTIONAL_BLOCK,Constants.EXTRA_ACTIONS)) {
 			if (extra==null) {
@@ -2804,6 +2807,15 @@ public class CharacterWrapper extends GameObjectWrapper {
 			for (String extraAction : extra) {
 				extraAction = extraAction.replace("SP", "E");
 				pm.addFreeAction(extraAction,getGameObject(),null,true); // force character actions on the phase manager
+			}
+		}
+		// Add guild-benefit phase extras. Use character GO (not guild GO) so the phase is not tied to
+		// a required location; PhaseManagerIcon distinguishes guild vs innate phases by counting
+		// how many of each action appear in EXTRA_ACTIONS.
+		ArrayList<String> guildExtra = getGameObject().getThisAttributeList(Constants.GUILD_EXTRA_ACTIONS);
+		if (guildExtra != null) {
+			for (String extraAction : guildExtra) {
+				pm.addFreeAction(extraAction.replace("SP","E"), getGameObject(), null, true);
 			}
 		}
 		if (getGameObject().hasThisAttribute(Constants.EXTRA_PHASE)) {
@@ -8428,7 +8440,7 @@ public class CharacterWrapper extends GameObjectWrapper {
     	return getString(CURRENT_GUILD);
     }
     public void setCurrentGuildLevel(int level) {
-    	level = Math.max(0, Math.min(level, 3));
+    	level = Math.max(0, Math.min(level, 4));
     	RealmUtility.passOnFinalGuildBenefit(this);
     	setInt(CURRENT_GUILD_LEVEL,level);
     }
@@ -8440,6 +8452,9 @@ public class CharacterWrapper extends GameObjectWrapper {
     	clear(CURRENT_GUILD);
     	clear(CURRENT_GUILD_LEVEL);
     	clear(CURRENT_GUILD_JOIN_REQUIREMENT);
+    	clear(Constants.FIGHTERS_GUILD_PLEDGE);
+    	clear(Constants.MAGIC_GUILD_PLEDGE);
+    	clear(Constants.THIEVES_GUILD_PLEDGE);
     }
     public GuildStore getCurrentGuildStore() {
     	return getCurrentGuildStore(true);
@@ -8458,7 +8473,8 @@ public class CharacterWrapper extends GameObjectWrapper {
     	String guild = getCurrentGuild();
     	if (guild!=null) {
     		int level = getCurrentGuildLevel();
-    		if (level > 3) level = 3;
+    		if (level > 4) level = 4;
+    		if (level < 1) level = 1; // Level 0 = Pledge; badge only shown for Level 1+
     		return guild+level;
     	}
     	return null;
@@ -8469,28 +8485,21 @@ public class CharacterWrapper extends GameObjectWrapper {
     		String levelName = "";
     		int level = getCurrentGuildLevel();
     		switch(level) {
-    			case 0:
-    			case 1:
-    				levelName=GuildLevel.Apprentice.toString();
-    				break;
-    			case 2:
-    				levelName=GuildLevel.Journeyman.toString();
-    				break;
-    			case 3:
-    				levelName=GuildLevel.Master.toString();
-    				break;
-    		}
-    		if (level>3) {
-    			levelName=GuildLevel.Master.toString();
+    			case 1: levelName = "Initiate";   break;
+    			case 2: levelName = "Apprentice"; break;
+    			case 3: levelName = "Journeyman"; break;
+    			case 4: levelName = "Master";     break;
+    			default: levelName = "Initiate";  break;
     		}
     		return StringUtilities.capitalize(guild)+" Guild "+levelName;
     	}
     	return null;
     }
     public boolean isGuildMember(RealmComponent rc) {
-    	return rc.isGuild() && rc.getGameObject().getThisAttribute(Constants.GUILD).equals(getCurrentGuild());
+    	return !hasGuildJoinRequirement() && rc.isGuild() && rc.getGameObject().getThisAttribute(Constants.GUILD).equals(getCurrentGuild());
     }
     public boolean isGuildMember(String guildName) {
+    	if (hasGuildJoinRequirement()) return false;
     	String currentGuild = getCurrentGuild();
     	return currentGuild!=null && guildName.matches(getCurrentGuild());
     }
@@ -8499,6 +8508,17 @@ public class CharacterWrapper extends GameObjectWrapper {
     }
     public void setGuildJoinRequirement(boolean val) {
     	setBoolean(CURRENT_GUILD_JOIN_REQUIREMENT, val);
+    	String pledgeConst = guildPledgeConstant(getString(CURRENT_GUILD));
+    	if (pledgeConst != null) {
+    		if (val) setBoolean(pledgeConst, true);
+    		else clear(pledgeConst);
+    	}
+    }
+    private static String guildPledgeConstant(String guild) {
+    	if ("fighters".equals(guild)) return Constants.FIGHTERS_GUILD_PLEDGE;
+    	if ("magic".equals(guild))    return Constants.MAGIC_GUILD_PLEDGE;
+    	if ("thieves".equals(guild))  return Constants.THIEVES_GUILD_PLEDGE;
+    	return null;
     }
     public ArrayList<GameObject> getInventoryToApprove() {
     	ArrayList<GameObject> list = new ArrayList<>();
@@ -8536,8 +8556,8 @@ public class CharacterWrapper extends GameObjectWrapper {
 				break;
 			}
 		}
-		// Fighters Guild Level 1+: each REST phase at the guild provides 3 REST actions
-		if (getCurrentGuildLevel() >= 1 && Store.FIGHTERS_GUILD.equals(getCurrentGuild())) {
+		// Fighters Guild Level 2+: each REST phase at the guild provides 3 REST actions
+		if (getCurrentGuildLevel() >= 2 && Store.FIGHTERS_GUILD.equals(getCurrentGuild())) {
 			TileLocation loc = getCurrentLocation();
 			if (loc != null && loc.clearing != null) {
 				for (RealmComponent rc : loc.clearing.getClearingComponents()) {

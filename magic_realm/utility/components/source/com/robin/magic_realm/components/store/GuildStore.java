@@ -20,27 +20,23 @@ public abstract class GuildStore extends Store {
 	protected abstract String doGuildService(JFrame frame,int level);
 	public void applyGuildBenefit(JFrame frame, CharacterWrapper character, int level) {
 		switch (level) {
-			case 1: applyGuildBenefit1(frame,character);
-				break;
-			case 2: applyGuildBenefit2(frame,character);
-				break;
-			case 3: applyGuildBenefit3(frame,character);
-				break;
+			case 1: applyGuildBenefit1(frame,character); break;
+			case 2: applyGuildBenefit2(frame,character); break;
+			case 3: applyGuildBenefit3(frame,character); break;
+			case 4: applyGuildBenefit4(frame,character); break;
 		}
 	}
 	public void unapplyAllGuildBenefits(JFrame frame, CharacterWrapper character) {
-		for (int i = 1; i <= 3; i++) {
+		for (int i = 1; i <= 4; i++) {
 			unapplyGuildBenefit(frame,character,i);
 		}
 	}
 	public void unapplyGuildBenefit(JFrame frame, CharacterWrapper character, int level) {
 		switch (level) {
-			case 1: unapplyGuildBenefit1(frame,character);
-				break;
-			case 2: unapplyGuildBenefit2(frame,character);
-				break;
-			case 3: unapplyGuildBenefit3(frame,character);
-				break;
+			case 1: unapplyGuildBenefit1(frame,character); break;
+			case 2: unapplyGuildBenefit2(frame,character); break;
+			case 3: unapplyGuildBenefit3(frame,character); break;
+			case 4: unapplyGuildBenefit4(frame,character); break;
 		}
 	}
 	public abstract void applyGuildBenefit1(JFrame frame, CharacterWrapper character);
@@ -49,6 +45,8 @@ public abstract class GuildStore extends Store {
 	public abstract void unapplyGuildBenefit2(JFrame frame, CharacterWrapper character);
 	public abstract void applyGuildBenefit3(JFrame frame, CharacterWrapper character);
 	public abstract void unapplyGuildBenefit3(JFrame frame, CharacterWrapper character);
+	public abstract void applyGuildBenefit4(JFrame frame, CharacterWrapper character);
+	public abstract void unapplyGuildBenefit4(JFrame frame, CharacterWrapper character);
 	public abstract void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
 	public abstract void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character);
 	/** Called at day-end when a guild member ends their turn in this guild's clearing. Returns a log message or null. */
@@ -80,6 +78,17 @@ public abstract class GuildStore extends Store {
 		return go;
 	}
 	
+	/** True if the character's "this" diemod list already contains an entry matching the given prefix (case-insensitive). */
+	protected static boolean hasDiemod(CharacterWrapper character, String prefix) {
+		java.util.ArrayList<String> list = character.getGameObject().getThisAttributeList(Constants.DIEMOD);
+		if (list == null) return false;
+		String lp = prefix.toLowerCase();
+		for (String dm : list) {
+			if (dm.toLowerCase().startsWith(lp)) return true;
+		}
+		return false;
+	}
+
 	public void chooseFriendlinessGain(JFrame frame) {
 		ArrayList<String> list = trader.getGameObject().getThisAttributeList("allies");
 		
@@ -98,6 +107,7 @@ public abstract class GuildStore extends Store {
 			GameObject leader = chooser.getFirstSelectedComponent().getGameObject();
 			character.changeRelationship(leader,1);
 			RealmLogging.logMessage(character.getGameObject().getName(),"+1 friendliness with the "+leader.getThisAttribute("native"));
+			System.out.println("[GUILD_TEST:GEN-FRIEND-01] "+character.getGameObject().getName()+" gained friendliness with "+leader.getThisAttribute("native")+" via guild level-up");
 		}
 	}
 }

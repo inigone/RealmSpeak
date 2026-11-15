@@ -15,6 +15,7 @@ import com.robin.magic_realm.components.attribute.DayAction.ActionId;
 import com.robin.magic_realm.components.quest.CharacterActionType;
 import com.robin.magic_realm.components.quest.Quest;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
 import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.store.Store;
 import com.robin.magic_realm.components.swing.*;
@@ -1747,7 +1748,9 @@ public class ActionRow {
 			if (current.isInClearing()
 					&& (current.tile.getGameObject().hasThisAttribute(Constants.SP_STORMY) || current.tile.getGameObject().hasThisAttribute(Constants.EVENT_VIOLENT_STORM))
 					&& !current.clearing.isCave()
-					&& !current.clearing.holdsDwellingWithShelter()) {
+					&& !current.clearing.holdsDwellingWithShelter()
+					&& !(current.clearing.holdsGuild()
+						&& character.isGuildMember(current.clearing.getGuild()))) {
 				// Ended a phase in a stormy clearing, and haven't been affected yet, so...
 				return true;
 			}
@@ -2723,10 +2726,8 @@ public class ActionRow {
 					}
 				}
 				else if (trader.isGuild() && selText.equals(TRADE_JOIN)) {
-					character.setCurrentGuild(trader.getGameObject().getThisAttribute(RealmComponent.GUILD));
-					character.setGuildJoinRequirement(true);
+					GuildOperationsManager.acceptPledge(character, trader.getGameObject().getThisAttribute(RealmComponent.GUILD));
 					result = "Accepted the guild join requirement of "+trader.getGameObject().getName();
-					character.discardNonEligibleGuildQuests();
 				}
 				else if (trader.isGuild() && selText.equals(TRADE_SERVICES)) {
 					GuildStore store = Store.getGuildStore((GuildChitComponent)trader,character);

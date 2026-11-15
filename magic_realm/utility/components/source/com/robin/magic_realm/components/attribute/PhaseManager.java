@@ -59,6 +59,9 @@ public class PhaseManager {
 		this.sheltered = sheltered;
 		this.ponyObject = ponyObject;
 	}
+	public CharacterWrapper getCharacter() {
+		return character;
+	}
 	public boolean hasActionsLeft() {
 		return getTotal() + freeActions.size() - character.getLostPhases() > 0;
 	}
@@ -219,6 +222,11 @@ public class PhaseManager {
 			markInCave();
 		}
 		else if (tl.clearing.holdsDwelling()) {
+			markInDwelling();
+		}
+		else if (tl.clearing.holdsGuild() && character != null
+				&& character.isGuildMember(tl.clearing.getGuild())) {
+			// Guild members at their own guild are treated as in a dwelling
 			markInDwelling();
 		}
 		else {
@@ -513,7 +521,7 @@ public class PhaseManager {
 				}
 			}
 			if (list!=null) {
-				list.removeAll(Collections.singleton(new Requirement(go))); //removes all instances of this requirement
+				list.remove(new Requirement(go)); // removes one instance so the same GO can provide multiple extras of the same type
 			}
 			if (listOffroadMove!=null) {
 				listOffroadMove.removeAll(Collections.singleton(new Requirement(go)));

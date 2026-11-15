@@ -22,6 +22,7 @@ import com.robin.magic_realm.components.quest.Quest;
 import com.robin.magic_realm.components.quest.QuestBookEvents;
 import com.robin.magic_realm.components.quest.QuestDeck;
 import com.robin.magic_realm.components.store.FightersGuild;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
 import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.swing.*;
 import com.robin.magic_realm.components.wrapper.*;
@@ -182,7 +183,7 @@ public class RealmUtility {
 	public static int getRelationshipBetween(CharacterWrapper character,RealmComponent trader) {
 		int relationship;
 		if (trader.isGuild()) {
-			relationship = character.isGuildMember(trader) ? Math.max(RelationshipType.NEUTRAL, character.getCurrentGuildLevel()-1) : RelationshipType.UNFRIENDLY;
+			relationship = GuildOperationsManager.getGuildRelationship(character, trader);
 		}
 		else if (trader.isTraveler()) {
 			relationship = 0;
@@ -608,14 +609,15 @@ public class RealmUtility {
 		}
 	}
 	public static void passOnFinalGuildBenefit(CharacterWrapper character) {
-		if (character.getCurrentGuild()!=null && (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
+		if (character.getCurrentGuild(false)!=null && (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_4") || character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
 				character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR);
-				String guild = character.getCurrentGuild();
+				String guild = character.getCurrentGuild(false);
 				HashLists<CharacterWrapper,Integer> possibleSuccessors = new HashLists<>();
 				int maxLevel = 0;
 				for (GameObject livingChar : getLivingCharacters(character.getGameObject().getGameData())) {
 					CharacterWrapper livingCharacter = new CharacterWrapper(livingChar);
-					if (livingCharacter.getGameObject().getId()!=character.getGameObject().getId() && livingCharacter.getCurrentGuild().matches(guild) && livingCharacter.getCurrentGuildLevel()>=3) {
+					String lcGuild = livingCharacter.getCurrentGuild(false);
+					if (livingCharacter.getGameObject().getId()!=character.getGameObject().getId() && guild.equals(lcGuild) && livingCharacter.getCurrentGuildLevel()>=3) {
 						if (livingCharacter.getCurrentGuildLevel()>maxLevel) {
 							maxLevel = livingCharacter.getCurrentGuildLevel();
 						}

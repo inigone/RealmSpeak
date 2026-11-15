@@ -8,6 +8,7 @@ import java.util.Hashtable;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 
+import com.robin.general.swing.IconFactory;
 import com.robin.general.swing.ImageCache;
 import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
@@ -95,6 +96,41 @@ public class Badge extends JLabel {
 			return new Badge(ImageCache.getIcon("badges/"+guildBadgeName),character.getCurrentGuildLevelName());
 		}
 		return null;
+	}
+	public static Badge getGuildPledgeBadge(CharacterWrapper character) {
+		String guild = character.getCurrentGuild(false);
+		if (guild == null || !character.hasGuildJoinRequirement()) return null;
+		boolean trainingActive =
+			character.getGameObject().hasThisAttribute(Constants.FIGHTERS_GUILD_TRAINING) ||
+			character.getGameObject().hasThisAttribute(Constants.MAGIC_GUILD_TRAINING) ||
+			character.getGameObject().hasThisAttribute(Constants.THIEVES_GUILD_TRAINING);
+		String expires = character.getGameObject().getThisAttribute(Constants.GUILD_TRAINING_EXPIRES);
+		String expiry = (trainingActive && expires != null && !expires.isEmpty()) ? " (training active, expires day "+expires+")" : (trainingActive ? " (training active)" : "");
+		String tip = capitalize(guild)+" Guild Pledge — join requirement pending"+expiry;
+		ImageIcon baseIcon = ImageCache.getIcon("badges/"+guild+"_pledge");
+		if (!trainingActive) return new Badge(baseIcon, tip);
+		// Overlay the green "+" in the upper-right corner of the pledge badge
+		ImageIcon plusIcon = IconFactory.findIcon("icons/plus.gif");
+		int w = baseIcon.getIconWidth();
+		int h = baseIcon.getIconHeight();
+		BufferedImage bi = new BufferedImage(w, h, BufferedImage.TYPE_4BYTE_ABGR);
+		Graphics2D g = bi.createGraphics();
+		g.drawImage(baseIcon.getImage(), 0, 0, null);
+		if (plusIcon != null) {
+			int pw = plusIcon.getIconWidth();
+			int ph = plusIcon.getIconHeight();
+			g.drawImage(plusIcon.getImage(), w - pw, 0, null);
+		}
+		g.dispose();
+		return new Badge(new ImageIcon(bi), tip);
+	}
+	public static Badge getGuildTrainingBadge(CharacterWrapper character) {
+		// Training state is now shown as a "+" overlay on the pledge badge; return null to avoid duplication.
+		return null;
+	}
+	private static String capitalize(String s) {
+		if (s == null || s.isEmpty()) return s;
+		return Character.toUpperCase(s.charAt(0)) + s.substring(1);
 	}
 	public static void clearBadgeCache() {
 		cached.clear();

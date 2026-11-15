@@ -26,8 +26,6 @@ import com.robin.magic_realm.components.*;
 import com.robin.magic_realm.components.attribute.*;
 import com.robin.magic_realm.components.quest.CharacterActionType;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
-import com.robin.magic_realm.components.store.GuildStore;
-import com.robin.magic_realm.components.store.ThievesGuild;
 import com.robin.magic_realm.components.swing.*;
 import com.robin.magic_realm.components.table.*;
 import com.robin.magic_realm.components.utility.*;
@@ -4838,13 +4836,6 @@ public class CombatFrame extends JFrame {
 			params.objectList.add(loot);
 			activeCharacter.testQuestRequirements(this,params);
 			
-			// Check for Thieves Guild join requirement
-			GuildStore currentGuild = activeCharacter.getCurrentGuildStore(false);
-			if (activeCharacter.hasGuildJoinRequirement() && currentGuild!=null && currentGuild instanceof ThievesGuild) {
-				if (((ThievesGuild)currentGuild).validateRequirementAndJoin(activeCharacter, loot)) {
-					JOptionPane.showMessageDialog(this,ThievesGuild.JOIN_GUILD_TEXT,ThievesGuild.JOIN_GUILD_TITLE,JOptionPane.INFORMATION_MESSAGE);
-				}
-			}
 		}
 	}
 	

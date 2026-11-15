@@ -327,9 +327,21 @@ public class Constants {
 	public static final String TASK_COMPLETED = "task_completed";
 	public static final String GUILD_BENEFIT = "guild_benefit";
 	public static final String GUILD_BENEFIT_SUCESSOR = "guild_benefit_sucessor";
+	public static final String GUILD_EXTRA_ACTIONS = "_gxa_";   // phase extras from guild benefits; kept separate from EXTRA_ACTIONS so icon can distinguish guild-sourced phases from innate character phases
+	public static final String GUILD_EXTRAS_MIGRATED_V3 = "_gxm3_"; // one-time migration: restores innate level extras to EXTRA_ACTIONS and ensures GUILD_EXTRA_ACTIONS is correct
 	public static final String THIEVES_GUILD_PVP_STEAL = "thieves_guild_pvp_steal";
-	public static final String GUILD_TRAINING_BONUS = "guild_training_bonus";
+	public static final String GUILD_TRAINING_BONUS = "guild_training_bonus"; // kept for save-game compat; per-guild constants below are canonical
 	public static final String GUILD_TRAINING_EXPIRES = "guild_training_expires";
+	public static final String FIGHTERS_GUILD_PLEDGE   = "fighters_guild_pledge";
+	public static final String MAGIC_GUILD_PLEDGE      = "magic_guild_pledge";
+	public static final String THIEVES_GUILD_PLEDGE    = "thieves_guild_pledge";
+	public static final String FIGHTERS_GUILD_TRAINING = "fighters_guild_training";
+	public static final String MAGIC_GUILD_TRAINING    = "magic_guild_training";
+	public static final String THIEVES_GUILD_TRAINING  = "thieves_guild_training";
+	public static final String GUILD_TRAINING_DIEMOD   = "guild_training_diemod";
+	public static final String GUILD_BENEFIT_1_DIEMOD  = "guild_benefit_1_diemod";  // set only when benefit1 actually added the DRM
+	public static final String GUILD_TRAINING_ALERT    = "guild_training_alert";     // set only when training bonus actually added the ALERT action
+	public static final String GUILD_UNLOCK_LEARNED    = "guild_unlock_learned";
 	// Spoils of War needed action
 	public static final String SPOILS_ = "spoils_";
 	public static final String SPOILS_DONE = "spoils_done";						// A tag to indicate spoils processed already

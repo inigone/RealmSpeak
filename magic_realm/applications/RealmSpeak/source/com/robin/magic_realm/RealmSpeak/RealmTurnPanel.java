@@ -20,6 +20,7 @@ import com.robin.magic_realm.components.quest.CharacterActionType;
 import com.robin.magic_realm.components.quest.GamePhaseType;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
 import com.robin.magic_realm.components.swing.*;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
 import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.table.Loot;
 import com.robin.magic_realm.components.utility.*;
@@ -1499,13 +1500,19 @@ public class RealmTurnPanel extends CharacterFramePanel {
 						getGameHandler().broadcast(character.getGameObject().getName(), result);
 					}
 				}
+				if (GuildOperationsManager.gainsHiddenAtGuild(character) && !character.isHidden()) {
+					character.setHidden(true);
+					getGameHandler().broadcast(character.getGameObject().getName(),
+						character.getName() + " is hidden at the " + rc.getGameObject().getName() + " (guild membership).");
+					System.out.println("[GUILD_TEST:HIDDEN-01] "+character.getGameObject().getName()+" is now hidden at their guild (level "+character.getCurrentGuildLevel()+")");
+				}
 				break;
 			}
 		}
 	}
 	private void checkGuildTrainingBonus(TileLocation current) {
 		CharacterWrapper character = getCharacter();
-		String guildName = character.getCurrentGuild();
+		String guildName = character.getCurrentGuild(false); // include pledge holders (Level 0)
 		if (guildName == null || current == null || current.clearing == null) return;
 		for (RealmComponent rc : current.clearing.getClearingComponents()) {
 			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {

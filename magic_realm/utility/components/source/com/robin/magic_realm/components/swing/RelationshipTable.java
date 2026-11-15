@@ -8,6 +8,7 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 
 import com.robin.magic_realm.components.attribute.RelationshipType;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
 import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
@@ -62,7 +63,7 @@ public class RelationshipTable extends JTable {
 				boolean guild = ret.length>=4&&ret[3]!=null&&ret[3].matches(Constants.GUILD)?true:false;
 				int rel = 0;
 				if (guild) {
-					rel = character.isGuildMember(groupName.toLowerCase()) ? Math.max(0, character.getCurrentGuildLevel()-1) : -1; // Level 0 = Neutral; non-members = UNFRIENDLY.
+					rel = GuildOperationsManager.getGuildRelationship(character, groupName.toLowerCase());
 				} else {
 					rel = character.getRelationship(relBlock,groupName,rovingNative);
 				}

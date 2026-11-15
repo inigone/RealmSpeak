@@ -18,6 +18,8 @@ import com.robin.magic_realm.components.attribute.GuildLevelType.GuildLevel;
 import com.robin.magic_realm.components.swing.*;
 import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.utility.RealmUtility;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
+import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.wrapper.*;
 
 public class CharacterEditRibbon extends JPanel {
@@ -625,18 +627,24 @@ public class CharacterEditRibbon extends JPanel {
 		if (chooser.pressedOkay()) {
 			ArrayList<GameObject> chosenGuilds = chooser.getChosenObjects();
 			if (chosenGuilds==null) {
-				character.clearGuild();
+				GuildOperationsManager.removeFromGuild(parentFrame, character);
 			}
 			if (chosenGuilds!=null && chosenGuilds.size()==1) {
 				GameObject chosenGuild = chosenGuilds.get(0);
 				GuildLevel level = chooseGuildLevel();
 				if (level==null) return;
 				int guildLevel = GuildLevelType.getIntFor(level);
-				
-				character.setCurrentGuild(chosenGuild.getThisAttribute(RealmComponent.GUILD));
+
+				String guildName = chosenGuild.getThisAttribute(RealmComponent.GUILD);
+				GuildOperationsManager.changeGuild(parentFrame, character, guildName, true);
 				character.setCurrentGuildLevel(guildLevel);
+				GuildStore guildStore = character.getCurrentGuildStore();
+				if (guildStore != null) {
+					for (int i = 1; i <= guildLevel; i++) {
+						guildStore.applyGuildBenefit(parentFrame, character, i);
+					}
+				}
 			}
-			character.discardNonEligibleGuildQuests();
 		}
 	}
 	private GuildLevel chooseGuildLevel() {

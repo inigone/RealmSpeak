@@ -200,6 +200,16 @@ public class CharacterFrame extends RealmSpeakInternalFrame implements ICharacte
 			if (guildBadge!=null) {
 				currentBadgesBox.add(guildBadge);
 			}
+			Badge pledgeBadge = Badge.getGuildPledgeBadge(character);
+			if (pledgeBadge!=null) {
+				currentBadgesBox.add(Box.createHorizontalStrut(2));
+				currentBadgesBox.add(pledgeBadge);
+			}
+			Badge trainingBadge = Badge.getGuildTrainingBadge(character);
+			if (trainingBadge!=null) {
+				currentBadgesBox.add(Box.createHorizontalStrut(2));
+				currentBadgesBox.add(trainingBadge);
+			}
 			
 			ArrayList<String> all = character.getLevelAdvantages();
 			all.addAll(character.getOptionalLevelAdvantages());

@@ -4,6 +4,7 @@ import javax.swing.JFrame;
 
 import com.robin.game.objects.GameObject;
 import com.robin.magic_realm.components.quest.QuestConstants;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
 import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
@@ -26,31 +27,22 @@ public class QuestRewardGuild extends QuestReward {
 
 	public void processReward(JFrame frame,CharacterWrapper character) {
 		if (getGuildName().matches(QuestConstants.REMOVE)) {
-			character.clearGuild();
-			character.discardNonEligibleGuildQuests();
-			GuildStore guild = character.getCurrentGuildStore();
-			guild.unapplyAllGuildBenefits(frame, character);
+			GuildOperationsManager.removeFromGuild(frame, character);
 			return;
 		}
 		if (!getGuildName().matches(QuestConstants.CURRENT)) {
-			if (resetGuildLevelForGuildChange() && !getGuildName().matches(character.getCurrentGuild())) {
-				character.setCurrentGuildLevel(0);
-				GuildStore guild = character.getCurrentGuildStore();
-				guild.unapplyAllGuildBenefits(frame, character);
-			}
-			character.setCurrentGuild(getGuildName());
-			character.discardNonEligibleGuildQuests();
+			GuildOperationsManager.changeGuild(frame, character, getGuildName(), resetGuildLevelForGuildChange());
 		}
 		
 		switch (getGuildChange()) {
 			case Increase:
-				if (character.getCurrentGuildLevel()>=3) {
+				if (character.getCurrentGuildLevel()>=4) {
 					return;
 				}
 				character.setCurrentGuildLevel(character.getCurrentGuildLevel()+1);
 				GuildStore guildStore = character.getCurrentGuildStore();
 				guildStore.applyGuildBenefit(frame,character,character.getCurrentGuildLevel());
-				guildStore.chooseFriendlinessGain(frame);
+				System.out.println("[GUILD_TEST:GEN-QUEST-01] "+character.getGameObject().getName()+" guild level increased to "+character.getCurrentGuildLevel()+" via quest reward");
 				break;
 			case Decrease:
 				if (character.getCurrentGuildLevel()<=0) {
@@ -62,8 +54,8 @@ public class QuestRewardGuild extends QuestReward {
 				break;
 			case Set:
 				int lvlBefore = character.getCurrentGuildLevel();
-				if (getGuildLevel()>=3) {
-					character.setCurrentGuildLevel(3);
+				if (getGuildLevel()>=4) {
+					character.setCurrentGuildLevel(4);
 				} else if (getGuildLevel()<=0) {
 					character.setCurrentGuildLevel(0);
 				} else {

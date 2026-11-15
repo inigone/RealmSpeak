@@ -8,15 +8,17 @@ import javax.swing.JFrame;
 
 import com.robin.game.objects.GameObject;
 import com.robin.magic_realm.components.*;
-import com.robin.magic_realm.components.attribute.Strength;
 import com.robin.magic_realm.components.attribute.TileLocation;
+import com.robin.magic_realm.components.swing.RealmComponentOptionChooser;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
 public class ThievesGuild extends GuildStore {
 
-	// Services are now passive/day-end: Level 1+ reveals hidden paths, Level 2+ secret passages,
-	// Level 3 opens one locked treasure — all within a 2-tile radius, no gold cost.
+	// Services trigger at day-end when member spends a day at the guild:
+	//   Level 2+: reveal hidden paths in 2-tile radius
+	//   Level 3+: reveal secret passages in 2-tile radius
+	//   Level 4:  learn to unlock any locked treasure or treasure site
 	public static String JOIN_GUILD_TEXT = "You have fulfilled the join requirement for the Thieves Guild. You are now a member of the Thieves Guild.";
 	public static String JOIN_GUILD_TITLE = "Joining Thieves Guild";
 
@@ -33,12 +35,12 @@ public class ThievesGuild extends GuildStore {
 	}
 	public String doGuildDayEndService(JFrame frame, CharacterWrapper character) {
 		int level = character.getCurrentGuildLevel();
-		if (level < 1) return null;
+		if (level < 2) return null;
 
 		TileLocation loc = character.getCurrentLocation();
 		if (loc == null || loc.tile == null) return null;
 
-		// Collect tiles within 2-tile radius
+		// Collect tiles within 2-tile radius of guild
 		Set<TileComponent> radius = new LinkedHashSet<>();
 		radius.add(loc.tile);
 		for (TileComponent t1 : loc.tile.getAllAdjacentTiles()) {
@@ -60,7 +62,7 @@ public class ThievesGuild extends GuildStore {
 					hiddenFound++;
 				}
 			}
-			if (level >= 2) {
+			if (level >= 3) {
 				for (PathDetail path : tile.getSecretPassages(false)) {
 					String key = path.getFullPathKey();
 					if (path.isSecret() && !character.hasSecretPassageDiscovery(key)) {
@@ -70,6 +72,8 @@ public class ThievesGuild extends GuildStore {
 				}
 			}
 		}
+		if (hiddenFound > 0) System.out.println("[GUILD_TEST:TG-PATH-01] "+character.getGameObject().getName()+" discovered "+hiddenFound+" hidden path(s) via Thieves Guild");
+		if (secretFound > 0) System.out.println("[GUILD_TEST:TG-SECRET-01] "+character.getGameObject().getName()+" discovered "+secretFound+" secret passage(s) via Thieves Guild");
 
 		StringBuilder result = new StringBuilder();
 		if (hiddenFound > 0 || secretFound > 0) {
@@ -80,109 +84,158 @@ public class ThievesGuild extends GuildStore {
 			result.append(" within 2 tiles.");
 		}
 
-		if (level >= 3) {
-			ArrayList<GameObject> openable = new ArrayList<>();
-			for (GameObject go : character.getInventory()) {
-				if (go.hasThisAttribute(Constants.NEEDS_OPEN)) {
-					openable.add(go);
+		if (level >= 4) {
+			if (!character.getGameObject().hasThisAttribute(Constants.GUILD_UNLOCK_LEARNED)) {
+				character.getGameObject().setThisAttribute(Constants.GUILD_UNLOCK_LEARNED);
+				// Open all NEEDS_OPEN inventory items now that they know how to unlock
+				ArrayList<GameObject> opened = new ArrayList<>();
+				for (GameObject go : character.getInventory()) {
+					if (go.hasThisAttribute(Constants.NEEDS_OPEN)) {
+						GameObject item = TreasureUtility.openOneObject(frame, character, java.util.Collections.singletonList(go), null, false);
+						if (item != null) opened.add(item);
+					}
 				}
-			}
-			if (!openable.isEmpty()) {
-				GameObject opened = TreasureUtility.openOneObject(frame, character, openable, null, true);
-				if (opened != null) {
-					if (result.length() > 0) result.append(" ");
-					result.append("Thieves Guild: opened the ").append(opened.getName()).append(".");
+				if (result.length() > 0) result.append(" ");
+				result.append("Thieves Guild Master: learned to unlock any locked treasure or site.");
+				if (!opened.isEmpty()) {
+					result.append(" Unlocked: ");
+					for (int i=0; i<opened.size(); i++) {
+						if (i>0) result.append(", ");
+						result.append(opened.get(i).getName());
+					}
+					result.append(".");
 				}
+				System.out.println("[GUILD_TEST:TG-UNLOCK-01] "+character.getGameObject().getName()+" learned to unlock treasures via Thieves Guild Master service");
 			}
 		}
 
 		return result.length() > 0 ? result.toString() : null;
 	}
+
+	// Level 1+: -1 Steal Attempt Table DRM (permanent, max -1 — skip if character already has it)
 	public void applyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
-			character.getGameObject().addThisAttributeListItem(Constants.EXTRA_ACTIONS,"H");
-			character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+			if (!hasDiemod(character, "-1:stealing:")) {
+				character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+				character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT_1_DIEMOD);
+			}
 			character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_1");
+			System.out.println("[GUILD_TEST:TG-BEN-01] "+character.getGameObject().getName()+" granted Level 1 Thieves Guild benefit (-1 Stealing DRM)");
 		}
 	}
 	public void unapplyGuildBenefit1(JFrame frame, CharacterWrapper character) {
 		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_1")) {
-			character.getGameObject().removeThisAttributeListItem(Constants.EXTRA_ACTIONS,"H");
-			character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+			if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT_1_DIEMOD)) {
+				character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+				character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT_1_DIEMOD);
+			}
 			character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_1");
 		}
 	}
+
+	// Level 2+: extra HIDE phase per turn + native relationship
 	public void applyGuildBenefit2(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_2")) {
-			character.getGameObject().setThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
+			GuildPhaseRegistry.applyBenefit(character, THIEVES_GUILD, 2);
 			character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_2");
+			chooseFriendlinessGain(frame);
+			System.out.println("[GUILD_TEST:TG-BEN-02] "+character.getGameObject().getName()+" granted Level 2 Thieves Guild benefit (extra HIDE + native relationship)");
 		}
 	}
 	public void unapplyGuildBenefit2(JFrame frame, CharacterWrapper character) {
 		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_2")) {
-			character.getGameObject().removeThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
+			GuildPhaseRegistry.unapplyBenefit(character, THIEVES_GUILD, 2);
 			character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_2");
 		}
 	}
+
+	// Level 3+: may target other characters with STEAL actions + native relationship
 	public void applyGuildBenefit3(JFrame frame, CharacterWrapper character) {
 		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3")) {
-			for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
-				String guildLivingCharacter = new CharacterWrapper(livingCharacter).getCurrentGuild();
-				if (guildLivingCharacter!=null && guildLivingCharacter.matches(THIEVES_GUILD)) {
-					if (livingCharacter.getId()!=character.getGameObject().getId() &&  (livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_3") || livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
-						return;
-					}
-				}
-			}
+			character.getGameObject().setThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
 			character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_3");
-			GameObject go = getNewCharacterChit();
-			Strength vul = new Strength(character.getGameObject().getThisAttribute("vulnerability"));
-			if (!vul.isTremendous()) {
-				vul = vul.addStrength(1);
-			}
-			go.setThisAttribute("action","move");
-			go.setThisAttribute("speed","2");
-			go.setThisAttribute("strength",vul.toString());
-			go.setThisAttribute("effort","2");
-			go.setName(character.getCharacterLevelName(4)+" MOVE "+vul.toString()+"2**");
-			go.setThisAttribute(Constants.GUILD_BENEFIT+"_3");
-			RealmLogging.logMessage(character.getGameObject().getName(),"Gained a "+go.getName()+" chit.");
+			chooseFriendlinessGain(frame);
+			System.out.println("[GUILD_TEST:TG-BEN-03] "+character.getGameObject().getName()+" granted Level 3 Thieves Guild benefit (PvP steal + native relationship)");
 		}
 	}
 	public void unapplyGuildBenefit3(JFrame frame, CharacterWrapper character) {
-		character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_3");
-		for (CharacterActionChitComponent chit : character.getAllChits()) {
-			if (chit.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3")) {
-				character.getGameObject().remove(chit.getGameObject());
-				chit.getGameObject().clearAllAttributes();
-			}
+		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_3")) {
+			character.getGameObject().removeThisAttribute(Constants.THIEVES_GUILD_PVP_STEAL);
+			character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_3");
 		}
 	}
-	
-	public void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
-		if (!character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
-			// Level 0 only - Level 1+ already has permanent -1:Stealing:all from benefit1
-			if (character.getCurrentGuildLevel() == 0) {
-				character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
-				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod");
+
+	// Level 4 (Master, unique): reduce any chosen MOVE chit effort by one asterisk + native relationship
+	public void applyGuildBenefit4(JFrame frame, CharacterWrapper character) {
+		if (character.getGameObject().hasThisAttribute(Constants.GUILD_BENEFIT+"_4")) return;
+		for (GameObject livingCharacter : RealmUtility.getLivingCharacters(character.getGameData())) {
+			CharacterWrapper lc = new CharacterWrapper(livingCharacter);
+			if (THIEVES_GUILD.equals(lc.getCurrentGuild(false))) {
+				if (livingCharacter.getId()!=character.getGameObject().getId() &&
+						(livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT+"_4") ||
+						 livingCharacter.hasThisAttribute(Constants.GUILD_BENEFIT_SUCESSOR))) {
+					return;
+				}
 			}
-			character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_BONUS);
+		}
+		// Collect MOVE chits the character can choose from
+		ArrayList<CharacterActionChitComponent> moveChits = new ArrayList<>();
+		for (CharacterActionChitComponent chit : character.getAllChits()) {
+			if ("move".equals(chit.getGameObject().getThisAttribute("action"))) {
+				moveChits.add(chit);
+			}
+		}
+		if (moveChits.isEmpty()) return;
+		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(frame,
+				"Thieves Guild Master: Choose a MOVE chit to reduce effort by one asterisk:",false);
+		for (CharacterActionChitComponent chit : moveChits) {
+			chooser.addGameObject(chit.getGameObject(), chit.getGameObject().getName());
+		}
+		chooser.setVisible(true);
+		if (chooser.getSelectedText()==null) return;
+		GameObject chosen = chooser.getFirstSelectedComponent().getGameObject();
+		int currentEffort = 0;
+		try { currentEffort = Integer.parseInt(chosen.getThisAttribute("effort")); } catch (NumberFormatException ignored) {}
+		chosen.setThisAttribute("effort", String.valueOf(Math.max(0, currentEffort-1)));
+		character.getGameObject().setThisAttribute(Constants.GUILD_BENEFIT+"_4");
+		chooseFriendlinessGain(frame);
+		RealmLogging.logMessage(character.getGameObject().getName(),"Thieves Guild Master: reduced effort of "+chosen.getName()+".");
+		System.out.println("[GUILD_TEST:TG-BEN-04] "+character.getGameObject().getName()+" granted Level 4 Thieves Guild benefit (MOVE chit effort reduced: "+chosen.getName()+")");
+	}
+	public void unapplyGuildBenefit4(JFrame frame, CharacterWrapper character) {
+		// Chit modification is permanent; just clear the flag
+		character.getGameObject().removeThisAttribute(Constants.GUILD_BENEFIT+"_4");
+	}
+
+	// Training bonus: -1 Stealing DRM for pledge holders (Level 0) only, max -1 — skip if already present
+	public void applyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
+		if (!character.getGameObject().hasThisAttribute(Constants.THIEVES_GUILD_TRAINING)) {
+			if (character.getCurrentGuildLevel() == 0 && !hasDiemod(character, "-1:stealing:")) {
+				character.getGameObject().addThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
+				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_DIEMOD);
+				System.out.println("[GUILD_TEST:TG-TRAIN-00] "+character.getGameObject().getName()+" received Thieves Guild training bonus (-1 Stealing for 14 days)");
+			}
+			character.getGameObject().setThisAttribute(Constants.THIEVES_GUILD_TRAINING);
 		}
 	}
 	public void unapplyGuildTrainingBonus(JFrame frame, CharacterWrapper character) {
-		if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS)) {
-			// Only remove DIEMOD if we actually added it (tracked by _diemod flag)
-			if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod")) {
+		if (character.getGameObject().hasThisAttribute(Constants.THIEVES_GUILD_TRAINING)) {
+			if (character.getGameObject().hasThisAttribute(Constants.GUILD_TRAINING_DIEMOD)) {
 				character.getGameObject().removeThisAttributeListItem(Constants.DIEMOD,"-1:Stealing:all");
-				character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS+"_diemod");
+				character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_DIEMOD);
 			}
-			character.getGameObject().removeThisAttribute(Constants.GUILD_TRAINING_BONUS);
+			character.getGameObject().removeThisAttribute(Constants.THIEVES_GUILD_TRAINING);
+			System.out.println("[GUILD_TEST:TG-TRAIN-EXP] "+character.getGameObject().getName()+" Thieves Guild training bonus expired");
 		}
 	}
-	public boolean validateRequirementAndJoin(CharacterWrapper character, GameObject loot) {
-		if (character.hasGuildJoinRequirement() && RealmComponent.getRealmComponent(loot).isTreasure()) {
+	public boolean validateRequirementAndJoin(CharacterWrapper character, RealmComponent victim, GameObject loot) {
+		if (character.hasGuildJoinRequirement()
+				&& victim.isNativeLeader()
+				&& RealmComponent.getRealmComponent(loot).isTreasure()) {
 			character.setGuildJoinRequirement(false);
-			character.setCurrentGuildLevel(0);
+			character.setCurrentGuildLevel(1);
+			applyGuildBenefit(null, character, 1);
+			System.out.println("[GUILD_TEST:TG-JOIN-01] "+character.getGameObject().getName()+" joined Thieves Guild by stealing "+loot.getName()+" from native HQ "+victim.getGameObject().getName());
 			return true;
 		}
 		return false;

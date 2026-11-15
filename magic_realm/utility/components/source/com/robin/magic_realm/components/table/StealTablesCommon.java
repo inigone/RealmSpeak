@@ -60,7 +60,7 @@ public class StealTablesCommon {
 		// Check for Thieves Guild join requirement
 		GuildStore currentGuild = character.getCurrentGuildStore(false);
 			if (character.hasGuildJoinRequirement() && currentGuild!=null && currentGuild instanceof ThievesGuild) {
-			if (((ThievesGuild)currentGuild).validateRequirementAndJoin(character, selectedItem.getGameObject())) {
+			if (((ThievesGuild)currentGuild).validateRequirementAndJoin(character, victim, selectedItem.getGameObject())) {
 				JOptionPane.showMessageDialog(frame,ThievesGuild.JOIN_GUILD_TEXT,ThievesGuild.JOIN_GUILD_TITLE,JOptionPane.INFORMATION_MESSAGE);
 			}
 		}

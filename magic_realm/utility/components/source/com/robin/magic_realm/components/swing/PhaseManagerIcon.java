@@ -2,8 +2,11 @@ package com.robin.magic_realm.components.swing;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import javax.swing.*;
 
@@ -13,6 +16,7 @@ import com.robin.general.swing.ImageCache;
 import com.robin.magic_realm.components.BattleHorse;
 import com.robin.magic_realm.components.RealmComponent;
 import com.robin.magic_realm.components.attribute.PhaseManager;
+import com.robin.magic_realm.components.store.GuildPhaseRegistry;
 import com.robin.magic_realm.components.utility.Constants;
 import com.robin.magic_realm.components.wrapper.CharacterWrapper;
 
@@ -21,11 +25,14 @@ public class PhaseManagerIcon extends ImageIcon {
 	private static final Font ACTION_FONT = new Font("Dialog",Font.BOLD,14);
 	
 	private PhaseManager pm;
+	private CharacterWrapper character;
 	private List extraActions;
+	private List<Boolean> isGuildActionList; // parallel to extraActions; true = guild-benefit phase
 	private Rectangle ponyRect;
-	
+
 	public PhaseManagerIcon(PhaseManager pm) {
 		this.pm = pm;
+		this.character = pm != null ? pm.getCharacter() : null;
 		updateImage();
 	}
 	public void handleClick(CharacterWrapper character,Point p) {
@@ -52,7 +59,10 @@ public class PhaseManagerIcon extends ImageIcon {
 				Object[] obj = (Object[])extraActions.get(n);
 				String action = (String)obj[0];
 				GameObject go = (GameObject)obj[1];
-				return "Extra "+action+" phase from "+go.getName();
+				boolean isGuild = isGuildActionList != null && n < isGuildActionList.size() && isGuildActionList.get(n);
+				String source = isGuild ? getGuildActionSource(action) : null;
+				if (source == null) source = go.getName();
+				return "Extra "+action+" phase from "+source;
 			}
 		}
 		return null;
@@ -66,6 +76,7 @@ public class PhaseManagerIcon extends ImageIcon {
 	private void updateImage() {
 		int width = 96;
 		extraActions = pm.getExtraActionsList();
+		isGuildActionList = buildGuildActionList(extraActions);
 		width += (extraActions.size()*32);
 		
 		ponyRect = null;
@@ -86,15 +97,19 @@ public class PhaseManagerIcon extends ImageIcon {
 		
 		int pos = 96;
 		g.setFont(ACTION_FONT);
-		for (Iterator i=extraActions.iterator();i.hasNext();) {
+		int idx = 0;
+		for (Iterator i=extraActions.iterator();i.hasNext();idx++) {
 			Object[] obj = (Object[])i.next();
 			String action = (String)obj[0];
 			GameObject go = (GameObject)obj[1]; // could draw this as a RealmComponent small image...
+			boolean isGuild = isGuildActionList != null && idx < isGuildActionList.size() && isGuildActionList.get(idx);
 			RealmComponent rc = RealmComponent.getRealmComponent(go);
 			if (rc!=null) {
 				int dx = pos+(rc.isCard()?3:0);
 				int dy = 0;
-				g.drawImage(rc.getPhaseImage(),dx,dy,null);
+				java.awt.Image baseImage = isGuild ? getGuildBadgeImage(action) : null;
+				if (baseImage == null) baseImage = rc.getPhaseImage();
+				g.drawImage(baseImage,dx,dy,32,32,null);
 				if (rc.isHorse() || rc.isNativeHorse()) {
 					BattleHorse horse = (BattleHorse)rc;
 					if (horse.doublesMove()) {
@@ -124,6 +139,64 @@ public class PhaseManagerIcon extends ImageIcon {
 		}
 		
 		setImage(image);
+	}
+	private static final String[] GUILD_LEVEL_NAMES = { "Pledge", "Initiate", "Apprentice", "Journeyman", "Master" };
+
+	/**
+	 * Builds a parallel boolean list for extraActions: true = guild-benefit phase, false = innate.
+	 * Detection works by counting how many times each action appears in EXTRA_ACTIONS (innate);
+	 * once those are "consumed" in order, the remaining occurrences are guild-sourced.
+	 * This avoids using the guild GO as the phase's required item (which would cause
+	 * "Missing Required Item" errors when the character is away from the guild).
+	 */
+	private List<Boolean> buildGuildActionList(List actions) {
+		List<Boolean> result = new ArrayList<>();
+		if (character == null) {
+			for (int i = 0; i < actions.size(); i++) result.add(false);
+			return result;
+		}
+		Map<String, Integer> innateCount = new HashMap<>();
+		ArrayList<String> ea = character.getGameObject().getThisAttributeList(Constants.EXTRA_ACTIONS);
+		if (ea != null) {
+			for (String a : ea) innateCount.merge(a.replace("SP","E"), 1, Integer::sum);
+		}
+		if (character.getGameObject().hasAttribute(Constants.OPTIONAL_BLOCK, Constants.EXTRA_ACTIONS)) {
+			ArrayList<String> oa = character.getGameObject().getAttributeList(Constants.OPTIONAL_BLOCK, Constants.EXTRA_ACTIONS);
+			if (oa != null) {
+				for (String a : oa) innateCount.merge(a.replace("SP","E"), 1, Integer::sum);
+			}
+		}
+		for (Object o : actions) {
+			String action = (String)((Object[])o)[0];
+			int remaining = innateCount.getOrDefault(action, 0);
+			if (remaining > 0) {
+				innateCount.put(action, remaining - 1);
+				result.add(false); // innate
+			} else {
+				result.add(true); // guild-sourced
+			}
+		}
+		return result;
+	}
+
+	private String getGuildActionSource(String action) {
+		if (character == null) return null;
+		String guild = character.getCurrentGuild(false);
+		if (guild == null || guild.isEmpty()) return null;
+		int level = GuildPhaseRegistry.getBenefitLevel(action, guild);
+		if (level == 0) return null;
+		String guildLabel = Character.toUpperCase(guild.charAt(0)) + guild.substring(1) + " Guild";
+		String levelName = level < GUILD_LEVEL_NAMES.length ? GUILD_LEVEL_NAMES[level] : "Master";
+		return guildLabel + " " + levelName;
+	}
+	private java.awt.Image getGuildBadgeImage(String action) {
+		if (character == null) return null;
+		String guild = character.getCurrentGuild(false);
+		if (guild == null || guild.isEmpty()) return null;
+		int level = GuildPhaseRegistry.getBenefitLevel(action, guild);
+		if (level == 0) return null;
+		ImageIcon icon = ImageCache.getIcon("badges/"+guild+level);
+		return icon != null ? icon.getImage() : null;
 	}
 	public static void main(String[] args) {
 		PhaseManager pm = new PhaseManager(null,null,2,2,0);

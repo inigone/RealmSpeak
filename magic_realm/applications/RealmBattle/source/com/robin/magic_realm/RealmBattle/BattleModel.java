@@ -524,20 +524,6 @@ public class BattleModel {
 		}
 	}
 	
-	public void checkForGuildHideout() {
-		RealmComponent guild = null;
-		if (battleLocation.hasClearing()) {
-			guild = battleLocation.clearing.getGuild();
-		}
-		if (guild==null) return;
-		for (CharacterChitComponent rc : getAllParticipatingCharacters()) {
-			CharacterWrapper character = new CharacterWrapper(rc.getGameObject());
-			if (character.isGuildMember(guild.getGameObject().getThisAttribute(RealmComponent.GUILD)) && character.getCurrentGuildLevel()>=1) {
-				character.setHidden(true);
-			}
-		}
-	}
-	
 	public void doEnergizeDenizenPreBattleSpells() {
 		ArrayList<RealmComponent> casters = new ArrayList<>();
 		for (RealmComponent battleParticipant : getAllBattleParticipants(true)) {
