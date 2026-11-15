@@ -336,7 +336,8 @@ public class DenizenCombatSheet extends CombatSheet {
 				break;
 			case Constants.COMBAT_RANDOM_ASSIGN:
 				if (!sheetOwner.isMistLike()) {
-					if (isOwnedByActive) {
+					// Random assignment may only go to an unhidden hireling, matching BattleGroup.getAvailableParticipant()
+					if (isOwnedByActive && !sheetOwner.isHidden()) {
 						if (combatFrame.areDenizensToLure()) {
 							// Now, need to make sure this sheetOwner is not currently targeted by a RED-side-up T Monster
 							boolean hasRedSideAttacker = false;
@@ -879,11 +880,15 @@ public class DenizenCombatSheet extends CombatSheet {
 				// Sheet owner becomes unhidden when deployed
 				if (sheetOwner.isHidden()) {
 					sheetOwner.setHidden(false);
+					CombatWrapper sheetOwnerCombat = new CombatWrapper(sheetOwner.getGameObject());
+					sheetOwnerCombat.setWasUnhiding(true);
 				}
 				
 				// As does the deployTarget (if hidden)
 				if (deployTarget.isHidden()) {
 					deployTarget.setHidden(false);
+					CombatWrapper deployTargetCombat = new CombatWrapper(deployTarget.getGameObject());
+					deployTargetCombat.setWasUnhiding(true);
 				}
 				
 				if (extendedTreachery(deployTarget)) {

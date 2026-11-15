@@ -1,15 +1,3 @@
-Optional rule for Thief T Stab chit:
-can only use Pointed Weapon, so Dagger, Sword, or Spear.
-not be playable when riding a horse.
-table, like the missile table:
-1 Maximum damage
-2 Tremendous damage (equivalent of the wish for Strength)
-3. weapon damage, plus 2 levels (example Short Sword + overswing = Tremendous damage + * )
-4. weapon damage, plus 1 level (previous example: Heavy damage + *)
-5. weapon damage
-6. weapon damage minus 1 level (previous example: Light damage + *)
-
-Flash/Mark chat if unread messages
 QuestReward: MarkTile: current tile, specific tile (regex or tile type), random/all/choose
 QuestRequirement: DwellingLocation: current tile, current clearing, regex, only/not guilds, only/not general dwelling,!virtual_dwelling, marked, add/remove mark, must not have mark
 QuestReward: MarkDwelling: current tile, current clearing, regex, only/not guilds, only/not general dwelling,!virtual_dwelling, random/all/choose
@@ -23,9 +11,18 @@ QuestReward: MarkGuild: current tile, current clearing, regex, random/all/choose
 QuestReward: MarkGate: current tile, current clearing, regex, random/all/choose
 QuestRequirement: GateLocation: current tile, current clearing, regex, marked, add/remove mark, must not have mark
 
+
+Version 1.2.6.7
+NEW FEATURES:
+# Update optional Stab chit for Thief
+# Improve memory usage after shutting down a game 
+QUEST UPDATE:
+# QuestRequirementDiscovery: add guilds to discovery list
+
 Version 1.2.6.6
 NEW FEATURES:
 # Dread Roberts Runes House Rule
+# Optional rules for Thief's Stab chit
 QUEST UPDATE:
 # QuestRequirementCharacter
 # QuestRequirementCharacterTrade
@@ -37,7 +34,10 @@ QUEST UPDATE:
 BUGS/ISSUES:
 # Fix Treachery: rebels cannot attack nor be attacked by monsters and unhired natives
 # Fix T fight chit of the Thief
-# Improfve scret placement of chits in combat
+# Improve scret placement of chits in combat
+# Fix spell effects not propagating to other clients after apply
+# Fix guild join requirement never completing for any guild
+# Don't offer hidden hirelings as random-assignment targets
 
 Version 1.2.6.5
 QUEST UPDATE:

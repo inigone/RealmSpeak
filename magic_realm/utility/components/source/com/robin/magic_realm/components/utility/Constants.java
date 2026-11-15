@@ -30,7 +30,7 @@ public class Constants {
 	public static final String DIE_ROLL_LOG = "_die_roll_log_";
 	
 	public static final String APPLICATION_NAME = "Realm Speak";
-	public static final String REALM_SPEAK_VERSION = "1.2.6.6";
+	public static final String REALM_SPEAK_VERSION = "1.2.6.7";
 	public static final String REALM_SPEAK_IMAGES_VERSION = "1.2.5.0";
 	
 	public static final String PLAYER_TO_PLACE = "p_2_p";
@@ -730,7 +730,11 @@ public class Constants {
 	public static final String LUCK = "luck";
 	public static final String FREED_SPELL = "freed_spell";
 	public static final String TARGETS_SITES_FREED_SPELL = "targets_sites_freed_spell";
-	
+	public static final String WEAPON_RESTRICTIONS = "weapon_restrictions";
+	public static final String NO_RIDING = "no_riding";
+	public static final String STABBING = "stabbing";
+	public static final String NO_WEAPON_BOOSTING = "no_weapon_boosting";
+	public static final String NO_FUMBLE = "no_fumble";
 
 	// Curses
 	public static final String CURSES_NULLIFIED = "curses_nullified";
@@ -873,6 +877,7 @@ public class Constants {
 	public static final String OPT_CHAR_ABILITY_ELF = "OptCharElf";
 	public static final String OPT_CHAR_ABILITY_PALADIN = "OptCharPaladin";
 	public static final String OPT_CHAR_ABILITY_DWARF = "OptCharDwarf";
+	public static final String OPT_CHAR_ABILITY_THIEF_STAB_CHIT = "OptCharThiefStabChit";
 	public static final String OPT_PENETRATING_ARMOR = "OptPenArmor";
 	public static final String OPT_TWO_HANDED_WEAPONS = "OptTwoHandedWeapons";
 	public static final String OPT_DUAL_WIELDING = "OptDualWielding";
@@ -900,6 +905,8 @@ public class Constants {
 	public static final String OPT_NO_COLOR_CHIT_FOR_SLEEPING_CHARACTERS = "OptNoColorChitForSleepingCharacters";
 	public static final String OPT_COLOR_CHIT_TARGETING_NO_HIDDEN_TARGETS = "OptColorChitTargetingNoHiddenCharacters";
 	public static final String OPT_DISABLE_ACTIONS_WHEN_AWAITING_REACTIONS = "OptDisableActionsWhenAwaitingReactions";
+	public static final String OPT_STABBING_REQUIRES_HIDING = "OptStabbingRequiresHiding";
+	public static final String OPT_STABBING_SPECIAL_TARGETING = "OptStabbingRequiresSpecialTargeting";
 	
 	// Revised Rules
 	public static final String REV_MISSILE = "RevisedMissileTable";

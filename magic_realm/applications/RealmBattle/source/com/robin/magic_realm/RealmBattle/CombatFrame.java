@@ -2551,7 +2551,9 @@ public class CombatFrame extends JFrame {
 			denizenPanel.repaint();
 			if (lurer.isHidden()) {
 				currentBattleModel.setGotUnhidden();
+				CombatWrapper combatLurer = new CombatWrapper(lurer.getGameObject());
 				lurer.setHidden(false);
+				combatLurer.setWasUnhiding(true);
 			}
 		}
 		else {
@@ -2607,20 +2609,22 @@ public class CombatFrame extends JFrame {
 				"You cannot charge, because you do not have a fast enough move to play.\n(Check your inventory!)",
 				false)) {
 			CombatFrame.broadcastMessage(activeCharacter.getGameObject().getName(),"Charges the "+charged.getGameObject().getName());
+			CombatWrapper activeWrap = new CombatWrapper(activeCharacter.getGameObject());
+			CombatWrapper chargedWrap = new CombatWrapper(charged.getGameObject());
 			if (activeCharacter.isHidden()) {
 				currentBattleModel.setGotUnhidden();
+				activeWrap.setWasUnhiding(true);
 				activeCharacter.setHidden(false);
 				CombatFrame.broadcastMessage(activeCharacter.getGameObject().getName(),"Is unhidden!");
 			}
 			if (charged.isCharacter() && charged.isHidden()) {
 				currentBattleModel.setGotUnhidden();
+				chargedWrap.setWasUnhiding(true);
 				charged.setHidden(false);
 				CombatFrame.broadcastMessage(activeCharacter.getGameObject().getName(),"Is unhidden!");
 			}
 			RealmComponent rc = activator.getSelectedMoveChit();
-			CombatWrapper chargedWrap = new CombatWrapper(charged.getGameObject());
 			chargedWrap.addChargeChit(rc.getGameObject());
-			CombatWrapper activeWrap = new CombatWrapper(activeCharacter.getGameObject());
 			activeWrap.setHasCharged(true);
 			changes = true;
 		}
@@ -2968,9 +2972,9 @@ public class CombatFrame extends JFrame {
 			}
 			if (!hiddenStatus) {
 				broadcastMessage(theAttacker.getGameObject().getName(),"Becomes unhidden.");
-			}
-			if (theAttacker.isHidden() && !hiddenStatus) {
 				setGotUnhidden = true;
+				CombatWrapper combatAttacker = new CombatWrapper(theAttacker.getGameObject());
+				combatAttacker.setWasUnhiding(true);
 			}
 			theAttacker.setHidden(hiddenStatus);
 		}
@@ -3110,6 +3114,7 @@ public class CombatFrame extends JFrame {
 				}
 			}
 		}
+		
 		if (!charCombat.getPlayedAttack() && !charCombat.getPlayedBonusParry() && !charCombat.getPlayedSpell() ) {
 			// First, clear out any chits already in play for attack
 			for (CharacterActionChitComponent chit : activeCharacter.getActiveFightChits()) {
@@ -3147,6 +3152,7 @@ public class CombatFrame extends JFrame {
 				return;
 			}
 		}
+		boolean hasActiveSteed = activeCharacter.getActiveSteed()!=null;
 		
 		Collection<RealmComponent> fightOptions = getAvailableFightOptions(box);
 		RealmComponent characterRc= RealmComponent.getRealmComponent(activeCharacter.getGameObject());
@@ -3158,27 +3164,53 @@ public class CombatFrame extends JFrame {
 				if (chit.getGameObject().hasThisAttribute(Constants.NO_PARRY)) continue;
 				CombatWrapper combat = new CombatWrapper(chit.getGameObject());
 				if(combat.getPlacedAsFightOrParryOrParryShield()) continue;
+				if (hasActiveSteed && chit.getGameObject().hasThisAttribute(Constants.NO_RIDING)) continue;
+				
 				Strength chitStrength = null;
 				if (chit instanceof CharacterActionChitComponent) {
 					chitStrength = ((CharacterActionChitComponent) chit).getStrength();
 				} else if (chit.getGameObject().hasThisAttribute("gloves")) {
 					chitStrength = RealmUtility.getGlovesStrength(chit.getGameObject());
 				}
+				ArrayList<String> weaponRestrictions = chit.getGameObject().getThisAttributeList(Constants.WEAPON_RESTRICTIONS);
+				
 				for (WeaponChitComponent weapon : weapons) {
+					boolean weaponAllowed = true;
 					if (weapon.getGameObject().hasThisAttribute(Constants.NO_PARRY)) continue;
 					if (CombatWrapper.hasCombatInfo(weapon.getGameObject())) continue;
 					if (weapon.isMissile() && !activeCharacter.affectedByKey(Constants.PARRY_WITH_MISSILE) && !hostPrefs.hasPref(Constants.PARRY_WITH_MISSILE)) continue;
 					if (chitStrength !=null && !chitStrength.strongerOrEqualTo(weapon.getWeight())) continue;
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (weapon.getGameObject().hasThisAttribute(allowedWeapon)) {
+								weaponAllowed = true;
+								break;
+							}
+						}
+					}
+					if (!weaponAllowed) continue;
 					key = "P"+(keyN++);
 					chooser.addOption(key,"");
 					chooser.addRealmComponentToOption(key,chit);
 					chooser.addRealmComponentToOption(key,weapon);
 				}
 				for (GameObject treasure : activeCharacter.getActiveTreasureWeaponObjects()) {
+					boolean weaponAllowed = true;
 					if (treasure.hasThisAttribute(Constants.NO_PARRY)) continue;
 					if (CombatWrapper.hasCombatInfo(treasure)) continue;
 					if (TreasureUtility.isTreasureMissile(treasure) && !activeCharacter.affectedByKey(Constants.PARRY_WITH_MISSILE) && !hostPrefs.hasPref(Constants.PARRY_WITH_MISSILE)) continue;
 					if (chitStrength !=null && !chitStrength.strongerOrEqualTo(TreasureUtility.getWeightForTreasure(treasure))) continue;
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (treasure.hasThisAttribute(allowedWeapon)) {
+								weaponAllowed = true;
+								break;
+							}
+						}
+					}
+					if (!weaponAllowed) continue;
 					key = "P"+(keyN++);
 					chooser.addOption(key,"");
 					chooser.addRealmComponentToOption(key,chit);
@@ -3374,6 +3406,7 @@ public class CombatFrame extends JFrame {
 				weaponCard.getGameObject().removeAttributeBlock(CombatWrapper.COMBAT_BLOCK);
 			}
 		}
+		boolean hasActiveSteed = activeCharacter.getActiveSteed()!=null;
 		
 		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(this,"Select Attack:",true);
 		int keyN = 0;
@@ -3381,6 +3414,19 @@ public class CombatFrame extends JFrame {
 			for (RealmComponent chit : fightOptions) {
 				CombatWrapper combat = new CombatWrapper(chit.getGameObject());
 				if(combat.getPlacedAsFightOrParryOrParryShield()) continue;
+				if (hasActiveSteed && chit.getGameObject().hasThisAttribute(Constants.NO_RIDING)) continue;
+				if (hostPrefs.hasPref(Constants.OPT_STABBING_REQUIRES_HIDING) && chit.getGameObject().hasThisAttribute(Constants.STABBING)) {
+					if(!activeCharacter.isHidden() && !charCombat.getWasUnhiding()) continue;
+					if (sheetOwner.isCharacter() && !sheetOwner.getGameObject().equals(activeCharacter.getGameObject())) {
+						CharacterWrapper targetedCharacter = new CharacterWrapper(sheetOwner.getGameObject());
+						if (targetedCharacter.foundHiddenEnemies()) continue;
+					}
+				}
+				if (hostPrefs.hasPref(Constants.OPT_STABBING_SPECIAL_TARGETING) && chit.getGameObject().hasThisAttribute(Constants.STABBING)) {
+					if (sheetOwner.getGameObject().equals(activeCharacter.getGameObject())) continue;
+					if ((sheetOwner.getTarget()!=null && sheetOwner.getTarget().getGameObject().equals(activeCharacter.getGameObject()))
+							|| (sheetOwner.get2ndTarget()!=null && sheetOwner.get2ndTarget().getGameObject().equals(activeCharacter.getGameObject()))) continue;
+				}
 				
 				Strength chitStrength = null;
 				if (chit instanceof CharacterActionChitComponent) {
@@ -3388,17 +3434,40 @@ public class CombatFrame extends JFrame {
 				} else if (chit.getGameObject().hasThisAttribute("gloves")) {
 					chitStrength = RealmUtility.getGlovesStrength(chit.getGameObject());
 				}
+				ArrayList<String> weaponRestrictions = chit.getGameObject().getThisAttributeList(Constants.WEAPON_RESTRICTIONS);
 				
 				if (weapons==null || weapons.isEmpty()) {
 					// Dagger
+					boolean weaponAllowed = true;
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (allowedWeapon.matches("dagger")) {
+								weaponAllowed = true;
+								break;
+							}
+						}
+					}
+					if (!weaponAllowed) continue;
 					String key = "N"+(keyN++);
 					chooser.addOption(key,"");
 					chooser.addRealmComponentToOption(key,chit);
 				}
 				else {
 					for (WeaponChitComponent weapon : weapons) {
+						boolean weaponAllowed = true;
 						if (CombatWrapper.hasCombatInfo(weapon.getGameObject())) continue;
 						if (chitStrength !=null && !chitStrength.strongerOrEqualTo(weapon.getWeight())) continue;
+						if (weaponRestrictions!=null) {
+							weaponAllowed = false;
+							for (String allowedWeapon : weaponRestrictions) {
+								if (weapon.getGameObject().hasThisAttribute(allowedWeapon)) {
+									weaponAllowed = true;
+									break;
+								}
+							}
+						}
+						if (!weaponAllowed) continue;
 						String key = "N"+(keyN++);
 						chooser.addOption(key,"");
 						chooser.addRealmComponentToOption(key,chit);
@@ -3412,8 +3481,19 @@ public class CombatFrame extends JFrame {
 					}
 				}
 				if (weaponCard!=null) {
+					boolean weaponAllowed = true;
 					if (CombatWrapper.hasCombatInfo(weaponCard.getGameObject())) continue;
 					if (chitStrength !=null && !chitStrength.strongerOrEqualTo(TreasureUtility.getWeightForTreasure(weaponCard.getGameObject()))) continue;
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (weaponCard.getGameObject().hasThisAttribute(allowedWeapon)) {
+								weaponAllowed = true;
+								break;
+							}
+						}
+					}
+					if (!weaponAllowed) continue;
 					String key = "N"+(keyN++);
 					chooser.addOption(key,"");
 					chooser.addRealmComponentToOption(key,chit);
@@ -3509,12 +3589,12 @@ public class CombatFrame extends JFrame {
 				}
 			}
 		}
+		boolean hasActiveSteed = activeCharacter.getActiveSteed()!=null;
 		
 		RealmComponent characterRc= RealmComponent.getRealmComponent(activeCharacter.getGameObject());
 		RealmComponentOptionChooser chooser = new RealmComponentOptionChooser(this,"Select Parry:",true);
 		int keyN = 0;
 		String key = "N"+(keyN);
-		
 		for (GameObject itemGo : activeCharacter.getActiveInventory()) {
 			if (itemGo.hasThisAttribute(Constants.NO_PARRY)) continue;
 			ArmorType armorType = TreasureUtility.getArmorType(itemGo);
@@ -3529,6 +3609,7 @@ public class CombatFrame extends JFrame {
 			if (chit.getGameObject().hasThisAttribute(Constants.NO_PARRY)) continue;
 			CombatWrapper combat = new CombatWrapper(chit.getGameObject());
 			if(combat.getPlacedAsFightOrParryOrParryShield()) continue;
+			if (hasActiveSteed && chit.getGameObject().hasThisAttribute(Constants.NO_RIDING)) continue;
 			
 			if (!charCombat.getPlayedBonusParry() && activeCharacter.affectedByKey(Constants.BLOCK_NO_WEAPON)) {
 				key = "C"+(keyN++);
@@ -3536,16 +3617,28 @@ public class CombatFrame extends JFrame {
 				chooser.addRealmComponentToOption(key,chit);
 			}
 			if (!mageCastedSpell && (hostPrefs.hasPref(Constants.OPT_PARRY_LIKE_SHIELD) || activeCharacter.affectedByKey(Constants.PARRY_LIKE_SHIELD))) {
+				Strength chitStrength = null;
+				if (chit instanceof CharacterActionChitComponent) {
+					chitStrength = ((CharacterActionChitComponent) chit).getStrength();
+				} else if (chit.getGameObject().hasThisAttribute("gloves")) {
+					chitStrength = RealmUtility.getGlovesStrength(chit.getGameObject());
+				}
+				ArrayList<String> weaponRestrictions = chit.getGameObject().getThisAttributeList(Constants.WEAPON_RESTRICTIONS);
 				for (WeaponChitComponent weapon : weapons) {
+					boolean weaponAllowed = true;
 					if (weapon.getGameObject().hasThisAttribute(Constants.NO_PARRY)) continue;
 					if (CombatWrapper.hasCombatInfo(weapon.getGameObject())) continue;
 					if (weapon.isMissile() && !activeCharacter.affectedByKey(Constants.PARRY_WITH_MISSILE) && !hostPrefs.hasPref(Constants.PARRY_WITH_MISSILE)) continue;
-					Strength chitStrength = null;
-					if (chit instanceof CharacterActionChitComponent) {
-						chitStrength = ((CharacterActionChitComponent) chit).getStrength();
-					} else if (chit.getGameObject().hasThisAttribute("gloves")) {
-						chitStrength = RealmUtility.getGlovesStrength(chit.getGameObject());
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (weapon.getGameObject().hasThisAttribute(allowedWeapon)) {
+								weaponAllowed = true;
+								break;
+							}
+						}
 					}
+					if (!weaponAllowed) continue;
 					
 					if (chitStrength !=null && !chitStrength.strongerOrEqualTo(weapon.getWeight())) continue;
 					key = "W"+(keyN++);
@@ -3554,15 +3647,20 @@ public class CombatFrame extends JFrame {
 					chooser.addRealmComponentToOption(key,weapon);
 				}
 				for (GameObject treasure : activeCharacter.getActiveTreasureWeaponObjects()) {
+					boolean weaponAllowed = true;
 					if (treasure.hasThisAttribute(Constants.NO_PARRY)) continue;
 					if (CombatWrapper.hasCombatInfo(treasure)) continue;
 					if (TreasureUtility.isTreasureMissile(treasure) && !activeCharacter.affectedByKey(Constants.PARRY_WITH_MISSILE) && !hostPrefs.hasPref(Constants.PARRY_WITH_MISSILE)) continue;
-					Strength chitStrength = null;
-					if (chit instanceof CharacterActionChitComponent) {
-						chitStrength = ((CharacterActionChitComponent) chit).getStrength();
-					} else if (chit.getGameObject().hasThisAttribute("gloves")) {
-						chitStrength = RealmUtility.getGlovesStrength(chit.getGameObject());
+					if (weaponRestrictions!=null) {
+						weaponAllowed = false;
+						for (String allowedWeapon : weaponRestrictions) {
+							if (treasure.hasThisAttribute(allowedWeapon)) {
+								weaponAllowed = true;
+								break;
+							}
+						}
 					}
+					if (!weaponAllowed) continue;
 					
 					if (chitStrength !=null && !chitStrength.strongerOrEqualTo(TreasureUtility.getWeightForTreasure(treasure))) continue;
 					key = "W"+(keyN++);
