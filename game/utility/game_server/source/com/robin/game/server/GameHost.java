@@ -64,8 +64,16 @@ public class GameHost {
 		for (GameServer server:servers) {
 			String clientName = server.getClientName();
 			if (!server.equals(ignoreServer) && clientName!=null && clientName.equals(name)) {
-				// A reconnecting client races the teardown of its own previous GameServer: until that
-				// one is removed from the list its name is still taken, and the reconnect is refused.
+				if (server.connection instanceof NetFreeSocket) {
+					// The host-as-client (loopback "RS Server") is reconnecting. The old GameServer
+					// races the new login: its teardown hasn't reached removeServer() yet. Evict it
+					// and close its streams so the thread unblocks and dies cleanly.
+					servers.remove(server);
+					try { if (server.in!=null) server.in.close(); } catch(IOException ignored) {}
+					try { if (server.out!=null) server.out.close(); } catch(IOException ignored) {}
+					logger.warning("LOGIN: evicted stale loopback GameServer for \""+name+"\"; allowing reconnect");
+					return true;
+				}
 				logger.warning("LOGIN REFUSED for \""+name+"\": a GameServer still holds that name ("
 					+servers.size()+" registered: "+describeServers()+")");
 				return false;
