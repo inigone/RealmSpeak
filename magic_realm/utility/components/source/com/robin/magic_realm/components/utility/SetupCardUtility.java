@@ -906,21 +906,31 @@ public class SetupCardUtility {
 			tileOptions.addAll(current.tile.getAllAdjacentTiles());
 			for (TileComponent adj:tileOptions) {
 				int distanceFromHome = ClearingUtility.getDistanceBetweenTiles(adj,home.tile);
+				int scoreDfh;
+				boolean scoreFarther, scoreSame;
 				if (revengeLocation!=null) {
-					int newDistanceFromTarget = ClearingUtility.getDistanceBetweenTiles(adj,revengeLocation.tile);
-					if (newDistanceFromTarget>distanceFromTarget) continue;
+					int newDistFromTarget = ClearingUtility.getDistanceBetweenTiles(adj,revengeLocation.tile);
+					if (newDistFromTarget>distanceFromTarget) continue;
+					// When hunting, bias toward the target: "closer to target" plays the role of "farther from home"
+					scoreDfh = distanceFromTarget - newDistFromTarget;
+					scoreFarther = newDistFromTarget < distanceFromTarget;
+					scoreSame = newDistFromTarget == distanceFromTarget;
+				} else {
+					scoreDfh = distanceFromHome;
+					scoreFarther = distanceFromHome > currentDfh;
+					scoreSame = distanceFromHome == currentDfh;
 				}
 
 				ArrayList<RealmComponent> present = adj.getAllClearingComponents();
 				MoveOption option = new MoveOption();
 				option.tile = adj;
-				option.dfh = distanceFromHome;
+				option.dfh = scoreDfh;
 				option.characters = countCharacters(present)+roadwayCharactersAtTile(roadwayCharacters,adj);
 				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = adj.getGameObject().equals(current.tile.getGameObject());
-				option.farther = distanceFromHome>currentDfh;
-				option.same = distanceFromHome==currentDfh;
-				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
+				option.farther = scoreFarther;
+				option.same = scoreSame;
+				option.ruleScore = ruleScore(scoreDfh,option.characters,option.generated);
 				options.add(option);
 			}
 
@@ -1000,26 +1010,36 @@ public class SetupCardUtility {
 					continue;
 				}
 				int distanceFromHome = ClearingUtility.calculateClearingCount(home,other.getTileLocation()); // is this going to kill performance?
+				int scoreDfh;
+				boolean scoreFarther, scoreSame;
 				if (revengeLocation!=null) {
+					int newDistFromTarget;
 					if (revengeLocation.clearing==null) {
-						int newDistanceFromTarget = ClearingUtility.getDistanceBetweenTiles(other.getTileLocation().tile,revengeLocation.tile);
-						if (newDistanceFromTarget>distanceFromTarget) continue;
+						newDistFromTarget = ClearingUtility.getDistanceBetweenTiles(other.getTileLocation().tile,revengeLocation.tile);
 					} else {
-						int newDistanceFromTarget = ClearingUtility.calculateClearingCount(other.getTileLocation(),revengeLocation);
-						if (newDistanceFromTarget>distanceFromTarget) continue;
+						newDistFromTarget = ClearingUtility.calculateClearingCount(other.getTileLocation(),revengeLocation);
 					}
+					if (newDistFromTarget>distanceFromTarget) continue;
+					// When hunting, bias toward the target: "closer to target" plays the role of "farther from home"
+					scoreDfh = distanceFromTarget - newDistFromTarget;
+					scoreFarther = newDistFromTarget < distanceFromTarget;
+					scoreSame = newDistFromTarget == distanceFromTarget;
+				} else {
+					scoreDfh = distanceFromHome;
+					scoreFarther = distanceFromHome > currentDfh;
+					scoreSame = distanceFromHome == currentDfh;
 				}
 
 				ArrayList<RealmComponent> present = other.getClearingComponents();
 				MoveOption option = new MoveOption();
 				option.clearing = other;
-				option.dfh = distanceFromHome;
+				option.dfh = scoreDfh;
 				option.characters = countCharacters(present)+roadwayCharactersAtClearing(roadwayCharacters,other);
 				option.generated = countGeneratedMonsters(present,deciding);
 				option.hold = other.equals(current.clearing);
-				option.farther = distanceFromHome>currentDfh;
-				option.same = distanceFromHome==currentDfh;
-				option.ruleScore = ruleScore(distanceFromHome,option.characters,option.generated);
+				option.farther = scoreFarther;
+				option.same = scoreSame;
+				option.ruleScore = ruleScore(scoreDfh,option.characters,option.generated);
 				options.add(option);
 			}
 			
@@ -1487,7 +1507,7 @@ public class SetupCardUtility {
 			sb.append("No generated monsters moved.\n");
 		}
 		else {
-			sb.append(propagated.size()).append(propagated.size()==1?" generated monster propagated:\n":" generated monsters propagated:\n");
+			sb.append(propagated.size()).append(propagated.size()==1?" generated monster group propagated:\n":" generated monster groups propagated:\n");
 			appendCapped(sb,propagated);
 		}
 		if (!spawned.isEmpty()) {
