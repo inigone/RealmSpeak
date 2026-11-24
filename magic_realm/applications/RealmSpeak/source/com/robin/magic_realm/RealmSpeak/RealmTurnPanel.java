@@ -20,6 +20,8 @@ import com.robin.magic_realm.components.quest.CharacterActionType;
 import com.robin.magic_realm.components.quest.GamePhaseType;
 import com.robin.magic_realm.components.quest.requirement.QuestRequirementParams;
 import com.robin.magic_realm.components.swing.*;
+import com.robin.magic_realm.components.store.GuildOperationsManager;
+import com.robin.magic_realm.components.store.GuildStore;
 import com.robin.magic_realm.components.table.Loot;
 import com.robin.magic_realm.components.utility.*;
 import com.robin.magic_realm.components.wrapper.*;
@@ -1058,8 +1060,15 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			// CharacterFrame.submitPrePhaseActivities()/cascadeStopFollowing() — suppress
 			// removeActionFollower()'s own internal per-follower summon check (pass null dice) since
 			// ActionRow.processReleasedFollowerBatch() performs ONE shared summon check for the whole batch.
+			// Guard: a follower may have had setStopFollowing(true) set outside the normal pre-phase/ditch
+			// path (e.g. energizePermanentSpells() activated a permanent spell that made them mist-like, so
+			// TransmorphEffect set the flag without stamping the batch). Stamp them now at the current
+			// post-increment phase count so processReleasedFollowerBatch() can complete their turn.
 			for (CharacterWrapper follower:getCharacter().getStoppedActionFollowers()) {
 				DebugUtility.diag("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName());
+				if (follower.getReleaseBatchGuideId() == null) {
+					follower.markReleasedFromGuide(getCharacter(), getCharacter().getNumberOfPerformedActionPhasesToday());
+				}
 				getCharacter().removeActionFollower(follower,null,null);
 			}
 		
@@ -1445,6 +1454,8 @@ public class RealmTurnPanel extends CharacterFramePanel {
 					}
 				}
 			}
+			checkGuildTrainingBonus(current);
+			checkGuildDayEndServices(current);
 		}
 
 		// PCT-Flow: step 15 — release any remaining followers now that step 14 (the PC's own EOCTMS,
@@ -1483,6 +1494,47 @@ public class RealmTurnPanel extends CharacterFramePanel {
 		getGameHandler().submitChanges();
 	}
 	
+	private void checkGuildDayEndServices(TileLocation current) {
+		CharacterWrapper character = getCharacter();
+		String guildName = character.getCurrentGuild();
+		if (guildName == null || current == null || current.clearing == null) return;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
+				GuildStore guildStore = character.getCurrentGuildStore(false);
+				if (guildStore != null) {
+					String result = guildStore.doGuildDayEndService(getMainFrame(), character);
+					if (result != null) {
+						getGameHandler().broadcast(character.getGameObject().getName(), result);
+					}
+				}
+				if (GuildOperationsManager.gainsHiddenAtGuild(character) && !character.isHidden()) {
+					character.setHidden(true);
+					getGameHandler().broadcast(character.getGameObject().getName(),
+						character.getName() + " is hidden at the " + rc.getGameObject().getName() + " (guild membership).");
+					System.out.println("[GUILD_TEST:HIDDEN-01] "+character.getGameObject().getName()+" is now hidden at their guild (level "+character.getCurrentGuildLevel()+")");
+				}
+				break;
+			}
+		}
+	}
+	private void checkGuildTrainingBonus(TileLocation current) {
+		CharacterWrapper character = getCharacter();
+		String guildName = character.getCurrentGuild(false); // include pledge holders (Level 0)
+		if (guildName == null || current == null || current.clearing == null) return;
+		for (RealmComponent rc : current.clearing.getClearingComponents()) {
+			if (rc.isGuild() && guildName.equals(rc.getGameObject().getThisAttribute(Constants.GUILD))) {
+				int expiryDay = game.getDay() + 15; // bonus applied at end of day N; first usable day N+1; 14 days = expires BIRDSONG of N+15
+				character.getGameObject().setThisAttribute(Constants.GUILD_TRAINING_EXPIRES, String.valueOf(expiryDay));
+				GuildStore guildStore = character.getCurrentGuildStore(false);
+				if (guildStore != null) {
+					guildStore.applyGuildTrainingBonus(getMainFrame(), character);
+					getGameHandler().broadcast(character.getGameObject().getName(),
+						"Trains at the "+guildName+"; bonus expires on day "+expiryDay+".");
+				}
+				break;
+			}
+		}
+	}
 	private class ActionIconRenderer extends DefaultTableCellRenderer {
 		public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
 			setHorizontalAlignment(SwingConstants.CENTER);

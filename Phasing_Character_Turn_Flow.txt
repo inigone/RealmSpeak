@@ -23,6 +23,15 @@ Phasing Character Turn and End-of-Character-Turn-Monster-Summoning (EOCTMS) Even
         a. Note that Batch-NLF-In NPCs can now block or be blocked.
     v. Each NPC in Batch-NLF-In is immediately processed to be NO LONGER FOLLOWING.
     vi. The TURNs of chars in Batch-NLF-In are NOT set to done yet.  (And so no associated EOCTMS event yet.)
+    vii. After the in-phase action executes (step iii), permanent spells are energized for characters in the PC's new clearing.  It is possible that a follower's permanent spell activates here (e.g., Melt into Mist activates because the tile now has matching color magic), making the follower unable to continue following the guide.
+         a. This is NOT captured by Batch-NLF-In (steps iv-vi): the follower was still a valid follower when the action ran and was left behind only after it completed.
+         b. The follower's stop-following flag is set at this point, but the batch-release stamp required for turn-completion is NOT applied until the NEXT action's pre-execute pass detects the flag.
+         c. These followers effectively join the NEXT action's Batch-NLF-1 (step 9 for that action): their TURN is marked Done and an EOCTMS fires in their clearing (step 10 for that action).
+            I. Because the guide has already executed the NEXT action by the time these followers are batch-processed, the guide may be in a different clearing -- the EOCTMS fires in the ex-follower's clearing, which is not necessarily the PC's current clearing.
+    viii. The symmetric case: the GUIDE's permanent spell activates via energize, making the guide unfollowable (e.g., the guide's permanent Melt into Mist activates because the tile now has matching color magic).
+          a. Non-mist followers are released from the guide with batch stamps set to the NEXT action's phase count.  Like step vii, these followers therefore join the NEXT action's Batch-NLF-1 (step 9 for that action): their TURN is marked Done and an EOCTMS fires in their clearing (step 10 for that action).
+          b. The deferred timing is the same as step vii but the mechanism differs: the guide-becomes-mist path stamps the followers immediately (via TransmorphEffect at energize time) rather than deferring to the next action's pre-execute detection.
+          c. If the guide remained blockable after becoming unfollowable (i.e., became unfollowable by some mechanism other than Melt into Mist), a blocking character already in the guide's clearing could block the guide.  That would trigger a separate EOCTMS for the guide, in addition to the followers' EOCTMS from step a.
 7. ALL PC and NPC phase-end dialogs are distributed as needed to all chars currently sharing the PC's clearing.
     i. Beware that ex-followers in Batch-NLF-PC-Pre, Batch-NLF-NPC-Pre, or Batch-NLF-In may no longer be in the same clearing as the PC guide.
 8. ALL phase-end dialogs are submitted, and then processed in random order.
