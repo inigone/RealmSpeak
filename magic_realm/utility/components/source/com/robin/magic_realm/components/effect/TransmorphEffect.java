@@ -15,6 +15,7 @@ import com.robin.general.swing.IconGroup;
 import com.robin.magic_realm.components.MonsterChitComponent;
 import com.robin.magic_realm.components.RealmComponent;
 import com.robin.magic_realm.components.utility.Constants;
+import com.robin.magic_realm.components.utility.DebugUtility;
 import com.robin.magic_realm.components.utility.DieRollBuilder;
 import com.robin.magic_realm.components.utility.RealmLogging;
 import com.robin.magic_realm.components.utility.TreasureUtility;
@@ -313,20 +314,27 @@ public class TransmorphEffect implements ISpellEffect {
 		if (target.isMistLike()) {
 			// Mists cannot have a target!
 			target.clearTargets();
-			// Mists cannot have a followers!
+			// Mists cannot BE followed (MR 4.6.9.c.2) — release any followers the target has.
+			// NOTE: a mist character CAN still follow another guide (Melt into Mist allows Follow).
+			// Do NOT set setStopFollowing(true) here — that would wrongly force the target to
+			// leave their own guide, which the rules do not require.
 			CharacterWrapper character = new CharacterWrapper(target.getGameObject());
-			character.setStopFollowing(true);
+			DebugUtility.diag("[IPD] TransmorphEffect: " + character.getGameObject().getName()
+				+ " became mist-like (target-phases-today=" + character.getNumberOfPerformedActionPhasesToday() + ")");
 			ArrayList<CharacterWrapper> followers = character.getActionFollowers();
 			if (followers!=null) {
 				for (CharacterWrapper follower : followers) {
 					if (!follower.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) {
-						// TBD: this most commonly fires as part of the target's own spell-cast action
-						// dispatch, before that phase's addActionPhasePerformedToday() increment (hence
-						// +1), same as ActionRow's per-phase mist-like fallback check. If Transmorph can
-						// also apply from a reactive/out-of-turn context this guess may be off by one
-						// phase for that case — the ActionRow fallback only self-corrects if this stamp
-						// hasn't already removed the follower from getActionFollowers() first.
-						follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
+						// PCTF-6vii: guide becomes mist → followers must leave immediately.
+						// Fires via energizePermanentSpells() in playNext(), which runs AFTER
+						// addActionPhasePerformedToday() has already incremented the count.
+						// No +1 adjustment: count is already the post-increment value that
+						// processReleasedFollowerBatch() will use when post-phase resolves.
+						int stamp = character.getNumberOfPerformedActionPhasesToday();
+						DebugUtility.diag("[IPD] TransmorphEffect PCTF-6vii: guide=" + character.getGameObject().getName()
+							+ " became mist-like, releasing follower=" + follower.getGameObject().getName()
+							+ " stamp=" + stamp + " (phases-today=" + stamp + ", post-increment)");
+						follower.markReleasedFromGuide(character, stamp);
 						character.removeActionFollower(follower,null,null);
 					}
 				}
