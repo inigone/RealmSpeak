@@ -2185,8 +2185,8 @@ public class RealmSpeakFrame extends JFrameWithStatus {
 			ip = host.getConnector().getIPAddress();
 			port = host.getConnector().getPort();
 		}
-		// The host's personal pass is the ip address
-		startRealmGameHandler(ip,port,hostPrefs.getHostName(),hostPrefs.getGamePass(),ip,hostPrefs.getHostEmail(),true);
+		// The host's personal pass is empty — passing the IP here stamped it onto all characters and broke save/load on other clients
+		startRealmGameHandler(ip,port,hostPrefs.getHostName(),hostPrefs.getGamePass(),"",hostPrefs.getHostEmail(),true);
 		
 		updateControls();
 	}
