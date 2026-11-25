@@ -64,14 +64,17 @@ public class GameHost {
 		for (GameServer server:servers) {
 			String clientName = server.getClientName();
 			if (!server.equals(ignoreServer) && clientName!=null && clientName.equals(name)) {
-				if (server.connection instanceof NetFreeSocket) {
-					// The host-as-client (loopback "RS Server") is reconnecting. The old GameServer
-					// races the new login: its teardown hasn't reached removeServer() yet. Evict it
-					// and close its streams so the thread unblocks and dies cleanly.
+				if (server.connection instanceof NetFreeSocket || server.isHosting()) {
+					// The host-as-client ("RS Server") is reconnecting. The old GameServer races
+					// the new login: its teardown hasn't reached removeServer() yet. Evict it and
+					// close its streams so the thread unblocks and dies cleanly.
+					// server.hosting covers the case where the first reconnect already replaced the
+					// NetFreeSocket with a real TCP connection (a second timeout/reconnect cycle).
 					servers.remove(server);
 					try { if (server.in!=null) server.in.close(); } catch(IOException ignored) {}
 					try { if (server.out!=null) server.out.close(); } catch(IOException ignored) {}
-					logger.warning("LOGIN: evicted stale loopback GameServer for \""+name+"\"; allowing reconnect");
+					logger.warning("LOGIN: evicted stale host GameServer for \""+name+"\" (loopback="+
+						(server.connection instanceof NetFreeSocket)+", hosting="+server.isHosting()+"); allowing reconnect");
 					return true;
 				}
 				logger.warning("LOGIN REFUSED for \""+name+"\": a GameServer still holds that name ("
@@ -259,7 +262,9 @@ public class GameHost {
 		server.setClientHostName(hostName);
 		server.start();
 		servers.add(server);
-		logger.info("SERVER ADDED for a new connection ("+servers.size()+" registered: "+describeServers()+")");
+		logger.info("SERVER ADDED for a new connection (socket="
+			+(connection instanceof NetFreeSocket ? "loopback" : "TCP "+connection.getInetAddress())
+			+", "+servers.size()+" registered: "+describeServers()+")");
 		fireHostModified(new GameHostEvent(this,server,GameHostEvent.NOTICE_NEW_CONNECTION));
 	}
 	public void removeServer(GameServer server) {
