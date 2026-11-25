@@ -554,21 +554,24 @@ public class ActionRow {
 		// must settle before pre-phase reactions for the coming action are evaluated.
 		if (!isFollowing) {
 			if (character.isMistLike()) {
-				// PCT-Flow: step 6.iv-vi (Batch-NLF-In family) — guide becomes unfollowable due to
-				// mist-like status. See Phasing_Character_Turn_Flow.txt.
-				// Auto-release lingering followers whenever the phasing char is mist-like.
-				// TransmorphEffect doesn't re-fire when a permanent spell is re-energized
-				// (e.g. a follower plays a color chit to re-activate the guide's Melt into Mist),
-				// so followers can persist past the point where they should have been released.
-				// Runs at the top of process(), before this phase's addActionPhasePerformedToday()
-				// increment, so stamp with +1 (same reasoning as the ditch/voluntary-stop sites).
-				// Suppress removeActionFollower()'s own internal summon (null dice) — the batch performs
-				// ONE shared summon check instead.
+				// PCT-Flow PCTF-6vii fallback — guide is mist-like at the START of this action's
+				// process() call; any followers who survived to here should have been released by
+				// TransmorphEffect at energize time, but re-energize (e.g. a follower plays a color
+				// chit to re-activate the guide's Melt into Mist) doesn't re-fire TransmorphEffect,
+				// so this catch-all releases any stragglers. Runs BEFORE addActionPhasePerformedToday()
+				// increments the count, so stamp with +1 — the pre-increment counterpart to
+				// TransmorphEffect's post-increment stamp (no +1) for the same final batch value.
+				// Suppress removeActionFollower()'s own internal summon — the batch performs ONE shared
+				// summon check instead.
 				for (CharacterWrapper follower : character.getActionFollowers()) {
 					if (!follower.getGameObject().hasThisAttribute(Constants.IGNORE_MIST_LIKE)) {
+						int stamp = character.getNumberOfPerformedActionPhasesToday()+1;
+						DebugUtility.diag("[IPD] ActionRow mist-fallback PCTF-6vii: guide=" + character.getGameObject().getName()
+							+ " releasing follower=" + follower.getGameObject().getName()
+							+ " stamp=" + stamp + " (phases-today=" + (stamp-1) + "+1)");
 						RealmLogging.logMessage(character.getGameObject().getName(),
 							follower.getGameObject().getName() + " can no longer follow (guide is mist-like).");
-						follower.markReleasedFromGuide(character, character.getNumberOfPerformedActionPhasesToday()+1);
+						follower.markReleasedFromGuide(character, stamp);
 						character.removeActionFollower(follower, null, null);
 					}
 				}
@@ -1479,10 +1482,22 @@ public class ActionRow {
 			// Consume this follower's release stamp now that they're fully processed, so a later batch
 			// stamped with the same phase number (see class-level note above) isn't masked by them.
 			released.clearReleaseBatchStamp();
+			// Remove the follower from the guide's actionFollowers list so the playNext() defensive
+			// stamp guard (RealmTurnPanel.playNext() ~line 1067) cannot re-stamp them on the same
+			// phase after the stamp was just cleared here, which would cause a second batch fire.
+			// Pass null dice to suppress removeActionFollower()'s per-follower EOCTMS — the shared
+			// summon below handles that for the whole batch. Same null-dice convention as the
+			// ditch/move paths (ActionRow lines ~2378, ~2386) that already call removeActionFollower.
+			guide.removeActionFollower(released, null, null);
 		}
 
 		// Single shared summon check for the whole batch — pure shared-data operation, safe cross-client.
+		// Clear noSummon on the representative: followers that weren't the "first" in the group have
+		// _no_sum_=true (see CharacterWrapper.NO_SUMMON) to suppress their individual EOCTMS summon,
+		// but the whole batch is entitled to exactly ONE summon here, so the representative must not
+		// be blocked by that flag.
 		HostPrefWrapper hostPrefs = HostPrefWrapper.findHostPrefs(gameHandler.getClient().getGameData());
+		representative.setNoSummon(false);
 		DieRoller monsterDieRoller = gameHandler.getGame().getMonsterDie();
 		DieRoller nativeDieRoller = gameHandler.getGame().getNativeDie();
 		ArrayList<GameObject> summoned = new ArrayList<>();

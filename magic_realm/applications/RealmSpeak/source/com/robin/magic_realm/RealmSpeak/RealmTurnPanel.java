@@ -1060,14 +1060,20 @@ public class RealmTurnPanel extends CharacterFramePanel {
 			// CharacterFrame.submitPrePhaseActivities()/cascadeStopFollowing() — suppress
 			// removeActionFollower()'s own internal per-follower summon check (pass null dice) since
 			// ActionRow.processReleasedFollowerBatch() performs ONE shared summon check for the whole batch.
-			// Guard: a follower may have had setStopFollowing(true) set outside the normal pre-phase/ditch
-			// path (e.g. energizePermanentSpells() activated a permanent spell that made them mist-like, so
-			// TransmorphEffect set the flag without stamping the batch). Stamp them now at the current
-			// post-increment phase count so processReleasedFollowerBatch() can complete their turn.
+			// Defensive guard: if any follower has setStopFollowing(true) set but no batch stamp,
+			// stamp them now so processReleasedFollowerBatch() can complete their turn. In normal
+			// flow every stop-following path calls markReleasedFromGuide() before this point; this
+			// catch-all handles any edge case that slips through.
 			for (CharacterWrapper follower:getCharacter().getStoppedActionFollowers()) {
-				DebugUtility.diag("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName());
+				DebugUtility.diag("[IPD] playNext detaching stopped follower " + follower.getGameObject().getName()
+					+ " batchGuideId=" + follower.getReleaseBatchGuideId()
+					+ " batchPhase=" + follower.getJustReleasedFollowerActionCount());
 				if (follower.getReleaseBatchGuideId() == null) {
-					follower.markReleasedFromGuide(getCharacter(), getCharacter().getNumberOfPerformedActionPhasesToday());
+					int stamp = getCharacter().getNumberOfPerformedActionPhasesToday();
+					DebugUtility.diag("[IPD] playNext defensive stamp: follower=" + follower.getGameObject().getName()
+						+ " missing batch stamp, stamping now stamp=" + stamp
+						+ " guide=" + getCharacter().getGameObject().getName());
+					follower.markReleasedFromGuide(getCharacter(), stamp);
 				}
 				getCharacter().removeActionFollower(follower,null,null);
 			}
