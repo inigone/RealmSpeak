@@ -62,7 +62,7 @@ public class GameConnector extends Thread {
 				Socket connection = listener.accept();
 				if (alive) {
 					try {
-						connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS);
+						// No SO_TIMEOUT: game must wait indefinitely for a player responding to a dialog.
 						connection.setTcpNoDelay(true); // Data will be sent earlier, at the cost of an increase in bandwidth consumption.
 														// See http://www.davidreilly.com/java/java_network_programming/#3.3
 						connection.setKeepAlive(true);

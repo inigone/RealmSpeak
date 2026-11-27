@@ -257,7 +257,8 @@ public class GameHost {
 	 * Assigns a server to the provided connection
 	 */
 	public void addConnection(Socket connection) {
-		try { connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); } catch(IOException ex) { /* ignore */ }
+		// No SO_TIMEOUT on the server side: the game must wait indefinitely for a player responding to a dialog.
+		// Dead clients are detected when the server next writes to them and gets an IOException.
 		GameServer server = new GameServer(this,connection);
 		server.setClientHostName(hostName);
 		server.start();

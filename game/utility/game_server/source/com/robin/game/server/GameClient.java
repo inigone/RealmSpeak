@@ -374,10 +374,10 @@ public abstract class GameClient extends GameNet {
 					while(!timeToLeave()) {
 						doRequest(getNextInQueue());
 						if (!initialSyncDone) {
-							// The catch-up read is done, so ordinary play can go back to the short timeout -
-							// that is what lets either end notice a dead connection promptly.
+							// Initial sync done. Remove the timeout: the game must wait indefinitely for a
+							// server responding to a dialog. Dead servers are detected on the next write failure.
 							initialSyncDone = true;
-							try { connection.setSoTimeout(GameNet.DEFAULT_TIMEOUT_MS); } catch(SocketException ex) { /* keep the login value */ }
+							try { connection.setSoTimeout(0); } catch(SocketException ex) { /* keep the login value */ }
 						}
 						while(!requestQueue.isEmpty()) {
 							doRequest(getNextInQueue());
