@@ -469,6 +469,7 @@ public class RealmHostPanel extends JPanel {
 					character.setShelteredPhases(cal.getShelteredPhases(game.getMonth()));
 					character.setMountainMoveCost(cal.getMountainMoveCost(game.getMonth()));
 					character.startNewDay(cal,hostPrefs);
+					character.drainPostQuestParams(null);
 					
 					character.distributeMonsterControlInCurrentClearing();
 					
@@ -1042,7 +1043,7 @@ public class RealmHostPanel extends JPanel {
 			RealmEvents.expireEvents(host);
 		}
 		
-		testQuestRequirements(activeCharacters);
+		testQuestRequirements(activeCharacters, (JFrame) SwingUtilities.getWindowAncestor(this));
 		
 		// New Day
 		int daysToAdd = 1; // default
@@ -1209,12 +1210,12 @@ public class RealmHostPanel extends JPanel {
 		spellMaster.expireCombatSpells();
 		spellMaster.deenergizePermanentSpells();
 	}
-	private static void testQuestRequirements(ArrayList<GameObject> livingCharacters) {
+	private static void testQuestRequirements(ArrayList<GameObject> livingCharacters, JFrame frame) {
 		for (GameObject go:livingCharacters) {
 			CharacterWrapper character = new CharacterWrapper(go);
 			QuestRequirementParams params = new QuestRequirementParams();
 			params.timeOfCall = GamePhaseType.Midnight;
-			character.testQuestRequirements(new JFrame(), params);
+			character.testQuestRequirements(frame, params);
 		}
 	}
 	/**

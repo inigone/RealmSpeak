@@ -431,7 +431,8 @@ public class GoldSpecialChitComponent extends SquareChitComponent {
 			GameClient.broadcastClient(character.getGameObject().getName(),"Loses "+not+" notoriety.");
 		}
 	}
-	public void gainReward(CharacterWrapper character) {
+	public void gainReward(CharacterWrapper character) { gainReward(null, character); }
+	public void gainReward(JFrame frame, CharacterWrapper character) {
 		GameClient.broadcastClient(character.getGameObject().getName(),"Completed "+getGameObject().getName());
 		int fame = getGameObject().getThisInt("fame_cost");
 		int not = getGameObject().getThisInt("notoriety_cost");
@@ -483,7 +484,12 @@ public class GoldSpecialChitComponent extends SquareChitComponent {
 		}
 		qp.actionName = getGameObject().getName();
 		qp.targetOfSearch = getGameObject();
-		character.addPostQuestParams(qp);
+		if (frame != null) {
+			character.testQuestRequirements(frame, qp);
+		}
+		else {
+			character.addPostQuestParams(qp);
+		}
 	}
 	public boolean isComplete(CharacterWrapper character,TileLocation current) {
 		if (getGameObject().hasThisAttribute(Constants.BOUNTY_HUNTER)) {

@@ -8690,18 +8690,27 @@ public class CharacterWrapper extends GameObjectWrapper {
 	public void addPostQuestParams(QuestRequirementParams qp) {
 		qp.dayKey = getCurrentDayKey();
 		addListItem(POST_QUEST_PARAMS,qp.asString());
+		DebugUtility.diag("[IPD] addPostQuestParams: char=" + getGameObject().getName() + " actionType=" + qp.actionType + " actionName=" + qp.actionName);
+	}
+	public boolean drainPostQuestParams(JFrame frame) {
+		DebugUtility.diag("[IPD] drainPostQuestParams: char=" + getGameObject().getName() + " hasQueue=" + getBoolean(POST_QUEST_PARAMS));
+		return processPostQuestParams(frame);
 	}
 	private boolean processPostQuestParams(JFrame frame) {
 		if (!getBoolean(POST_QUEST_PARAMS)) return false;
 		boolean reward = false;
-		for(Object obj:getList(POST_QUEST_PARAMS)) {
+		ArrayList<Object> items = new ArrayList<>(getList(POST_QUEST_PARAMS));
+		DebugUtility.diag("[IPD] processPostQuestParams: char=" + getGameObject().getName() + " items=" + items.size());
+		for(Object obj:items) {
 			String val = obj.toString();
 			QuestRequirementParams qp = QuestRequirementParams.valueOf(val,getGameData());
+			DebugUtility.diag("[IPD] processPostQuestParams testing: actionType=" + qp.actionType + " actionName=" + qp.actionName);
 			if (testQuestRequirements(frame,qp,false)) {
 				reward = true;
 			}
 		}
 		clear(POST_QUEST_PARAMS);
+		DebugUtility.diag("[IPD] processPostQuestParams cleared queue");
 		return reward;
 	}
 	public void distributeMonsterControlInCurrentClearing() {
